@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
 
 def handle_collisions(all_units: Iterable[GameObject]) -> None:
+    """Resolve collisions between units."""
     for unit in all_units:
         for other in all_units:
             if unit != other and unit.rect.colliderect(other.rect):
@@ -77,6 +78,17 @@ def handle_attacks(
     projectiles: pg.sprite.Group[Projectile],
     particles: pg.sprite.Group[Particle],
 ) -> None:
+    """Handle attacks for one team's units.
+
+    Parameters
+    ----------
+
+    projectiles:
+        `sprite.Group` to which new projectiles will be added.
+
+    particles:
+        `sprite.Group` to which new particles will be added.
+    """
     for unit in team_units:
         if isinstance(unit, (Tank, Infantry)) and unit.cooldown_timer == 0:
             closest_target, min_dist = None, float("inf")

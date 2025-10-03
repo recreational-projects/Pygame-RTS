@@ -47,6 +47,14 @@ class Building(GameObject):
             pg.draw.rect(self.image, (200, 200, 200), (i, 10, 10, 10))  # Windows
 
     def update(self, particles: pg.sprite.Group[Particle], *args, **kwargs) -> None:
+        """Update the `Building`.
+
+        Parameters
+        ----------
+        particles:
+            `sprite.Group` to which new particles will be added.
+        """
+
         if self.construction_progress < self.CONSTRUCTION_TIME:
             self.construction_progress += 1
             self.image.set_alpha(
