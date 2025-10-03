@@ -872,7 +872,6 @@ if __name__ == "__main__":
         )
         ai.update(
             friendly_units=ai_units.sprites(),
-            friendly_buildings=[b for b in global_buildings if b.team != Team.GDI],
             enemy_units=player_units.sprites(),
             enemy_buildings=[b for b in global_buildings if b.team == Team.GDI],
             iron_fields=iron_fields.sprites(),
