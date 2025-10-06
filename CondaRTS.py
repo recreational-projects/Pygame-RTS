@@ -69,83 +69,84 @@ def handle_collisions(all_units: Iterable[GameObject]) -> None:
 
 def handle_attacks(
     *,
-    team_units: Iterable[GameObject],
-    all_units: Iterable[GameObject],
-    all_buildings: Iterable[Building],
+    attack_units: Iterable[Infantry | Tank],
+    enemy_units: Iterable[GameObject],
+    enemy_buildings: Iterable[Building],
     projectiles: pg.sprite.Group[Any],
     particles: pg.sprite.Group[Any],
 ) -> None:
-    for unit in team_units:
-        if isinstance(unit, (Tank, Infantry)) and unit.cooldown_timer == 0:
-            closest_target, min_dist = None, float("inf")
-            if unit.target_unit and unit.target_unit.health > 0:
-                dist = unit.distance_to(unit.target_unit.position)
-                if dist <= unit.ATTACK_RANGE:
-                    closest_target, min_dist = unit.target_unit, dist
+    """Handles infantry and tank attacks only."""
+    ready_units = {u for u in attack_units if u.cooldown_timer <= 0}
+    for unit in ready_units:
+        closest_target, min_dist = None, float("inf")
+        if unit.target_unit and unit.target_unit.health > 0:
+            dist = unit.distance_to(unit.target_unit.position)
+            if dist <= unit.ATTACK_RANGE:
+                closest_target, min_dist = unit.target_unit, dist
 
-            if not closest_target:
-                for obj in (*all_units, *all_buildings):
-                    if obj.team != unit.team and obj.health > 0:
-                        dist = unit.distance_to(obj.position)
-                        if dist <= unit.ATTACK_RANGE and dist < min_dist:
-                            closest_target, min_dist = obj, dist
+        if not closest_target:
+            for obj in (*enemy_units, *enemy_buildings):
+                if obj.team != unit.team and obj.health > 0:
+                    dist = unit.distance_to(obj.position)
+                    if dist <= unit.ATTACK_RANGE and dist < min_dist:
+                        closest_target, min_dist = obj, dist
 
-            if closest_target:
-                unit.target_unit = closest_target
-                unit.target = closest_target.position
-                if isinstance(unit, Tank):
-                    d = unit.displacement_to(closest_target.position)
-                    unit.angle = math.degrees(
-                        math.atan2(d.y, d.x)
-                    )  # Updated to match Tank's angle calculation
-                    projectiles.add(
-                        Projectile(
+        if closest_target:
+            unit.target_unit = closest_target
+            unit.target = closest_target.position
+            if isinstance(unit, Tank):
+                d = unit.displacement_to(closest_target.position)
+                unit.angle = math.degrees(
+                    math.atan2(d.y, d.x)
+                )  # Updated to match Tank's angle calculation
+                projectiles.add(
+                    Projectile(
+                        unit.position,
+                        closest_target,
+                        unit.attack_damage,
+                        unit.team,
+                    )
+                )
+                unit.recoil = 5
+                barrel_angle = math.radians(unit.angle)
+                smoke_x = unit.position.x + math.cos(barrel_angle) * (
+                    unit.rect.width // 2 + 12
+                )
+                smoke_y = unit.position.y + math.sin(barrel_angle) * (
+                    unit.rect.width // 2 + 12
+                )
+                for _ in range(5):
+                    particles.add(
+                        Particle(
+                            (smoke_x, smoke_y),
+                            random.uniform(-1.5, 1.5),
+                            random.uniform(-1.5, 1.5),
+                            random.randint(6, 10),
+                            pg.Color(100, 100, 100),
+                            20,
+                        )
+                    )
+            else:
+                closest_target.health -= unit.attack_damage
+                closest_target.under_attack = (
+                    True  # Set under_attack only when damage is applied
+                )
+                for _ in range(3):
+                    particles.add(
+                        Particle(
                             unit.position,
-                            closest_target,
-                            unit.attack_damage,
-                            unit.team,
+                            random.uniform(-1, 1),
+                            random.uniform(-1, 1),
+                            4,
+                            pg.Color(255, 200, 100),
+                            10,
                         )
                     )
-                    unit.recoil = 5
-                    barrel_angle = math.radians(unit.angle)
-                    smoke_x = unit.position.x + math.cos(barrel_angle) * (
-                        unit.rect.width // 2 + 12
-                    )
-                    smoke_y = unit.position.y + math.sin(barrel_angle) * (
-                        unit.rect.width // 2 + 12
-                    )
-                    for _ in range(5):
-                        particles.add(
-                            Particle(
-                                (smoke_x, smoke_y),
-                                random.uniform(-1.5, 1.5),
-                                random.uniform(-1.5, 1.5),
-                                random.randint(6, 10),
-                                pg.Color(100, 100, 100),
-                                20,
-                            )
-                        )
-                else:
-                    closest_target.health -= unit.attack_damage
-                    closest_target.under_attack = (
-                        True  # Set under_attack only when damage is applied
-                    )
-                    for _ in range(3):
-                        particles.add(
-                            Particle(
-                                unit.position,
-                                random.uniform(-1, 1),
-                                random.uniform(-1, 1),
-                                4,
-                                pg.Color(255, 200, 100),
-                                10,
-                            )
-                        )
-                    if closest_target.health <= 0:
-                        closest_target.kill()
-                        unit.target = unit.target_unit = None
+                if closest_target.health <= 0:
+                    closest_target.kill()
+                    unit.target = unit.target_unit = None
 
-                unit.cooldown_timer = unit.ATTACK_COOLDOWN_PERIOD
+            unit.cooldown_timer = unit.ATTACK_COOLDOWN_PERIOD
 
 
 def handle_projectiles(
@@ -879,17 +880,20 @@ if __name__ == "__main__":
         projectiles.update(particles)
         particles.update()
         handle_collisions(global_units)
+        player_buildings = [b for b in global_buildings if b.team == Team.GDI]
+        ai_buildings = [b for b in global_buildings if b.team != Team.GDI]
+
         handle_attacks(
-            team_units=player_units,
-            all_units=global_units,
-            all_buildings=global_buildings,
+            attack_units={u for u in player_units if isinstance(u, Infantry | Tank)},
+            enemy_units=ai_units,
+            enemy_buildings=ai_buildings,
             projectiles=projectiles,
             particles=particles,
         )
         handle_attacks(
-            team_units=ai_units,
-            all_units=global_units,
-            all_buildings=global_buildings,
+            attack_units={u for u in ai_units if isinstance(u, Infantry | Tank)},
+            enemy_units=player_units,
+            enemy_buildings=player_buildings,
             projectiles=projectiles,
             particles=particles,
         )
@@ -901,7 +905,7 @@ if __name__ == "__main__":
         player_buildings = [b for b in global_buildings if b.team == Team.GDI]
         ai.update(
             friendly_units=ai_units.sprites(),
-            friendly_buildings=[b for b in global_buildings if b.team != Team.GDI],
+            friendly_buildings=ai_buildings,
             enemy_units=player_units.sprites(),
             enemy_buildings=player_buildings,
             iron_fields=iron_fields.sprites(),
