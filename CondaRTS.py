@@ -118,8 +118,7 @@ def handle_attacks(
                         particles.add(
                             Particle(
                                 (smoke_x, smoke_y),
-                                random.uniform(-1.5, 1.5),
-                                random.uniform(-1.5, 1.5),
+                                (random.uniform(-1.5, 1.5), random.uniform(-1.5, 1.5)),
                                 random.randint(6, 10),
                                 pg.Color(100, 100, 100),
                                 20,
@@ -134,8 +133,7 @@ def handle_attacks(
                         particles.add(
                             Particle(
                                 unit.position,
-                                random.uniform(-1, 1),
-                                random.uniform(-1, 1),
+                                (random.uniform(-1, 1), random.uniform(-1, 1)),
                                 4,
                                 pg.Color(255, 200, 100),
                                 10,
@@ -171,8 +169,7 @@ def handle_projectiles(
                     particles.add(
                         Particle(
                             projectile.position,
-                            random.uniform(-2, 2),
-                            random.uniform(-2, 2),
+                            (random.uniform(-2, 2), random.uniform(-2, 2)),
                             6,
                             pg.Color(255, 200, 100),
                             15,

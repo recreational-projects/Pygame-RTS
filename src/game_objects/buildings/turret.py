@@ -79,8 +79,7 @@ class Turret(Building):
                     particles.add(
                         Particle(
                             self.position,
-                            random.uniform(-1.5, 1.5),
-                            random.uniform(-1.5, 1.5),
+                            (random.uniform(-1.5, 1.5), random.uniform(-1.5, 1.5)),
                             random.randint(6, 10),
                             pg.Color(100, 100, 100),
                             20,

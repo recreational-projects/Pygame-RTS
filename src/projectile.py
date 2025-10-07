@@ -59,8 +59,10 @@ class Projectile(pg.sprite.Sprite):
                     particles.add(
                         Particle(
                             self.position,
-                            -math.cos(angle) * random.uniform(0.5, 1.5),
-                            -math.sin(angle) * random.uniform(0.5, 1.5),
+                            (
+                                -math.cos(angle) * random.uniform(0.5, 1.5),
+                                -math.sin(angle) * random.uniform(0.5, 1.5),
+                            ),
                             5,
                             pg.Color(255, 255, 150),
                             15,
@@ -75,8 +77,7 @@ class Projectile(pg.sprite.Sprite):
                     particles.add(
                         Particle(
                             self.position,
-                            random.uniform(-2, 2),
-                            random.uniform(-2, 2),
+                            (random.uniform(-2, 2), random.uniform(-2, 2)),
                             6,
                             pg.Color(255, 100, 0),
                             15,

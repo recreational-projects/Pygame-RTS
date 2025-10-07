@@ -18,8 +18,7 @@ class Particle(pg.sprite.Sprite):
     def __init__(
         self,
         position: pg.typing.SequenceLike,
-        vx: float,
-        vy: float,
+        velocity: pg.typing.SequenceLike,
         size: int,
         color: pg.Color,
         lifetime: int,
@@ -28,7 +27,7 @@ class Particle(pg.sprite.Sprite):
         self.image: pg.Surface = pg.Surface((size, size), pg.SRCALPHA)
         pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
         self.rect: pg.Rect = self.image.get_rect(center=position)
-        self.vx, self.vy = vx, vy
+        self.velocity = pg.Vector2(velocity)
         self.lifetime = lifetime
         self.alpha = 255
         self.initial_lifetime = lifetime
@@ -38,8 +37,8 @@ class Particle(pg.sprite.Sprite):
         return Coordinate(self.rect.center)
 
     def update(self) -> None:
-        self.rect.x += self.vx
-        self.rect.y += self.vy
+        self.rect.x += self.velocity.x
+        self.rect.y += self.velocity.y
         self.lifetime -= 1
         if self.lifetime <= 0:
             self.kill()

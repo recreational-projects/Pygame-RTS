@@ -64,8 +64,7 @@ class Building(GameObject):
                 particles.add(
                     Particle(
                         self.position,
-                        random.uniform(-3, 3),
-                        random.uniform(-3, 3),
+                        (random.uniform(-3, 3), random.uniform(-3, 3)),
                         random.randint(6, 12),
                         pg.Color(200, 100, 100),
                         30,
