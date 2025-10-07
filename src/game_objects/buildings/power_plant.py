@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pygame as pg
 
-from src.constants import Team
-from src.game_objects.buildings.building import Building
+from src.building import Building
+
+if TYPE_CHECKING:
+    from src.team import Team
 
 
 class PowerPlant(Building):
-    """Provides power."""
-
     # Override base class(es):
     COST = 300
     POWER_OUTPUT = 100
@@ -20,8 +22,8 @@ class PowerPlant(Building):
         super().__init__(
             position=position,
             team=team,
-            color=pg.Color(130, 130, 0) if team == Team.GDI else pg.Color(130, 0, 0),
             font=font,
         )
+        self.color = pg.Color(130, 130, 0) if team == "GDI" else pg.Color(130, 0, 0)
         self.max_health = 500
         self.health = self.max_health

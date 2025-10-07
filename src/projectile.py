@@ -6,22 +6,18 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src import draw_utils
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
 from src.geometry import Coordinate
 from src.particle import Particle
+from src.team import Team
 
 if TYPE_CHECKING:
     from src.camera import Camera
-    from src.constants import Team
-    from src.game_objects.game_object import GameObject
+    from src.game_object import GameObject
 
 HIT_RADIUS = 3
 
 
 class Projectile(pg.sprite.Sprite):
-    """For ranged attacks e.g. tank shells."""
-
     SPEED: float = 6
 
     def __init__(
@@ -38,6 +34,7 @@ class Projectile(pg.sprite.Sprite):
         self.damage = damage
         self.team = team
         self.particle_timer = 2
+
         pg.draw.ellipse(self.image, (255, 200, 0), (0, 0, 10, 5))
 
     @property
@@ -86,11 +83,4 @@ class Projectile(pg.sprite.Sprite):
             self.kill()
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            draw_utils.debug_outline_rect(
-                surface=surface, rect=camera.rect_to_screen(self.rect)
-            )
-            draw_utils.debug_marker(
-                surface=surface, position=camera.to_screen(self.position)
-            )
+        surface.blit(self.image, camera.apply(self.rect).topleft)

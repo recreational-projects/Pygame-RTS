@@ -7,10 +7,10 @@ import pygame as pg
 from src import draw_utils
 from src.constants import MAP_HEIGHT, MAP_WIDTH, SELECTION_INDICATOR_COLOR
 from src.geometry import Coordinate
+from src.team import Team
 
 if TYPE_CHECKING:
     from src.camera import Camera
-    from src.constants import Team
 
 ARRIVAL_RADIUS = 5
 

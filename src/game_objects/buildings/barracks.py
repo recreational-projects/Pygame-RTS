@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pygame as pg
 
-from src.constants import Team
-from src.game_objects.buildings.building import Building
+from src.building import Building
+
+if TYPE_CHECKING:
+    from src.team import Team
 
 
 class Barracks(Building):
-    """Produces infantry units."""
-
     # Override base class(es):
     COST = 500
     POWER_USAGE = 25
@@ -19,8 +21,10 @@ class Barracks(Building):
         super().__init__(
             position=position,
             team=team,
-            color=pg.Color(150, 150, 0) if team == Team.GDI else pg.Color(150, 0, 0),
             font=font,
+        )
+        self.color = (
+            pg.Color(150, 150, 0) if self.team == "GDI" else pg.Color(150, 0, 0),
         )
         self.max_health = 600
         self.health = self.max_health

@@ -6,20 +6,18 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src.constants import Team
-from src.game_objects.buildings.building import Building
+from src.building import Building
 from src.particle import Particle
 from src.projectile import Projectile
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from src.game_objects.game_object import GameObject
+    from src.game_object import GameObject
+    from src.team import Team
 
 
 class Turret(Building):
-    """Defensive structure with auto-targeting."""
-
     # Override base class(es):
     ATTACK_RANGE = 180
     COST = 600
@@ -32,9 +30,12 @@ class Turret(Building):
         super().__init__(
             position=position,
             team=team,
-            color=pg.Color(180, 180, 0) if team == Team.GDI else pg.Color(180, 0, 0),
             font=font,
         )
+        self.color = (
+            pg.Color(180, 180, 0) if team.name == "GDI" else pg.Color(180, 0, 0),
+        )
+
         self.max_health = 500
         self.health = self.max_health
         self.attack_damage = 15
@@ -91,14 +92,12 @@ class Turret(Building):
 
         self.image = pg.Surface((50, 50), pg.SRCALPHA)
         base = pg.Surface((40, 40), pg.SRCALPHA)
-        base.fill((180, 180, 0) if self.team == Team.GDI else (180, 0, 0))
+        base.fill((180, 180, 0) if self.team == "GDI" else (180, 0, 0))
         barrel = pg.Surface((25, 6), pg.SRCALPHA)
         pg.draw.line(barrel, (80, 80, 80), (0, 3), (18, 3), 4)
         rotated_barrel = pg.transform.rotate(barrel, self.angle)
-        self.image.blit(source=base, dest=(5, 5))
-        self.image.blit(
-            source=rotated_barrel, dest=rotated_barrel.get_rect(center=(25, 25))
-        )
+        self.image.blit(base, (5, 5))
+        self.image.blit(rotated_barrel, rotated_barrel.get_rect(center=(25, 25)))
         self.image.set_alpha(
             int(255 * self.construction_progress / self.CONSTRUCTION_TIME)
         )

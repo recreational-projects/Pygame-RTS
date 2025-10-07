@@ -4,16 +4,14 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
-from src.game_objects.game_object import GameObject
+from src.game_object import GameObject
 
 if TYPE_CHECKING:
     from src.camera import Camera
+    from src.team import Team
 
 
 class Infantry(GameObject):
-    """Basic foot soldier."""
-
     # Override base class(es):
     ATTACK_RANGE = 50
     COST = 100
@@ -29,8 +27,8 @@ class Infantry(GameObject):
         super().__init__(position=position, team=team)
         self.image = pg.Surface((16, 16), pg.SRCALPHA)
         self.rect = self.image.get_rect(center=position)
-        self.speed = 3.5 if team == Team.GDI else 4
-        self.health = 100 if team == Team.GDI else 60
+        self.speed = 3.5 if self.team == "GDI" else 4
+        self.health = 100 if self.team == "GDI" else 60
         self.max_health = self.health
         self.attack_damage = 8
 
@@ -54,11 +52,9 @@ class Infantry(GameObject):
             self.target_unit = self.target_unit if self.target else None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
-
+        surface.blit(self.image, camera.apply(self.rect).topleft)
+        if self.selected:
+            pg.draw.circle(
+                surface, (255, 255, 255), camera.apply(self.rect).center, 10, 2
+            )
         self.draw_health_bar(surface=surface, camera=camera)
