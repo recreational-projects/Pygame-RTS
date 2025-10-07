@@ -32,9 +32,9 @@ class Turret(Building):
         super().__init__(
             position=position,
             team=team,
-            color=pg.Color(180, 180, 0) if team == Team.GDI else pg.Color(180, 0, 0),
             font=font,
         )
+        self.color = pg.Color(180, 180, 0) if team == Team.GDI else pg.Color(180, 0, 0)
         self.max_health = 500
         self.health = self.max_health
         self.attack_damage = 15

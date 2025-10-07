@@ -19,8 +19,8 @@ class Barracks(Building):
         super().__init__(
             position=position,
             team=team,
-            color=pg.Color(150, 150, 0) if team == Team.GDI else pg.Color(150, 0, 0),
             font=font,
         )
+        self.color = pg.Color(150, 150, 0) if team == Team.GDI else pg.Color(150, 0, 0)
         self.max_health = 600
         self.health = self.max_health

@@ -12,7 +12,7 @@ dependencies = [
 dev = [
     "mypy>=1.18.2",
     "pre-commit>=4.3.0",
-    "ruff>=0.13.1",
+    "ruff>=0.13.3",
 ]
 
 [tool.ruff.lint]
