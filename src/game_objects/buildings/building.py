@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src.constants import GDI_COLOR, VIEW_DEBUG_MODE_IS_ENABLED
+from src.constants import GDI_COLOR
 from src.game_objects.game_object import GameObject
 from src.particle import Particle
 
@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class Building(GameObject):
-    """Building base class. Stationary."""
-
     # Class specific:
     CONSTRUCTION_TIME = 50
     SIZE = 60, 60
@@ -75,18 +73,13 @@ class Building(GameObject):
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         """Draw the building, and label with first letter of class."""
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
-
-        _label = self.font.render(
-            text=self.__class__.__name__[0],
-            antialias=True,
-            color=(255, 255, 255),
+        surface.blit(self.image, camera.apply(self.rect).topleft)
+        cls_label = self.__class__.__name__[0]
+        cls_label_offset = -5, -2
+        surface.blit(
+            self.font.render(
+                text=f"{cls_label}", antialias=True, color=(255, 255, 255)
+            ),
+            camera.apply(self.rect).center + cls_label_offset,
         )
-        _label_pos = camera.to_screen(self.rect.center) + (-6, 0)
-        surface.blit(source=_label, dest=_label_pos)
         self.draw_health_bar(surface=surface, camera=camera)

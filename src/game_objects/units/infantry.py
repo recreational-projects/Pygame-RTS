@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
+from src.constants import Team
 from src.game_objects.game_object import GameObject
 
 if TYPE_CHECKING:
@@ -12,8 +12,6 @@ if TYPE_CHECKING:
 
 
 class Infantry(GameObject):
-    """Basic foot soldier."""
-
     # Override base class(es):
     ATTACK_RANGE = 50
     COST = 100
@@ -54,11 +52,9 @@ class Infantry(GameObject):
             self.target_unit = self.target_unit if self.target else None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
-
+        surface.blit(self.image, camera.apply(self.rect).topleft)
+        if self.selected:
+            pg.draw.circle(
+                surface, (255, 255, 255), camera.apply(self.rect).center, 10, 2
+            )
         self.draw_health_bar(surface=surface, camera=camera)

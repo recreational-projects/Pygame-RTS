@@ -11,18 +11,16 @@ import pygame as pg
 from src.ai import AI
 from src.camera import Camera
 from src.constants import (
+    CONSOLE_HEIGHT,
     GDI_COLOR,
     MAP_HEIGHT,
     MAP_WIDTH,
     NOD_COLOR,
-    PRODUCTION_INTERFACE_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TILE_SIZE,
-    VIEW_DEBUG_MODE_IS_ENABLED,
     Team,
 )
-from src.draw_utils import draw_progress_bar
 from src.fog_of_war import FogOfWar
 from src.game_objects.buildings.barracks import Barracks
 from src.game_objects.buildings.headquarters import Headquarters
@@ -33,7 +31,6 @@ from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
 from src.geometry import (
-    Coordinate,
     calculate_formation_positions,
     is_valid_building_position,
     snap_to_grid,
@@ -41,6 +38,7 @@ from src.geometry import (
 from src.iron_field import IronField
 from src.particle import Particle
 from src.projectile import Projectile
+from src.shapes import draw_progress_bar
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -191,42 +189,26 @@ def draw(surface_: pg.Surface) -> None:
     Uses global state.
     """
     surface_.fill(pg.Color("black"))
-    surface_.blit(source=base_map, dest=camera.map_offset)
+    surface_.blit(base_map, (-camera.rect.x, -camera.rect.y))
     for field in iron_fields:
-        if field.resources > 0 and (
-            fog_of_war.is_explored(field.position) or VIEW_DEBUG_MODE_IS_ENABLED
-        ):
+        if field.resources > 0 and fog_of_war.is_explored(field.position):
             field.draw(surface=surface_, camera=camera)
 
     for building in global_buildings:
-        if building.health > 0 and (
-            building.team == Team.GDI
-            or building.is_explored
-            or VIEW_DEBUG_MODE_IS_ENABLED
-        ):
+        if building.health > 0 and (building.team == Team.GDI or building.is_explored):
             building.draw(surface=surface_, camera=camera)
 
-    if not VIEW_DEBUG_MODE_IS_ENABLED:
-        fog_of_war.draw(surface=surface_, camera=camera)
-
+    fog_of_war.draw(surface=surface_, camera=camera)
     for unit in global_units:
-        if (
-            unit.team == Team.GDI
-            or fog_of_war.is_visible(unit.position)
-            or VIEW_DEBUG_MODE_IS_ENABLED
-        ):
+        if unit.team == Team.GDI or fog_of_war.is_visible(unit.position):
             unit.draw(surface=surface_, camera=camera)
 
     for projectile in projectiles:
-        if (
-            projectile.team == Team.GDI
-            or fog_of_war.is_visible(projectile.position)
-            or VIEW_DEBUG_MODE_IS_ENABLED
-        ):
+        if projectile.team == Team.GDI or fog_of_war.is_visible(projectile.position):
             projectile.draw(surface=surface_, camera=camera)
 
     for particle in particles:
-        if fog_of_war.is_visible(particle.position) or VIEW_DEBUG_MODE_IS_ENABLED:
+        if fog_of_war.is_visible(particle.position):
             particle.draw(surface=surface_, camera=camera)
 
     interface.draw(
@@ -242,7 +224,7 @@ def draw(surface_: pg.Surface) -> None:
 class ProductionInterface:
     """Interface for player."""
 
-    WIDTH: ClassVar = PRODUCTION_INTERFACE_WIDTH
+    WIDTH: ClassVar = 200
     MARGIN_X: ClassVar = 20
     """Margin on left and right."""
     IRON_POS_Y: ClassVar = 20
@@ -293,7 +275,7 @@ class ProductionInterface:
     font: pg.Font
 
     def __post_init__(self, all_buildings: Iterable[Building]) -> None:
-        self.surface = pg.Surface((ProductionInterface.WIDTH, SCREEN_HEIGHT))
+        self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT - CONSOLE_HEIGHT))
 
         tab_button_base = pg.Rect(
             (self.MARGIN_X, self.TAB_BUTTONS_POS_Y),
@@ -370,15 +352,17 @@ class ProductionInterface:
 
     def _local_pos(self, screen_pos: pg.typing.IntPoint) -> tuple[int, int]:
         """Convert screen position to local position."""
-        return screen_pos[0] - SCREEN_WIDTH + ProductionInterface.WIDTH, screen_pos[1]
+        return screen_pos[0] - SCREEN_WIDTH + self.WIDTH, screen_pos[1]
 
     def _draw_iron(self, *, y_pos: int) -> None:
-        _label = self.font.render(
-            f"Iron: {self.hq.iron}",
-            color=pg.Color("white"),
-            antialias=True,
+        self.surface.blit(
+            self.font.render(
+                f"Iron: {self.hq.iron}",
+                color=pg.Color("white"),
+                antialias=True,
+            ),
+            (self.MARGIN_X, y_pos),
         )
-        self.surface.blit(source=_label, dest=(self.MARGIN_X, y_pos))
 
     def _draw_power(self, *, y_pos: int) -> None:
         color_ = pg.Color("green") if self.hq.has_enough_power else pg.Color("red")
@@ -479,7 +463,7 @@ class ProductionInterface:
             raise TypeError("No pending building")
 
         pending_building_cls_ = self.hq.pending_building
-        world_pos = snap_to_grid(camera.to_world(mouse_pos))
+        world_pos = snap_to_grid(camera.screen_to_world(mouse_pos))
         temp_surface = pg.Surface(pending_building_cls_.SIZE, pg.SRCALPHA)
         temp_surface.fill(GDI_COLOR if self.hq.team == Team.GDI else NOD_COLOR)
         temp_surface.set_alpha(100)
@@ -538,9 +522,7 @@ class ProductionInterface:
                 all_buildings=all_buildings,
             )
 
-        surface_.blit(
-            source=self.surface, dest=(SCREEN_WIDTH - ProductionInterface.WIDTH, 0)
-        )
+        surface_.blit(source=self.surface, dest=(SCREEN_WIDTH - self.WIDTH, 0))
 
     def handle_click(
         self, screen_pos: pg.typing.IntPoint, own_buildings: Iterable[Building]
@@ -594,48 +576,10 @@ if __name__ == "__main__":
     particles: pg.sprite.Group = pg.sprite.Group()
     selected_units: pg.sprite.Group = pg.sprite.Group()
 
-    _map_bottom_right = Coordinate(MAP_WIDTH, MAP_HEIGHT)
-    _hq_offset_from_corner = Coordinate(300, 300)
-    _gdi_hq_pos = _hq_offset_from_corner
-    _nod_hq_pos = _map_bottom_right - _hq_offset_from_corner
-
-    gdi_hq = Headquarters(position=_gdi_hq_pos, team=Team.GDI, font=base_font)
-    nod_hq = Headquarters(position=_nod_hq_pos, team=Team.NOD, font=base_font)
-    global_buildings.add(gdi_hq, nod_hq)
-    for i in range(3):
-        _infantry_spawn_offset = Coordinate(50, 0) + i * Coordinate(20, 0)
-        player_units.add(
-            Infantry(position=_gdi_hq_pos + _infantry_spawn_offset, team=Team.GDI)
-        )
-        ai_units.add(
-            Infantry(position=_nod_hq_pos + _infantry_spawn_offset, team=Team.NOD)
-        )
-
-    player_units.add(
-        Harvester(
-            position=_gdi_hq_pos + Coordinate(100, 100),
-            team=Team.GDI,
-            hq=gdi_hq,
-            font=base_font,
-        )
+    gdi_hq = Headquarters(position=(300, 300), team=Team.GDI, font=base_font)
+    nod_hq = Headquarters(
+        position=(MAP_WIDTH - 300, MAP_HEIGHT - 300), team=Team.NOD, font=base_font
     )
-    ai_units.add(
-        Harvester(
-            position=_nod_hq_pos + (100, 100),
-            team=Team.NOD,
-            hq=nod_hq,
-            font=base_font,
-        )
-    )
-    global_units.add(player_units, ai_units)
-    for _ in range(40):
-        iron_fields.add(
-            IronField(
-                x=random.randint(100, MAP_WIDTH - 100),
-                y=random.randint(100, MAP_HEIGHT - 100),
-                font=base_font,
-            ),
-        )
     nod_hq.iron = 1500
     interface = ProductionInterface(
         hq=gdi_hq, all_buildings=global_buildings, font=base_font
@@ -646,12 +590,7 @@ if __name__ == "__main__":
     selecting = False
     select_start = None
     select_rect = None
-    camera = Camera(
-        pg.Rect(
-            (0, 0),
-            (SCREEN_WIDTH - PRODUCTION_INTERFACE_WIDTH, SCREEN_HEIGHT),
-        )
-    )
+    camera = Camera()
     base_map = pg.Surface((MAP_WIDTH, MAP_HEIGHT))
     # Improved map with grass texture
     for x in range(0, MAP_WIDTH, TILE_SIZE):
@@ -668,13 +607,34 @@ if __name__ == "__main__":
 
     ai = AI(hq=nod_hq)
 
+    player_units.add(Infantry((350, 300), Team.GDI))
+    player_units.add(Infantry((370, 300), Team.GDI))
+    player_units.add(Infantry((390, 300), Team.GDI))
+    player_units.add(Harvester((400, 400), Team.GDI, gdi_hq, font=base_font))
+
+    ai_units.add(Infantry((2050, 1200), Team.NOD))
+    ai_units.add(Infantry((2070, 1200), Team.NOD))
+    ai_units.add(Infantry((2090, 1200), Team.NOD))
+    ai_units.add(Harvester((2200, 1300), Team.NOD, nod_hq, font=base_font))
+
+    global_units.add(player_units, ai_units)
+    global_buildings.add(gdi_hq, nod_hq)
+    for _ in range(40):
+        iron_fields.add(
+            IronField(
+                x=random.randint(100, MAP_WIDTH - 100),
+                y=random.randint(100, MAP_HEIGHT - 100),
+                font=base_font,
+            ),
+        )
+
     running = True
     while running:
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 running = False
             elif event.type == pg.MOUSEBUTTONDOWN:
-                world_pos = camera.to_world(event.pos)
+                world_pos = camera.screen_to_world(event.pos)
                 target_x, target_y = event.pos
                 if event.button == 1:
                     if gdi_hq.pending_building:
@@ -700,23 +660,17 @@ if __name__ == "__main__":
                     ):
                         continue
 
-                    for b in global_buildings:
-                        b.is_selected = False
-
                     clicked_building = next(
                         (
                             b
                             for b in global_buildings
                             if b.team == Team.GDI
-                            and camera.rect_to_screen(b.rect).collidepoint(
-                                target_x, target_y
-                            )
+                            and camera.apply(b.rect).collidepoint(target_x, target_y)
                         ),
                         None,
                     )
                     if clicked_building:
                         selected_building = clicked_building
-                        selected_building.is_selected = True
                     else:
                         selected_building = None
                         selecting = True
@@ -738,9 +692,7 @@ if __name__ == "__main__":
                         (
                             f
                             for f in iron_fields
-                            if camera.rect_to_screen(f.rect).collidepoint(
-                                target_x, target_y
-                            )
+                            if camera.apply(f.rect).collidepoint(target_x, target_y)
                         ),
                         None,
                     )
@@ -749,9 +701,7 @@ if __name__ == "__main__":
                             u
                             for u in global_units
                             if u.team != Team.GDI
-                            and camera.rect_to_screen(u.rect).collidepoint(
-                                target_x, target_y
-                            )
+                            and camera.apply(u.rect).collidepoint(target_x, target_y)
                         ),
                         None,
                     )
@@ -760,9 +710,7 @@ if __name__ == "__main__":
                             b
                             for b in global_buildings
                             if b.team != Team.GDI
-                            and camera.rect_to_screen(b.rect).collidepoint(
-                                target_x, target_y
-                            )
+                            and camera.apply(b.rect).collidepoint(target_x, target_y)
                         ),
                         None,
                     )
@@ -811,10 +759,10 @@ if __name__ == "__main__":
 
                 selecting = False
                 for unit in player_units:
-                    unit.is_selected = False
+                    unit.selected = False
                 selected_units.empty()
-                world_start = camera.to_world(select_start)
-                world_end = camera.to_world(event.pos)
+                world_start = camera.screen_to_world(select_start)
+                world_end = camera.screen_to_world(event.pos)
                 world_rect = pg.Rect(
                     min(world_start[0], world_end[0]),
                     min(world_start[1], world_end[1]),
@@ -823,11 +771,11 @@ if __name__ == "__main__":
                 )
                 for unit in player_units:
                     if world_rect.colliderect(unit.rect):
-                        unit.is_selected = True
+                        unit.selected = True
                         selected_units.add(unit)
 
         camera.update(
-            selected_units=selected_units.sprites(), mouse_pos=pg.mouse.get_pos()
+            selected_units.sprites(), pg.mouse.get_pos(), interface.surface.get_rect()
         )
         for unit in global_units:
             if isinstance(unit, Harvester):

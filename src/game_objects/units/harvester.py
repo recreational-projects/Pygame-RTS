@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Literal
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
 from src.game_objects.game_object import GameObject
 from src.game_objects.units.infantry import Infantry
 
@@ -21,8 +20,6 @@ IRON_TRANSFER_RANGE = 30
 
 
 class Harvester(GameObject):
-    """Resource collector."""
-
     # Override base class(es):
     ATTACK_RANGE = 50
     COST = 800
@@ -125,20 +122,15 @@ class Harvester(GameObject):
                 self.target = None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        _blit_pos = camera.to_screen(self.rect.topleft)
-        surface.blit(source=self.image, dest=_blit_pos)
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
+        surface.blit(self.image, camera.apply(self.rect).topleft)
+        if self.selected:
+            pg.draw.rect(surface, (255, 255, 255), camera.apply(self.rect), 2)
 
         self.draw_health_bar(surface=surface, camera=camera)
         if self.iron > 0:
-            _label = self.font.render(
-                text=f"Iron: {self.iron}",
-                antialias=True,
-                color=(255, 255, 255),
+            surface.blit(
+                self.font.render(
+                    text=f"Iron: {self.iron}", antialias=True, color=(255, 255, 255)
+                ),
+                (camera.apply(self.rect).x, camera.apply(self.rect).y - 35),
             )
-            _label_pos = _blit_pos + (0, -35)
-            surface.blit(source=_label, dest=_label_pos)

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
+from src.constants import Team
 from src.game_objects.game_object import GameObject
 
 if TYPE_CHECKING:
@@ -13,8 +13,6 @@ if TYPE_CHECKING:
 
 
 class Tank(GameObject):
-    """Armored vehicle with ranged attack."""
-
     # Override base class(es):
     ATTACK_RANGE = 200
     COST = 500
@@ -66,9 +64,7 @@ class Tank(GameObject):
             self.image = pg.Surface((40, 40), pg.SRCALPHA)
             # Rotate base image to face target (base image faces east, so -angle aligns it correctly)
             rotated_base = pg.transform.rotate(self.base_image, -self.angle)
-            self.image.blit(
-                source=rotated_base, dest=rotated_base.get_rect(center=(20, 20))
-            )
+            self.image.blit(rotated_base, rotated_base.get_rect(center=(20, 20)))
             # Handle barrel with recoil
             barrel_length = 20 - self.recoil * 2
             barrel_image = pg.Surface((barrel_length, 4), pg.SRCALPHA)
@@ -77,18 +73,19 @@ class Tank(GameObject):
             rotated_barrel = pg.transform.rotate(
                 barrel_image, -self.angle
             )  # Barrel also faces east initially
-            self.image.blit(
-                source=rotated_barrel, dest=rotated_barrel.get_rect(center=(20, 20))
-            )
+            self.image.blit(rotated_barrel, rotated_barrel.get_rect(center=(20, 20)))
             if self.recoil > 0:
                 self.recoil -= 1
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
+        surface.blit(self.image, camera.apply(self.rect).topleft)
+        if self.selected:
+            pg.draw.circle(
+                surface,
+                (255, 255, 255),
+                camera.apply(self.rect).center,
+                self.rect.width // 2 + 2,
+                2,
+            )  # Circular selection
 
         self.draw_health_bar(surface=surface, camera=camera)
