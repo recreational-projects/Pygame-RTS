@@ -4,8 +4,7 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src import draw_utils
-from src.constants import MAP_HEIGHT, MAP_WIDTH, SELECTION_INDICATOR_COLOR
+from src.constants import MAP_HEIGHT, MAP_WIDTH
 from src.geometry import Coordinate
 
 if TYPE_CHECKING:
@@ -16,8 +15,6 @@ ARRIVAL_RADIUS = 5
 
 
 class GameObject(pg.sprite.Sprite):
-    """Base class for all buildings and units."""
-
     ATTACK_RANGE = 0
     COST = 0
     IS_MOBILE = False
@@ -36,7 +33,7 @@ class GameObject(pg.sprite.Sprite):
         self.health = 0
         self.max_health = self.health
         self.cooldown_timer = 0
-        self.is_selected = False
+        self.selected = False
         self.under_attack = False
 
     @property
@@ -100,7 +97,7 @@ class GameObject(pg.sprite.Sprite):
 
         color = (0, 255, 0) if health_ratio > 0.5 else (255, 0, 0)
         bar_width = max(10, int(self.rect.width * health_ratio))
-        screen_rect = camera.rect_to_screen(self.rect)
+        screen_rect = camera.apply(self.rect)
         pg.draw.rect(
             surface,
             (0, 0, 0),
@@ -114,20 +111,6 @@ class GameObject(pg.sprite.Sprite):
             1,
         )  # Border
 
-    def draw_debug_info(self, *, surface: pg.Surface, camera: Camera) -> None:
-        """Draw debug helpers to `surface`."""
-        draw_utils.debug_outline_rect(
-            surface=surface, rect=camera.rect_to_screen(self.rect)
-        )
-        draw_utils.debug_marker(
-            surface=surface, position=camera.to_screen(self.position)
-        )
-
-    def draw_selection_indicator(self, *, surface: pg.Surface, camera: Camera) -> None:
-        """Draw an outline."""
-        pg.draw.rect(
-            surface=surface,
-            color=SELECTION_INDICATOR_COLOR,
-            rect=camera.rect_to_screen(self.rect),
-            width=2,
-        )
+    def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
+        surface.blit(self.image, camera.apply(self.rect).topleft)
+        self.draw_health_bar(surface=surface, camera=camera)

@@ -78,7 +78,7 @@ class Tank(GameObject):
                 self.recoil -= 1
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(self.image, camera.apply(self.rect).topleft)
+        super().draw(surface=surface, camera=camera)
         if self.selected:
             pg.draw.circle(
                 surface,
@@ -87,5 +87,3 @@ class Tank(GameObject):
                 self.rect.width // 2 + 2,
                 2,
             )  # Circular selection
-
-        self.draw_health_bar(surface=surface, camera=camera)

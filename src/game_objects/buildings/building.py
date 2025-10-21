@@ -73,7 +73,7 @@ class Building(GameObject):
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         """Draw the building, and label with first letter of class."""
-        surface.blit(self.image, camera.apply(self.rect).topleft)
+        super().draw(surface=surface, camera=camera)
         cls_label = self.__class__.__name__[0]
         cls_label_offset = -5, -2
         surface.blit(
@@ -82,4 +82,3 @@ class Building(GameObject):
             ),
             camera.apply(self.rect).center + cls_label_offset,
         )
-        self.draw_health_bar(surface=surface, camera=camera)

@@ -122,11 +122,10 @@ class Harvester(GameObject):
                 self.target = None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(self.image, camera.apply(self.rect).topleft)
+        super().draw(surface=surface, camera=camera)
         if self.selected:
             pg.draw.rect(surface, (255, 255, 255), camera.apply(self.rect), 2)
 
-        self.draw_health_bar(surface=surface, camera=camera)
         if self.iron > 0:
             surface.blit(
                 self.font.render(
