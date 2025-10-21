@@ -4,6 +4,7 @@ import pygame as pg
 
 from src.constants import Team
 from src.game_objects.buildings.building import Building
+from src.geometry import Coordinate
 
 
 class WarFactory(Building):
@@ -17,7 +18,7 @@ class WarFactory(Building):
         self, *, position: pg.typing.SequenceLike, team: Team, font: pg.Font
     ) -> None:
         super().__init__(
-            position=position,
+            position=Coordinate(position),
             team=team,
             color=pg.Color(170, 170, 0) if team == Team.GDI else pg.Color(170, 0, 0),
             font=font,

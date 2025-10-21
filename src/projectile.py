@@ -26,23 +26,21 @@ class Projectile(pg.sprite.Sprite):
 
     def __init__(
         self,
+        *,
         position: pg.typing.SequenceLike,
         target_unit: GameObject,
         damage: int,
         team: Team,
     ) -> None:
         super().__init__()
-        self.image: pg.Surface = pg.Surface((10, 5), pg.SRCALPHA)
-        self.rect: pg.Rect = self.image.get_rect(center=position)
+        self.position = Coordinate(position)
         self.target_unit = target_unit
         self.damage = damage
         self.team = team
+        self.image: pg.Surface = pg.Surface((10, 5), pg.SRCALPHA)
+        self.rect: pg.Rect = self.image.get_rect(center=position)
         self.particle_timer = 2
         pg.draw.ellipse(self.image, (255, 200, 0), (0, 0, 10, 5))
-
-    @property
-    def position(self) -> Coordinate:
-        return Coordinate(self.rect.center)
 
     def update(self, particles: pg.sprite.Group[Any]) -> None:
         if self.target_unit and self.target_unit.health > 0:
@@ -58,12 +56,14 @@ class Projectile(pg.sprite.Sprite):
                 if self.particle_timer <= 0:
                     particles.add(
                         Particle(
-                            self.position,
-                            -math.cos(angle) * random.uniform(0.5, 1.5),
-                            -math.sin(angle) * random.uniform(0.5, 1.5),
-                            5,
-                            pg.Color(255, 255, 150),
-                            15,
+                            position=self.position,
+                            velocity=(
+                                -math.cos(angle) * random.uniform(0.5, 1.5),
+                                -math.sin(angle) * random.uniform(0.5, 1.5),
+                            ),
+                            size=5,
+                            color=pg.Color(255, 255, 150),
+                            lifetime=15,
                         )
                     )
                     self.particle_timer = 2
@@ -74,12 +74,11 @@ class Projectile(pg.sprite.Sprite):
                 for _ in range(5):
                     particles.add(
                         Particle(
-                            self.position,
-                            random.uniform(-2, 2),
-                            random.uniform(-2, 2),
-                            6,
-                            pg.Color(255, 100, 0),
-                            15,
+                            position=self.position,
+                            velocity=(random.uniform(-2, 2), random.uniform(-2, 2)),
+                            size=6,
+                            color=pg.Color(255, 100, 0),
+                            lifetime=15,
                         )
                     )  # Orange explosion
         else:

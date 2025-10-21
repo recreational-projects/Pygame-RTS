@@ -8,6 +8,7 @@ import pygame as pg
 
 from src.constants import Team
 from src.game_objects.buildings.building import Building
+from src.geometry import Coordinate
 from src.particle import Particle
 from src.projectile import Projectile
 
@@ -30,7 +31,7 @@ class Turret(Building):
         self, *, position: pg.typing.SequenceLike, team: Team, font: pg.Font
     ) -> None:
         super().__init__(
-            position=position,
+            position=Coordinate(position),
             team=team,
             color=pg.Color(180, 180, 0) if team == Team.GDI else pg.Color(180, 0, 0),
             font=font,
@@ -68,22 +69,24 @@ class Turret(Building):
                 self.angle = math.degrees(math.atan2(-dy, dx))
                 projectiles.add(
                     Projectile(
-                        self.position,
-                        closest_target,
-                        self.attack_damage,
-                        self.team,
+                        position=self.position,
+                        target_unit=closest_target,
+                        damage=self.attack_damage,
+                        team=self.team,
                     )
                 )
                 self.cooldown_timer = self.attack_cooldown
                 for _ in range(5):
                     particles.add(
                         Particle(
-                            self.position,
-                            random.uniform(-1.5, 1.5),
-                            random.uniform(-1.5, 1.5),
-                            random.randint(6, 10),
-                            pg.Color(100, 100, 100),
-                            20,
+                            position=self.position,
+                            velocity=(
+                                random.uniform(-1.5, 1.5),
+                                random.uniform(-1.5, 1.5),
+                            ),
+                            size=random.randint(6, 10),
+                            color=pg.Color(100, 100, 100),
+                            lifetime=20,
                         )
                     )
             else:

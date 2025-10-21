@@ -12,6 +12,7 @@ from src.particle import Particle
 if TYPE_CHECKING:
     from src.camera import Camera
     from src.constants import Team
+    from src.geometry import Coordinate
 
 
 class Building(GameObject):
@@ -24,7 +25,7 @@ class Building(GameObject):
     def __init__(
         self,
         *,
-        position: pg.typing.SequenceLike,
+        position: Coordinate,
         team: Team,
         color: pg.Color = GDI_COLOR,
         font: pg.Font,
@@ -63,12 +64,11 @@ class Building(GameObject):
             for _ in range(15):
                 particles.add(
                     Particle(
-                        self.position,
-                        random.uniform(-3, 3),
-                        random.uniform(-3, 3),
-                        random.randint(6, 12),
-                        pg.Color(200, 100, 100),
-                        30,
+                        position=self.position,
+                        velocity=(random.uniform(-3, 3), random.uniform(-3, 3)),
+                        size=random.randint(6, 12),
+                        color=pg.Color(200, 100, 100),
+                        lifetime=30,
                     )
                 )
             self.kill()

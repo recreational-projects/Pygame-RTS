@@ -6,6 +6,7 @@ import pygame as pg
 
 from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
 from src.game_objects.game_object import GameObject
+from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from src.camera import Camera
@@ -26,7 +27,7 @@ class Infantry(GameObject):
     """Max distance at which a unit can be targeted."""
 
     def __init__(self, position: pg.typing.SequenceLike, team: Team) -> None:
-        super().__init__(position=position, team=team)
+        super().__init__(position=Coordinate(position), team=team)
         self.image = pg.Surface((16, 16), pg.SRCALPHA)
         self.rect = self.image.get_rect(center=position)
         self.speed = 3.5 if team == Team.GDI else 4
