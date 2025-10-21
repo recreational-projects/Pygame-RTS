@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Literal
 
 import pygame as pg
 
-from src.game_objects.game_object import GameObject
 from src.game_objects.units.infantry import Infantry
+from src.game_objects.units.unit import Unit
 from src.geometry import Coordinate
 
 if TYPE_CHECKING:
@@ -14,17 +14,19 @@ if TYPE_CHECKING:
     from src.camera import Camera
     from src.constants import Team
     from src.game_objects.buildings.headquarters import Headquarters
+    from src.game_objects.game_object import GameObject
     from src.iron_field import IronField
 
 IRON_TRANSFER_RANGE = 30
 """Distance within which iron can be harvested/delivered."""
 
 
-class Harvester(GameObject):
+class Harvester(Unit):
+    """Resource collector."""
+
     # Override base class(es):
     ATTACK_RANGE = 50
     COST = 800
-    IS_MOBILE = True
     POWER_USAGE = 20
 
     def __init__(

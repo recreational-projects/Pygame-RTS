@@ -5,18 +5,19 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from src.constants import Team
-from src.game_objects.game_object import GameObject
+from src.game_objects.units.unit import Unit
 from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from src.camera import Camera
 
 
-class Infantry(GameObject):
+class Infantry(Unit):
+    """Basic foot soldier."""
+
     # Override base class(es):
     ATTACK_RANGE = 50
     COST = 100
-    IS_MOBILE = True
     POWER_USAGE = 5
 
     # Class specific:

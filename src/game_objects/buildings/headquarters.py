@@ -33,7 +33,7 @@ BASE_PRODUCTION_TIME = 180
 
 
 class Headquarters(Building):
-    """Main base building, resource storage, production hub."""
+    """Main base, resource storage, production hub."""
 
     # Override base class(es):
     COST = 2000

@@ -4,21 +4,17 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import MAP_HEIGHT, MAP_WIDTH
-
 if TYPE_CHECKING:
     from src.camera import Camera
     from src.constants import Team
     from src.geometry import Coordinate
 
-ARRIVAL_RADIUS = 5
-
 
 class GameObject(pg.sprite.Sprite):
+    """Base class for `Unit`, `Building`."""
+
     ATTACK_RANGE = 0
     COST = 0
-    IS_MOBILE = False
-    """Override for mobile classes."""
     POWER_USAGE = 0
 
     def __init__(self, *, position: Coordinate, team: Team) -> None:
@@ -30,7 +26,6 @@ class GameObject(pg.sprite.Sprite):
         self.target: Coordinate | None = None
         self.target_unit: GameObject | None = None
         self.formation_target: Coordinate | None = None
-        self.speed: float = 0
         self.health = 0
         self.max_health = self.health
         self.cooldown_timer = 0
@@ -45,49 +40,8 @@ class GameObject(pg.sprite.Sprite):
         """Return the distance to `position`."""
         return self.displacement_to(position).magnitude()
 
-    def move_toward(self) -> None:
-        """Only relevant for mobile classes."""
-        if not self.IS_MOBILE:
-            raise TypeError(
-                f"Can't move unit of non-mobile class {self.__class__.__name__}"
-            )
-
-        if self.target and self.target_unit and self.target_unit.health > 0:
-            dist = self.distance_to(self.target)
-            if dist > self.ATTACK_RANGE:
-                if dist > ARRIVAL_RADIUS:
-                    direction = self.displacement_to(self.target).normalize()
-                    self.position += self.speed * direction
-
-                self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
-            else:
-                self.target = None
-
-        elif self.formation_target:
-            dist = self.distance_to(self.formation_target)
-            if dist > ARRIVAL_RADIUS:
-                direction = self.displacement_to(self.formation_target).normalize()
-                self.position += self.speed * direction
-
-            self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
-
-        elif self.target:
-            dist = self.distance_to(self.target)
-            if dist > ARRIVAL_RADIUS:
-                direction = self.displacement_to(self.target).normalize()
-                self.position += self.speed * direction
-
-            self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
-
-    def update(self, *args, **kwargs) -> None:
-        super().update(*args, **kwargs)
-        if self.IS_MOBILE:
-            self.move_toward()
-
-        if self.cooldown_timer > 0:
-            self.cooldown_timer -= 1
-
     def draw_health_bar(self, *, surface: pg.Surface, camera: Camera) -> None:
+        """Draw health bar if damaged or under attack."""
         health_ratio = self.health / self.max_health
         if not self.under_attack and health_ratio == 1.0:
             return
@@ -109,6 +63,6 @@ class GameObject(pg.sprite.Sprite):
         )  # Border
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        self.rect = self.image.get_rect(center=self.position)
+        self.rect.center = self.position
         surface.blit(self.image, camera.apply(self.rect).topleft)
         self.draw_health_bar(surface=surface, camera=camera)

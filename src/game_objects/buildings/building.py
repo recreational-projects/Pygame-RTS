@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class Building(GameObject):
+    """Base class for all buildings."""
+
     # Class specific:
     CONSTRUCTION_TIME = 50
     SIZE = 60, 60
