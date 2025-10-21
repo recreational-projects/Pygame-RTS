@@ -98,10 +98,10 @@ def handle_attacks(
                     )  # Updated to match Tank's angle calculation
                     projectiles.add(
                         Projectile(
-                            unit.position,
-                            closest_target,
-                            unit.attack_damage,
-                            unit.team,
+                            position=unit.position,
+                            target_unit=closest_target,
+                            damage=unit.attack_damage,
+                            team=unit.team,
                         )
                     )
                     unit.recoil = 5
@@ -115,12 +115,14 @@ def handle_attacks(
                     for _ in range(5):
                         particles.add(
                             Particle(
-                                (smoke_x, smoke_y),
-                                random.uniform(-1.5, 1.5),
-                                random.uniform(-1.5, 1.5),
-                                random.randint(6, 10),
-                                pg.Color(100, 100, 100),
-                                20,
+                                position=(smoke_x, smoke_y),
+                                velocity=(
+                                    random.uniform(-1.5, 1.5),
+                                    random.uniform(-1.5, 1.5),
+                                ),
+                                size=random.randint(6, 10),
+                                color=pg.Color(100, 100, 100),
+                                lifetime=20,
                             )
                         )
                 else:
@@ -131,12 +133,11 @@ def handle_attacks(
                     for _ in range(3):
                         particles.add(
                             Particle(
-                                unit.position,
-                                random.uniform(-1, 1),
-                                random.uniform(-1, 1),
-                                4,
-                                pg.Color(255, 200, 100),
-                                10,
+                                position=unit.position,
+                                velocity=(random.uniform(-1, 1), random.uniform(-1, 1)),
+                                size=4,
+                                color=pg.Color(255, 200, 100),
+                                lifetime=10,
                             )
                         )
                     if closest_target.health <= 0:
@@ -168,12 +169,11 @@ def handle_projectiles(
                 for _ in range(5):
                     particles.add(
                         Particle(
-                            projectile.position,
-                            random.uniform(-2, 2),
-                            random.uniform(-2, 2),
-                            6,
-                            pg.Color(255, 200, 100),
-                            15,
+                            position=projectile.position,
+                            velocity=(random.uniform(-2, 2), random.uniform(-2, 2)),
+                            size=6,
+                            color=pg.Color(255, 200, 100),
+                            lifetime=15,
                         )
                     )
                 projectile.kill()
@@ -622,8 +622,10 @@ if __name__ == "__main__":
     for _ in range(40):
         iron_fields.add(
             IronField(
-                x=random.randint(100, MAP_WIDTH - 100),
-                y=random.randint(100, MAP_HEIGHT - 100),
+                position=(
+                    random.randint(100, MAP_WIDTH - 100),
+                    random.randint(100, MAP_HEIGHT - 100),
+                ),
                 font=base_font,
             ),
         )

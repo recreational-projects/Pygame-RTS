@@ -6,6 +6,7 @@ import pygame as pg
 
 from src.game_objects.game_object import GameObject
 from src.game_objects.units.infantry import Infantry
+from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -33,7 +34,7 @@ class Harvester(GameObject):
         hq: Headquarters,
         font: pg.Font,
     ) -> None:
-        super().__init__(position=position, team=team)
+        super().__init__(position=Coordinate(position), team=team)
         self.image = pg.Surface((50, 30), pg.SRCALPHA)
         self.rect = self.image.get_rect(center=position)
         self.hq = hq

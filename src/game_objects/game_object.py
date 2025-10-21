@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from src.constants import MAP_HEIGHT, MAP_WIDTH
-from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from src.camera import Camera
     from src.constants import Team
+    from src.geometry import Coordinate
 
 ARRIVAL_RADIUS = 5
 
@@ -21,11 +21,12 @@ class GameObject(pg.sprite.Sprite):
     """Override for mobile classes."""
     POWER_USAGE = 0
 
-    def __init__(self, *, position: pg.typing.SequenceLike, team: Team) -> None:
+    def __init__(self, *, position: Coordinate, team: Team) -> None:
         super().__init__()
-        self.rect: pg.Rect = pg.Rect(position, (0, 0))  # Nominal, overridden
-        self.image: pg.Surface = pg.Surface(position)
+        self.position = position
         self.team = team
+        self.image: pg.Surface = pg.Surface((0, 0))  # Nominal, overridden
+        self.rect: pg.Rect = pg.Rect(position, (0, 0))  # Nominal, overridden
         self.target: Coordinate | None = None
         self.target_unit: GameObject | None = None
         self.formation_target: Coordinate | None = None
@@ -36,17 +37,13 @@ class GameObject(pg.sprite.Sprite):
         self.selected = False
         self.under_attack = False
 
-    @property
-    def position(self) -> Coordinate:
-        return Coordinate(self.rect.center)
-
     def displacement_to(self, position: pg.typing.SequenceLike) -> pg.Vector2:
         """Return the displacement to `position`."""
         return position - self.position
 
     def distance_to(self, position: pg.typing.SequenceLike) -> float:
         """Return the distance to `position`."""
-        return (position - self.position).magnitude()
+        return self.displacement_to(position).magnitude()
 
     def move_toward(self) -> None:
         """Only relevant for mobile classes."""
@@ -59,9 +56,9 @@ class GameObject(pg.sprite.Sprite):
             dist = self.distance_to(self.target)
             if dist > self.ATTACK_RANGE:
                 if dist > ARRIVAL_RADIUS:
-                    dx, dy = self.displacement_to(self.target)
-                    self.rect.x += self.speed * dx / dist
-                    self.rect.y += self.speed * dy / dist
+                    direction = self.displacement_to(self.target).normalize()
+                    self.position += self.speed * direction
+
                 self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
             else:
                 self.target = None
@@ -69,17 +66,17 @@ class GameObject(pg.sprite.Sprite):
         elif self.formation_target:
             dist = self.distance_to(self.formation_target)
             if dist > ARRIVAL_RADIUS:
-                dx, dy = self.displacement_to(self.formation_target)
-                self.rect.x += self.speed * dx / dist
-                self.rect.y += self.speed * dy / dist
+                direction = self.displacement_to(self.formation_target).normalize()
+                self.position += self.speed * direction
+
             self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
         elif self.target:
             dist = self.distance_to(self.target)
             if dist > ARRIVAL_RADIUS:
-                dx, dy = self.displacement_to(self.target)
-                self.rect.x += self.speed * dx / dist
-                self.rect.y += self.speed * dy / dist
+                direction = self.displacement_to(self.target).normalize()
+                self.position += self.speed * direction
+
             self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
     def update(self, *args, **kwargs) -> None:
@@ -112,5 +109,6 @@ class GameObject(pg.sprite.Sprite):
         )  # Border
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
+        self.rect = self.image.get_rect(center=self.position)
         surface.blit(self.image, camera.apply(self.rect).topleft)
         self.draw_health_bar(surface=surface, camera=camera)

@@ -15,6 +15,7 @@ from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
 from src.geometry import (
+    Coordinate,
     calculate_formation_positions,
     is_valid_building_position,
     snap_to_grid,
@@ -42,7 +43,7 @@ class Headquarters(Building):
         self, *, position: pg.typing.SequenceLike, team: Team, font: pg.Font
     ) -> None:
         super().__init__(
-            position=position,
+            position=Coordinate(position),
             team=team,
             color=GDI_COLOR if team == Team.GDI else NOD_COLOR,
             font=font,
@@ -165,7 +166,7 @@ class Headquarters(Building):
                         spawn_building = min(
                             warfactories, key=lambda b: self.distance_to(b.position)
                         )
-                    spawn_pos = (
+                    spawn_pos = Coordinate(
                         spawn_building.rect.right + 20,
                         spawn_building.position.y,
                     )
