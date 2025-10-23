@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
+from src.constants import Team
 from src.game_objects.game_object import GameObject
+from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from src.camera import Camera
@@ -27,7 +28,7 @@ class Tank(GameObject):
     ATTACK_COOLDOWN_PERIOD = 50
 
     def __init__(self, position: pg.typing.SequenceLike, team: Team) -> None:
-        super().__init__(position=position, team=team)
+        super().__init__(position=Coordinate(position), team=team)
         self.base_image = pg.Surface((30, 20), pg.SRCALPHA)
         # Draw tank body (front facing east/right)
         pg.draw.rect(self.base_image, (100, 100, 100), (0, 0, 30, 20))  # Hull
@@ -84,11 +85,12 @@ class Tank(GameObject):
                 self.recoil -= 1
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
-
-        self.draw_health_bar(surface=surface, camera=camera)
+        super().draw(surface=surface, camera=camera)
+        if self.selected:
+            pg.draw.circle(
+                surface,
+                (255, 255, 255),
+                camera.rect_to_screen(self.rect).center,
+                self.rect.width // 2 + 2,
+                2,
+            )  # Circular selection

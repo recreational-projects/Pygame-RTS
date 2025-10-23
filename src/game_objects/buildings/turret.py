@@ -8,6 +8,7 @@ import pygame as pg
 
 from src.constants import Team
 from src.game_objects.buildings.building import Building
+from src.geometry import Coordinate
 from src.particle import Particle
 from src.projectile import Projectile
 
@@ -30,7 +31,7 @@ class Turret(Building):
         self, *, position: pg.typing.SequenceLike, team: Team, font: pg.Font
     ) -> None:
         super().__init__(
-            position=position,
+            position=Coordinate(position),
             team=team,
             color=pg.Color(180, 180, 0) if team == Team.GDI else pg.Color(180, 0, 0),
             font=font,

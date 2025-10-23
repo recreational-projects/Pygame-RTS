@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Literal
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
 from src.game_objects.game_object import GameObject
 from src.game_objects.units.infantry import Infantry
+from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -36,7 +36,7 @@ class Harvester(GameObject):
         hq: Headquarters,
         font: pg.Font,
     ) -> None:
-        super().__init__(position=position, team=team)
+        super().__init__(position=Coordinate(position), team=team)
         self.image = pg.Surface((50, 30), pg.SRCALPHA)
         self.rect = self.image.get_rect(center=position)
         self.hq = hq
@@ -125,15 +125,11 @@ class Harvester(GameObject):
                 self.target = None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
+        super().draw(surface=surface, camera=camera)
+        if self.selected:
+            pg.draw.rect(surface, (255, 255, 255), camera.rect_to_screen(self.rect), 2)
+
         _blit_pos = camera.to_screen(self.rect.topleft)
-        surface.blit(source=self.image, dest=_blit_pos)
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
-
-        self.draw_health_bar(surface=surface, camera=camera)
         if self.iron > 0:
             _label = self.font.render(
                 text=f"Iron: {self.iron}",

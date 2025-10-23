@@ -25,21 +25,21 @@ class Particle(pg.sprite.Sprite):
         lifetime: int,
     ) -> None:
         super().__init__()
-        self.image: pg.Surface = pg.Surface((size, size), pg.SRCALPHA)
-        pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
-        self.rect: pg.Rect = self.image.get_rect(center=position)
+        self.position = Coordinate(position)
         self.vx, self.vy = vx, vy
+        self.image: pg.Surface = pg.Surface((size, size), pg.SRCALPHA)
+        self.rect: pg.Rect = self.image.get_rect(center=self.position)
         self.lifetime = lifetime
         self.alpha = 255
         self.initial_lifetime = lifetime
 
-    @property
-    def position(self) -> Coordinate:
-        return Coordinate(self.rect.center)
+        pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
 
     def update(self) -> None:
-        self.rect.x += self.vx
-        self.rect.y += self.vy
+        self.position.x += self.vx
+        self.position.y += self.vy
+        self.rect = self.image.get_rect(center=self.position)
+
         self.lifetime -= 1
         if self.lifetime <= 0:
             self.kill()

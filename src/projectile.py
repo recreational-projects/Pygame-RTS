@@ -32,17 +32,14 @@ class Projectile(pg.sprite.Sprite):
         team: Team,
     ) -> None:
         super().__init__()
-        self.image: pg.Surface = pg.Surface((10, 5), pg.SRCALPHA)
-        self.rect: pg.Rect = self.image.get_rect(center=position)
+        self.position = Coordinate(position)
         self.target_unit = target_unit
         self.damage = damage
         self.team = team
+        self.image: pg.Surface = pg.Surface((10, 5), pg.SRCALPHA)
+        self.rect: pg.Rect = self.image.get_rect(center=position)
         self.particle_timer = 2
         pg.draw.ellipse(self.image, (255, 200, 0), (0, 0, 10, 5))
-
-    @property
-    def position(self) -> Coordinate:
-        return Coordinate(self.rect.center)
 
     def update(self, particles: pg.sprite.Group[Any]) -> None:
         if self.target_unit and self.target_unit.health > 0:
@@ -53,8 +50,10 @@ class Projectile(pg.sprite.Sprite):
                     pg.Surface((10, 5), pg.SRCALPHA), -math.degrees(angle)
                 )
                 pg.draw.ellipse(self.image, (255, 200, 0), (0, 0, 10, 5))
-                self.rect.x += self.SPEED * math.cos(angle)
-                self.rect.y += self.SPEED * math.sin(angle)
+                self.position.x += self.SPEED * math.cos(angle)
+                self.position.y += self.SPEED * math.sin(angle)
+                self.rect = self.image.get_rect(center=self.position)
+
                 if self.particle_timer <= 0:
                     particles.add(
                         Particle(

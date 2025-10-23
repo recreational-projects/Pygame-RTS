@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from src import draw_utils
-from src.constants import MAP_HEIGHT, MAP_WIDTH, SELECTION_INDICATOR_COLOR
+from src.constants import MAP_HEIGHT, MAP_WIDTH, VIEW_DEBUG_MODE_IS_ENABLED
 from src.geometry import Coordinate
 
 if TYPE_CHECKING:
@@ -24,11 +24,15 @@ class GameObject(pg.sprite.Sprite):
     """Override for mobile classes."""
     POWER_USAGE = 0
 
-    def __init__(self, *, position: pg.typing.SequenceLike, team: Team) -> None:
+    def __init__(self, *, position: Coordinate, team: Team) -> None:
         super().__init__()
-        self.rect: pg.Rect = pg.Rect(position, (0, 0))  # Nominal, overridden
-        self.image: pg.Surface = pg.Surface(position)
+        self.position = position  # Image is drawn centered on `position`.
         self.team = team
+        self.image: pg.Surface = pg.Surface((0, 0))  # Nominal size, must be overridden
+        self.rect: pg.Rect = pg.Rect(
+            position,
+            (0, 0),  # Nominal size, must be overridden
+        )
         self.target: Coordinate | None = None
         self.target_unit: GameObject | None = None
         self.formation_target: Coordinate | None = None
@@ -36,12 +40,8 @@ class GameObject(pg.sprite.Sprite):
         self.health = 0
         self.max_health = self.health
         self.cooldown_timer = 0
-        self.is_selected = False
+        self.selected = False
         self.under_attack = False
-
-    @property
-    def position(self) -> Coordinate:
-        return Coordinate(self.rect.center)
 
     def displacement_to(self, position: pg.typing.SequenceLike) -> pg.Vector2:
         """Return the displacement to `position`."""
@@ -49,7 +49,7 @@ class GameObject(pg.sprite.Sprite):
 
     def distance_to(self, position: pg.typing.SequenceLike) -> float:
         """Return the distance to `position`."""
-        return (position - self.position).magnitude()
+        return self.displacement_to(position).magnitude()
 
     def move_toward(self) -> None:
         """Only relevant for mobile classes."""
@@ -85,6 +85,9 @@ class GameObject(pg.sprite.Sprite):
                 self.rect.y += self.speed * dy / dist
             self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
+        self.position = Coordinate(self.rect.center)
+        # TODO: move by directly manipulating `position`
+
     def update(self, *args, **kwargs) -> None:
         super().update(*args, **kwargs)
         if self.IS_MOBILE:
@@ -114,20 +117,14 @@ class GameObject(pg.sprite.Sprite):
             1,
         )  # Border
 
-    def draw_debug_info(self, *, surface: pg.Surface, camera: Camera) -> None:
-        """Draw debug helpers to `surface`."""
-        draw_utils.debug_outline_rect(
-            surface=surface, rect=camera.rect_to_screen(self.rect)
-        )
-        draw_utils.debug_marker(
-            surface=surface, position=camera.to_screen(self.position)
-        )
-
-    def draw_selection_indicator(self, *, surface: pg.Surface, camera: Camera) -> None:
-        """Draw an outline."""
-        pg.draw.rect(
-            surface=surface,
-            color=SELECTION_INDICATOR_COLOR,
-            rect=camera.rect_to_screen(self.rect),
-            width=2,
-        )
+    def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
+        _blit_pos = camera.to_screen(self.rect.topleft)
+        surface.blit(source=self.image, dest=_blit_pos)
+        self.draw_health_bar(surface=surface, camera=camera)
+        if VIEW_DEBUG_MODE_IS_ENABLED:
+            draw_utils.debug_outline_rect(
+                surface=surface, rect=camera.rect_to_screen(self.rect)
+            )
+            draw_utils.debug_marker(
+                surface=surface, position=camera.to_screen(self.position)
+            )

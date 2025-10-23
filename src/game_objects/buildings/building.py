@@ -5,13 +5,14 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src.constants import GDI_COLOR, VIEW_DEBUG_MODE_IS_ENABLED
+from src.constants import GDI_COLOR
 from src.game_objects.game_object import GameObject
 from src.particle import Particle
 
 if TYPE_CHECKING:
     from src.camera import Camera
     from src.constants import Team
+    from src.geometry import Coordinate
 
 
 class Building(GameObject):
@@ -24,14 +25,14 @@ class Building(GameObject):
     def __init__(
         self,
         *,
-        position: pg.typing.SequenceLike,
+        position: Coordinate,
         team: Team,
         color: pg.Color = GDI_COLOR,
         font: pg.Font,
     ) -> None:
         super().__init__(position=position, team=team)
         self.image = pg.Surface(self.SIZE, pg.SRCALPHA)
-        self.rect = self.image.get_rect(topleft=position)
+        self.rect = self.image.get_rect(center=position)
         self.font = font
         self.construction_progress = 0
         self.is_explored = False
@@ -75,13 +76,7 @@ class Building(GameObject):
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         """Draw the building, and label with first letter of class."""
-        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if self.is_selected:
-            self.draw_selection_indicator(surface=surface, camera=camera)
-
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            self.draw_debug_info(surface=surface, camera=camera)
-
+        super().draw(surface=surface, camera=camera)
         _label = self.font.render(
             text=self.__class__.__name__[0],
             antialias=True,
@@ -89,4 +84,3 @@ class Building(GameObject):
         )
         _label_pos = camera.to_screen(self.rect.center) + (-6, 0)
         surface.blit(source=_label, dest=_label_pos)
-        self.draw_health_bar(surface=surface, camera=camera)

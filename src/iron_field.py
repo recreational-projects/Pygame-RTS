@@ -15,22 +15,28 @@ if TYPE_CHECKING:
 class IronField(pg.sprite.Sprite):
     """Stationary resource node for harvesters."""
 
+    SIZE = 40
+
     def __init__(
-        self, *, x: float, y: float, font: pg.Font, resources: int = 5000
+        self,
+        *,
+        position: pg.typing.SequenceLike,
+        font: pg.Font,
+        resources: int = 5000,
     ) -> None:
         super().__init__()
-        self.image: pg.Surface = pg.Surface((40, 40), pg.SRCALPHA)
+        self.position = Coordinate(position)
+        self.font = font
+        self.resources = resources
+        self.image: pg.Surface = pg.Surface(
+            (IronField.SIZE, IronField.SIZE), pg.SRCALPHA
+        )
+        self.rect: pg.Rect = self.image.get_rect(center=self.position)
+        self.regen_timer = 500
+
         pg.draw.polygon(
             self.image, (0, 200, 0), [(0, 20), (20, 0), (40, 20), (20, 40)]
         )  # Diamond shape for crystal
-        self.rect: pg.Rect = self.image.get_rect(topleft=(x, y))
-        self.font = font
-        self.resources = resources
-        self.regen_timer = 500
-
-    @property
-    def position(self) -> Coordinate:
-        return Coordinate(self.rect.center)
 
     def update(self) -> None:
         if self.regen_timer > 0:
