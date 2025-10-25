@@ -17,7 +17,6 @@ from src.constants import (
 from src.game_objects.buildings.barracks import Barracks
 from src.game_objects.buildings.building import Building
 from src.game_objects.buildings.war_factory import WarFactory
-from src.game_objects.units import UnitType
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
@@ -29,60 +28,39 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from src.game_objects.game_object import GameObject
-    from src.iron_field import IronField
     from src.team import Team
+
+_Unit = Harvester | Infantry | Tank
 
 
 @dataclass(kw_only=True)
 class Game:
     """Holds game-scoped information (i.e. state) and methods."""
 
-    objects: set[GameObject] = dataclass_field(init=False, default_factory=set)
+    objects: set[GameObject] = dataclass_field(default_factory=set)
     """All `GameObject`s. Not other sprites at present."""
-    selected_units: set[UnitType] = dataclass_field(init=False, default_factory=set)
-    """The currently selected player units."""
-    selected_building: Building | None = dataclass_field(init=False, default=None)
-    """The currently selected player building.
-    NB: only one building can be selected at a time."""
-    iron_fields: set[IronField] = dataclass_field(init=False, default_factory=set)
+    map_rect: pg.Rect = dataclass_field(init=False)
+    """Map dimensions."""
+
+    def __post_init__(self) -> None:
+        self.map_rect = pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT)
 
     @property
     def buildings(self) -> set[Building]:
-        """Return all `Building`s."""
         return {o for o in self.objects if isinstance(o, Building) and o.health > 0}
 
     @property
-    def units(self) -> set[UnitType]:
-        """Return all `Unit`s."""
-        return {o for o in self.objects if isinstance(o, UnitType) and o.health > 0}
+    def units(self) -> set[_Unit]:
+        return {o for o in self.objects if isinstance(o, _Unit) and o.health > 0}
 
     def team_buildings(self, team: Team) -> set[Building]:
-        """Return `Building`s belonging to `team`."""
         return {b for b in self.buildings if b.team == team}
 
-    def team_units(self, team: Team) -> set[UnitType]:
-        """Return `Unit`s belonging to `team`."""
+    def team_units(self, team: Team) -> set[_Unit]:
         return {u for u in self.units if u.team == team}
 
-    def get_production_time(self, *, cls: type[GameObject], team: Team) -> float:
-        """Return time (frames) required to produce a new `Game`Object` of type `cls`."""
-        _friendly_buildings = self.team_buildings(team)
-        if cls == Infantry:
-            barracks_count = len(
-                [b for b in _friendly_buildings if isinstance(b, Barracks)]
-            )
-            return BASE_PRODUCTION_TIME * (0.9**barracks_count)
-
-        if cls in [Tank, Harvester]:
-            warfactory_count = len(
-                [b for b in _friendly_buildings if isinstance(b, WarFactory)]
-            )
-            return BASE_PRODUCTION_TIME * (0.9**warfactory_count)
-
-        return BASE_PRODUCTION_TIME
-
     def handle_collisions(self) -> None:
-        """Check for collisions between all `Unit`s and move them accordingly."""
+        """Check for all collisions between units and move them accordingly."""
         for unit in self.units:
             for other in self.units:
                 if unit != other and unit.rect.colliderect(other.rect):
@@ -98,6 +76,22 @@ class Game:
                         unit.rect.x += push * d.x / dist
                         other.rect.y -= push * d.y / dist
 
+    def get_production_time(self, *, cls: type[GameObject], team: Team) -> float:
+        _friendly_buildings = self.team_buildings(team)
+        if cls == Infantry:
+            barracks_count = len(
+                [b for b in _friendly_buildings if isinstance(b, Barracks)]
+            )
+            return BASE_PRODUCTION_TIME * (0.9**barracks_count)
+
+        if cls in [Tank, Harvester]:
+            warfactory_count = len(
+                [b for b in _friendly_buildings if isinstance(b, WarFactory)]
+            )
+            return BASE_PRODUCTION_TIME * (0.9**warfactory_count)
+
+        return BASE_PRODUCTION_TIME
+
     def handle_attacks(
         self,
         *,
@@ -106,7 +100,6 @@ class Game:
         projectiles: pg.sprite.Group[Any],
         particles: pg.sprite.Group[Any],
     ) -> None:
-        """Handle all attacks by `team` on `opposing_team`."""
         for unit in self.team_units(team):
             if isinstance(unit, (Tank, Infantry)) and unit.cooldown_timer == 0:
                 closest_target, min_dist = None, float("inf")
@@ -184,7 +177,6 @@ class Game:
         projectiles: Iterable[Projectile],
         particles: pg.sprite.Group[Any],
     ) -> None:
-        """Handle all projectiles."""
         for projectile in projectiles:
             # Check collision with all enemy units and buildings, not just the target
             enemy_units = [u for u in self.units if u.team != projectile.team]
@@ -210,11 +202,9 @@ class Game:
 
                     break
 
-    @staticmethod
-    def _rect_is_within_map(rect: pg.typing.RectLike) -> bool:
+    def _rect_is_within_map(self, rect: pg.typing.RectLike) -> bool:
         """Return whether `rect` is within the map."""
-        map_rect = pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT)
-        return map_rect.contains(rect)
+        return self.map_rect.contains(rect)
 
     def _is_near_friendly_building(
         self, *, position: pg.typing.Point, team: Team
@@ -249,9 +239,3 @@ class Game:
                 not self._rect_collides_with_building(rect=new_building_footprint),
             )
         )
-
-    def delete_selected_building(self) -> None:
-        """Delete the currently selected building."""
-        if self.selected_building:
-            self.objects.remove(self.selected_building)
-            self.selected_building = None
