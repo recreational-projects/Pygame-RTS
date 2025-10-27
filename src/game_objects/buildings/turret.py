@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src.constants import Team
 from src.game_objects.buildings.building import Building
 from src.particle import Particle
 from src.projectile import Projectile
+from src.team import Faction, Team
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -26,13 +26,13 @@ class Turret(Building):
     POWER_USAGE = 25
     SIZE = 50, 50
 
-    def __init__(
-        self, *, position: pg.typing.SequenceLike, team: Team, font: pg.Font
-    ) -> None:
+    def __init__(self, *, position: pg.typing.Point, team: Team, font: pg.Font) -> None:
         super().__init__(
             position=position,
             team=team,
-            color=pg.Color(180, 180, 0) if team == Team.GDI else pg.Color(180, 0, 0),
+            color=pg.Color(180, 180, 0)
+            if team.faction == Faction.GDI
+            else pg.Color(180, 0, 0),
             font=font,
         )
         self.max_health = 500
@@ -63,7 +63,7 @@ class Turret(Building):
                         closest_target, min_dist = u, dist
 
             if closest_target:
-                self.target_unit = closest_target
+                self.target_object = closest_target
                 dx, dy = self.displacement_to(closest_target.position)
                 self.angle = math.degrees(math.atan2(-dy, dx))
                 projectiles.add(
@@ -91,7 +91,7 @@ class Turret(Building):
 
         self.image = pg.Surface((50, 50), pg.SRCALPHA)
         base = pg.Surface((40, 40), pg.SRCALPHA)
-        base.fill((180, 180, 0) if self.team == Team.GDI else (180, 0, 0))
+        base.fill((180, 180, 0) if self.team.faction == Faction.GDI else (180, 0, 0))
         barrel = pg.Surface((25, 6), pg.SRCALPHA)
         pg.draw.line(barrel, (80, 80, 80), (0, 3), (18, 3), 4)
         rotated_barrel = pg.transform.rotate(barrel, self.angle)

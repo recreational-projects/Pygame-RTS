@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from src import geometry
 from src.constants import (
     GDI_COLOR,
     NOD_COLOR,
-    Team,
 )
 from src.game_objects.buildings.barracks import Barracks
 from src.game_objects.buildings.building import Building
@@ -14,21 +14,15 @@ from src.game_objects.buildings.war_factory import WarFactory
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
-from src.geometry import (
-    calculate_formation_positions,
-    is_valid_building_position,
-    snap_to_grid,
-)
+from src.team import Faction, Team
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     import pygame as pg
 
+    from src.game import Game
     from src.game_objects.game_object import GameObject
-
-BASE_POWER = 300
-BASE_PRODUCTION_TIME = 180
 
 
 class Headquarters(Building):
@@ -37,14 +31,14 @@ class Headquarters(Building):
     # Override base class(es):
     COST = 2000
     SIZE = 80, 80
+    # Class-specific:
+    BASE_POWER = 300
 
-    def __init__(
-        self, *, position: pg.typing.SequenceLike, team: Team, font: pg.Font
-    ) -> None:
+    def __init__(self, *, position: pg.typing.Point, team: Team, font: pg.Font) -> None:
         super().__init__(
             position=position,
             team=team,
-            color=GDI_COLOR if team == Team.GDI else NOD_COLOR,
+            color=GDI_COLOR if team.faction == Faction.GDI else NOD_COLOR,
             font=font,
         )
         self.max_health = 1200
@@ -53,14 +47,15 @@ class Headquarters(Building):
         self.production_queue: list[type[GameObject]] = []
         self.production_timer: float = 0
         self.pending_building: type[Building] | None = None
-        self.pending_building_pos: pg.typing.SequenceLike | None = None
+        self.pending_building_pos: pg.typing.Point | None = None
 
         # Calculated every update():
         self.power_usage: int = 0
         self.power_output: int = 0
 
-    def _power_output(self, *, friendly_buildings: Iterable[Building]) -> int:
-        return BASE_POWER + sum(
+    @classmethod
+    def _power_output(cls, *, friendly_buildings: Iterable[Building]) -> int:
+        return cls.BASE_POWER + sum(
             b.POWER_OUTPUT
             for b in friendly_buildings
             if isinstance(b, PowerPlant) and b.health > 0
@@ -80,53 +75,21 @@ class Headquarters(Building):
     def has_enough_power(self) -> bool:
         return self.power_output >= self.power_usage
 
-    def get_production_time(
-        self, *, unit_class: type[GameObject], friendly_buildings: Iterable[Building]
-    ) -> float:
-        if unit_class == Infantry:
-            barracks_count = len(
-                [
-                    b
-                    for b in friendly_buildings
-                    if isinstance(b, Barracks) and b.health > 0
-                ]
-            )
-            return BASE_PRODUCTION_TIME * (0.9**barracks_count)
-
-        if unit_class in [Tank, Harvester]:
-            warfactory_count = len(
-                [
-                    b
-                    for b in friendly_buildings
-                    if isinstance(b, WarFactory) and b.health > 0
-                ]
-            )
-            return BASE_PRODUCTION_TIME * (0.9**warfactory_count)
-
-        return BASE_PRODUCTION_TIME
-
-    def update(
-        self,
-        particles: pg.sprite.Group[Any],
-        friendly_units: pg.sprite.Group[Any],
-        friendly_buildings: Iterable[Any],
-        all_units: pg.sprite.Group[Any],
-        *args,
-        **kwargs,
-    ) -> None:
-        super().update(particles, *args, **kwargs)
-        self.power_output = self._power_output(friendly_buildings=friendly_buildings)
+    def update(self, *args, game: Game, **kwargs) -> None:
+        super().update(*args, **kwargs)
+        _friendly_buildings = game.team_buildings(self.team)
+        _friendly_units = game.team_units(self.team)
+        self.power_output = self._power_output(friendly_buildings=_friendly_buildings)
         self.power_usage = self._power_usage(
-            friendly_units=friendly_units, friendly_buildings=friendly_buildings
+            friendly_units=_friendly_units, friendly_buildings=_friendly_buildings
         )
         if (
             self.production_queue
             and not self.production_timer
             and self.has_enough_power
         ):
-            self.production_timer = self.get_production_time(
-                unit_class=self.production_queue[0],
-                friendly_buildings=friendly_buildings,
+            self.production_timer = game.get_production_time(
+                cls=self.production_queue[0], team=self.team
             )
 
         if self.production_queue:
@@ -141,9 +104,7 @@ class Headquarters(Building):
                     spawn_building: Building = self
                     if unit_cls == Infantry:
                         barracks = [
-                            b
-                            for b in friendly_buildings
-                            if isinstance(b, Barracks) and b.health > 0
+                            b for b in _friendly_buildings if isinstance(b, Barracks)
                         ]
                         if not barracks:
                             return
@@ -155,9 +116,7 @@ class Headquarters(Building):
 
                     elif unit_cls in [Tank, Harvester]:
                         warfactories = [
-                            b
-                            for b in friendly_buildings
-                            if isinstance(b, WarFactory) and b.health > 0
+                            b for b in _friendly_buildings if isinstance(b, WarFactory)
                         ]
                         if not warfactories:
                             return
@@ -179,7 +138,7 @@ class Headquarters(Building):
                         if unit_cls == Harvester
                         else unit_cls(position=spawn_pos, team=self.team)
                     ]
-                    formation_positions = calculate_formation_positions(
+                    formation_positions = geometry.calculate_formation_positions(
                         center=spawn_pos,
                         target=None,
                         num_units=len(new_units),
@@ -188,13 +147,12 @@ class Headquarters(Building):
                     for unit, pos in zip(new_units, formation_positions):
                         unit.rect.center = pos
                         unit.formation_target = pos
-                        friendly_units.add(unit)
-                        all_units.add(unit)
+                        game.objects.add(unit)
 
                 self.production_timer = (
-                    self.get_production_time(
-                        unit_class=self.production_queue[0],
-                        friendly_buildings=friendly_buildings,
+                    game.get_production_time(
+                        cls=self.production_queue[0],
+                        team=self.team,
                     )
                     if self.production_queue and self.has_enough_power
                     else 0
@@ -203,26 +161,30 @@ class Headquarters(Building):
     def place_building(
         self,
         *,
-        position: pg.typing.SequenceLike,
+        position: pg.typing.Point,
         unit_cls: type[Building],
-        all_buildings: pg.sprite.Group[Any],
+        game: Game,
     ) -> None:
-        snapped_pos = snap_to_grid(position)
-        if is_valid_building_position(
-            position=snapped_pos,
-            team=self.team,
-            new_building_cls=unit_cls,
-            buildings=all_buildings,
+        """
+        Args:
+            position:
+                Position of new `Building`.
+                Function handles snapping to tile grid.
+            unit_cls:
+                Type of new `Building`.
+            game:
+        """
+
+        snapped_pos = geometry.snap_to_grid(position)
+        if game.is_valid_building_position(
+            position=snapped_pos, new_building_class=unit_cls, team=self.team
         ):
-            all_buildings.add(
+            game.objects.add(
                 unit_cls(position=snapped_pos, team=self.team, font=self.font)
             )
             self.pending_building = None
             self.pending_building_pos = None
             if self.production_queue and self.has_enough_power:
-                self.production_timer = self.get_production_time(
-                    unit_class=self.production_queue[0],
-                    friendly_buildings=[
-                        b for b in all_buildings if b.team == self.team
-                    ],
+                self.production_timer = game.get_production_time(
+                    cls=self.production_queue[0], team=self.team
                 )

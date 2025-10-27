@@ -36,6 +36,6 @@ def debug_outline_rect(*, surface: pg.Surface, rect: pg.typing.RectLike) -> None
     pg.draw.rect(surface=surface, color=DEBUG_COLOR, rect=rect, width=1)
 
 
-def debug_marker(*, surface: pg.Surface, position: pg.typing.SequenceLike) -> None:
+def debug_marker(*, surface: pg.Surface, position: pg.typing.Point) -> None:
     """Draw marker at `position` on `surface`. Used for visual debugging."""
     pg.draw.circle(surface=surface, color=DEBUG_COLOR, center=position, radius=5)

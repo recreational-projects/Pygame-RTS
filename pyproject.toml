@@ -19,6 +19,7 @@ dev = [
 select = [
     "ANN",  # flake8-annotations
     "B",  # flake8-bugbear
+    "COM",  # flake8-commas
     "F",  # Pyflakes
     "FBT",  # flake8-boolean-trap
     "I",  # isort
@@ -29,14 +30,10 @@ select = [
 ignore = [
     "ANN002",  # Missing type annotation for *args
     "ANN003",  # Missing type annotation for **kwargs
+    "B023",  # Function definition does not bind loop variable
     "B905",  # `zip()` without an explicit `strict=` parameter
+    "COM812",  # Trailing comma missing - conflicts with ruff format"
 ]
 extend-safe-fixes = [
     "TC",  # flake8-type-checking
-]
-
-[tool.ruff.lint.per-file-ignores]
-"CondaRTS.py" = [
-    "B023",  # Function definition does not bind loop variable
-    "COM812",  # Trailing comma missing - conflicts with ruff format
 ]

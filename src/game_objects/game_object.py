@@ -10,29 +10,28 @@ from src.geometry import Coordinate
 
 if TYPE_CHECKING:
     from src.camera import Camera
-    from src.constants import Team
-
-ARRIVAL_RADIUS = 5
+    from src.team import Team
 
 
 class GameObject(pg.sprite.Sprite):
     """Base class for all buildings and units."""
 
+    ARRIVAL_RADIUS = 5  # Only relevant if mobile
     ATTACK_RANGE = 0
     COST = 0
     IS_MOBILE = False
     """Override for mobile classes."""
     POWER_USAGE = 0
 
-    def __init__(self, *, position: pg.typing.SequenceLike, team: Team) -> None:
+    def __init__(self, *, position: pg.typing.Point, team: Team) -> None:
         super().__init__()
         self.rect: pg.Rect = pg.Rect(position, (0, 0))  # Nominal, overridden
         self.image: pg.Surface = pg.Surface(position)
         self.team = team
         self.target: Coordinate | None = None
-        self.target_unit: GameObject | None = None
+        self.target_object: GameObject | None = None
         self.formation_target: Coordinate | None = None
-        self.speed: float = 0
+        self.speed: float = 0  # Only relevant if mobile
         self.health = 0
         self.max_health = self.health
         self.cooldown_timer = 0
@@ -43,11 +42,11 @@ class GameObject(pg.sprite.Sprite):
     def position(self) -> Coordinate:
         return Coordinate(self.rect.center)
 
-    def displacement_to(self, position: pg.typing.SequenceLike) -> pg.Vector2:
+    def displacement_to(self, position: pg.typing.Point) -> pg.Vector2:
         """Return the displacement to `position`."""
         return position - self.position
 
-    def distance_to(self, position: pg.typing.SequenceLike) -> float:
+    def distance_to(self, position: pg.typing.Point) -> float:
         """Return the distance to `position`."""
         return (position - self.position).magnitude()
 
@@ -58,10 +57,10 @@ class GameObject(pg.sprite.Sprite):
                 f"Can't move unit of non-mobile class {self.__class__.__name__}"
             )
 
-        if self.target and self.target_unit and self.target_unit.health > 0:
+        if self.target and self.target_object and self.target_object.health > 0:
             dist = self.distance_to(self.target)
             if dist > self.ATTACK_RANGE:
-                if dist > ARRIVAL_RADIUS:
+                if dist > GameObject.ARRIVAL_RADIUS:
                     dx, dy = self.displacement_to(self.target)
                     self.rect.x += self.speed * dx / dist
                     self.rect.y += self.speed * dy / dist
@@ -71,7 +70,7 @@ class GameObject(pg.sprite.Sprite):
 
         elif self.formation_target:
             dist = self.distance_to(self.formation_target)
-            if dist > ARRIVAL_RADIUS:
+            if dist > GameObject.ARRIVAL_RADIUS:
                 dx, dy = self.displacement_to(self.formation_target)
                 self.rect.x += self.speed * dx / dist
                 self.rect.y += self.speed * dy / dist
@@ -79,7 +78,7 @@ class GameObject(pg.sprite.Sprite):
 
         elif self.target:
             dist = self.distance_to(self.target)
-            if dist > ARRIVAL_RADIUS:
+            if dist > GameObject.ARRIVAL_RADIUS:
                 dx, dy = self.displacement_to(self.target)
                 self.rect.x += self.speed * dx / dist
                 self.rect.y += self.speed * dy / dist

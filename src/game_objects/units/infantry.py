@@ -4,8 +4,9 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
+from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
 from src.game_objects.game_object import GameObject
+from src.team import Faction, Team
 
 if TYPE_CHECKING:
     from src.camera import Camera
@@ -25,12 +26,12 @@ class Infantry(GameObject):
     UNIT_TARGETING_RANGE = 200
     """Max distance at which a unit can be targeted."""
 
-    def __init__(self, position: pg.typing.SequenceLike, team: Team) -> None:
+    def __init__(self, position: pg.typing.Point, team: Team) -> None:
         super().__init__(position=position, team=team)
         self.image = pg.Surface((16, 16), pg.SRCALPHA)
         self.rect = self.image.get_rect(center=position)
-        self.speed = 3.5 if team == Team.GDI else 4
-        self.health = 100 if team == Team.GDI else 60
+        self.speed = 3.5 if self.team.faction == Faction.GDI else 4
+        self.health = 100 if self.team.faction == Faction.GDI else 60
         self.max_health = self.health
         self.attack_damage = 8
 
@@ -42,16 +43,16 @@ class Infantry(GameObject):
 
     def update(self) -> None:
         super().update()
-        if self.target_unit and self.target_unit.health > 0:
+        if self.target_object and self.target_object.health > 0:
             if (
-                self.distance_to(self.target_unit.position)
+                self.distance_to(self.target_object.position)
                 <= Infantry.UNIT_TARGETING_RANGE
             ):
-                self.target = self.target_unit.position
+                self.target = self.target_object.position
             else:
                 self.target = None
 
-            self.target_unit = self.target_unit if self.target else None
+            self.target_object = self.target_object if self.target else None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))

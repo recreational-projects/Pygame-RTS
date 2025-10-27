@@ -11,7 +11,7 @@ from src.particle import Particle
 
 if TYPE_CHECKING:
     from src.camera import Camera
-    from src.constants import Team
+    from src.team import Team
 
 
 class Building(GameObject):
@@ -24,7 +24,7 @@ class Building(GameObject):
     def __init__(
         self,
         *,
-        position: pg.typing.SequenceLike,
+        position: pg.typing.Point,
         team: Team,
         color: pg.Color = GDI_COLOR,
         font: pg.Font,

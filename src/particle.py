@@ -17,7 +17,7 @@ class Particle(pg.sprite.Sprite):
 
     def __init__(
         self,
-        position: pg.typing.SequenceLike,
+        position: pg.typing.Point,
         vx: float,
         vy: float,
         size: int,

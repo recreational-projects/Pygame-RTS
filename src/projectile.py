@@ -13,8 +13,8 @@ from src.particle import Particle
 
 if TYPE_CHECKING:
     from src.camera import Camera
-    from src.constants import Team
     from src.game_objects.game_object import GameObject
+    from src.team import Team
 
 HIT_RADIUS = 3
 
@@ -26,7 +26,7 @@ class Projectile(pg.sprite.Sprite):
 
     def __init__(
         self,
-        position: pg.typing.SequenceLike,
+        position: pg.typing.Point,
         target_unit: GameObject,
         damage: int,
         team: Team,

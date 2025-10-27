@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
+from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
 from src.game_objects.game_object import GameObject
+from src.team import Faction, Team
 
 if TYPE_CHECKING:
     from src.camera import Camera
@@ -20,13 +21,12 @@ class Tank(GameObject):
     COST = 500
     IS_MOBILE = True
     POWER_USAGE = 15
-
     # Class specific:
     UNIT_TARGETING_RANGE = 250
     """Max distance at which a unit can be targeted."""
     ATTACK_COOLDOWN_PERIOD = 50
 
-    def __init__(self, position: pg.typing.SequenceLike, team: Team) -> None:
+    def __init__(self, position: pg.typing.Point, team: Team) -> None:
         super().__init__(position=position, team=team)
         self.base_image = pg.Surface((30, 20), pg.SRCALPHA)
         # Draw tank body (front facing east/right)
@@ -40,23 +40,23 @@ class Tank(GameObject):
         )  # Barrel (extends right)
         self.image = self.base_image
         self.rect = self.image.get_rect(center=position)
-        self.speed = 2.5 if team == Team.GDI else 3
-        self.health = 200 if team == Team.GDI else 120
+        self.speed = 2.5 if self.team.faction == Faction.GDI else 3
+        self.health = 200 if self.team.faction == Faction.GDI else 120
         self.max_health = self.health
-        self.attack_damage = 20 if team == Team.GDI else 15
+        self.attack_damage = 20 if self.team.faction == Faction.GDI else 15
         self.angle: float = 0
         self.recoil = 0
 
     def update(self) -> None:
         super().update()
-        if self.target_unit and self.target_unit.health > 0:
+        if self.target_object and self.target_object.health > 0:
             self.target = (
-                self.target_unit.position
-                if self.distance_to(self.target_unit.position)
+                self.target_object.position
+                if self.distance_to(self.target_object.position)
                 <= Tank.UNIT_TARGETING_RANGE
                 else None
             )
-            self.target_unit = self.target_unit if self.target else None
+            self.target_object = self.target_object if self.target else None
 
         if self.target:
             dx, dy = self.displacement_to(self.target)
