@@ -12,12 +12,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from src.camera import Camera
-    from src.constants import Team
     from src.game_objects.buildings.headquarters import Headquarters
     from src.iron_field import IronField
-
-IRON_TRANSFER_RANGE = 30
-"""Distance within which iron can be harvested/delivered."""
+    from src.team import Team
 
 
 class Harvester(GameObject):
@@ -28,10 +25,13 @@ class Harvester(GameObject):
     COST = 800
     IS_MOBILE = True
     POWER_USAGE = 20
+    # Class-specific:
+    IRON_TRANSFER_RANGE = 30
+    """Distance within which iron can be harvested/delivered."""
 
     def __init__(
         self,
-        position: pg.typing.SequenceLike,
+        position: pg.typing.Point,
         team: Team,
         hq: Headquarters,
         font: pg.Font,
@@ -93,7 +93,7 @@ class Harvester(GameObject):
                     )
             if self.target_field:
                 self.target = self.target_field.position
-                if self.distance_to(self.target) < IRON_TRANSFER_RANGE:
+                if self.distance_to(self.target) < Harvester.IRON_TRANSFER_RANGE:
                     self.state = "HARVESTING"
                     self.target = None
                     self.harvest_time = 40
@@ -118,8 +118,8 @@ class Harvester(GameObject):
                     f"Harvester RETURNING_TO_HQ has no target.\n{self}"
                 )  # Temporary handling, review later
 
-            if self.distance_to(self.target) < IRON_TRANSFER_RANGE:
-                self.hq.iron += self.iron
+            if self.distance_to(self.target) < Harvester.IRON_TRANSFER_RANGE:
+                self.team.iron += self.iron
                 self.iron = 0
                 self.state = "MOVING_TO_FIELD"
                 self.target = None
