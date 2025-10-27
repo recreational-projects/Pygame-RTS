@@ -332,9 +332,8 @@ if __name__ == "__main__":
                     _opposing_team = player_team
 
                     building.update(
-                        particles=game.particles,
-                        projectiles=game.projectiles,
-                        enemy_units=game.team_units(_opposing_team),
+                        game=game,
+                        enemy_team=_opposing_team
                     )
             else:
                 building.update(particles=game.particles)

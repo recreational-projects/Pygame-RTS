@@ -12,9 +12,7 @@ from src.projectile import Projectile
 from src.team import Faction, Team
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from src.game_objects.game_object import GameObject
+    from src.game import Game
 
 
 class Turret(Building):
@@ -45,18 +43,18 @@ class Turret(Building):
 
     def update(
         self,
-        particles: set[Particle],
-        projectiles: set[Projectile],
-        enemy_units: Iterable[GameObject],
+        game: Game,
+        enemy_team: Team,
         *args,
         **kwargs,
     ) -> None:
-        super().update(*args, particles, **kwargs)
+        super().update(*args, **kwargs)
+        _enemy_units = game.team_units(enemy_team)
         if self.cooldown_timer > 0:
             self.cooldown_timer -= 1
         if self.cooldown_timer == 0:
             closest_target, min_dist = None, float("inf")
-            for u in enemy_units:
+            for u in _enemy_units:
                 if u.health > 0:
                     dist = self.distance_to(u.position)
                     if dist < Turret.ATTACK_RANGE and dist < min_dist:
@@ -66,7 +64,7 @@ class Turret(Building):
                 self.target_object = closest_target
                 dx, dy = self.displacement_to(closest_target.position)
                 self.angle = math.degrees(math.atan2(-dy, dx))
-                projectiles.add(
+                game.projectiles.add(
                     Projectile(
                         self.position,
                         closest_target,
@@ -76,7 +74,7 @@ class Turret(Building):
                 )
                 self.cooldown_timer = self.attack_cooldown
                 for _ in range(5):
-                    particles.add(
+                    game.particles.add(
                         Particle(
                             self.position,
                             random.uniform(-1.5, 1.5),
