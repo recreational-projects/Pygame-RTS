@@ -26,8 +26,6 @@ from src.particle import Particle
 from src.projectile import Projectile
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from src.game_objects.game_object import GameObject
     from src.iron_field import IronField
     from src.team import Team
@@ -45,6 +43,7 @@ class Game:
     """The currently selected player building.
     NB: only one building can be selected at a time."""
     iron_fields: set[IronField] = dataclass_field(init=False, default_factory=set)
+    projectiles: set[Projectile] = dataclass_field(init=False, default_factory=set)
 
     @property
     def buildings(self) -> set[Building]:
@@ -103,7 +102,6 @@ class Game:
         *,
         team: Team,
         opposing_team: Team,
-        projectiles: pg.sprite.Group[Any],
         particles: pg.sprite.Group[Any],
     ) -> None:
         """Handle all attacks by `team` on `opposing_team`."""
@@ -132,7 +130,7 @@ class Game:
                         unit.angle = math.degrees(
                             math.atan2(d.y, d.x)
                         )  # Updated to match Tank's angle calculation
-                        projectiles.add(
+                        self.projectiles.add(
                             Projectile(
                                 unit.position,
                                 closest_target,
@@ -181,11 +179,10 @@ class Game:
 
     def handle_projectiles(
         self,
-        projectiles: Iterable[Projectile],
         particles: pg.sprite.Group[Any],
     ) -> None:
         """Handle all projectiles."""
-        for projectile in projectiles:
+        for projectile in self.projectiles:
             # Check collision with all enemy units and buildings, not just the target
             enemy_units = [u for u in self.units if u.team != projectile.team]
             enemy_buildings = [b for b in self.buildings if b.team != projectile.team]

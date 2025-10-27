@@ -60,7 +60,7 @@ def draw(*, surface_: pg.Surface, game_: Game) -> None:
         ):
             unit.draw(surface=surface_, camera=camera)
 
-    for projectile in projectiles:
+    for projectile in game.projectiles:
         if (
             projectile.team == player_team
             or fog_of_war.is_visible(projectile.position)
@@ -83,7 +83,6 @@ if __name__ == "__main__":
     clock = pg.time.Clock()
     base_font = pg.font.SysFont(None, 24)
 
-    projectiles: pg.sprite.Group = pg.sprite.Group()
     particles: pg.sprite.Group = pg.sprite.Group()
 
     player_team = Team(faction=Faction.GDI, iron=1500)
@@ -336,28 +335,26 @@ if __name__ == "__main__":
 
                     building.update(
                         particles=particles,
-                        projectiles=projectiles,
+                        projectiles=game.projectiles,
                         enemy_units=game.team_units(_opposing_team),
                     )
             else:
                 building.update(particles=particles)
 
-        projectiles.update(particles)
+        game.projectiles.update(particles)
         particles.update()
         game.handle_collisions()
         game.handle_attacks(
             team=player_team,
             opposing_team=ai_team,
-            projectiles=projectiles,
             particles=particles,
         )
         game.handle_attacks(
             team=ai_team,
             opposing_team=player_team,
-            projectiles=projectiles,
             particles=particles,
         )
-        game.handle_projectiles(projectiles=projectiles, particles=particles)
+        game.handle_projectiles(particles=particles)
         ai.update(game=game, iron_fields=game.iron_fields)
         # AI units and buildings are indirectly manipulated here
         fog_of_war.update(

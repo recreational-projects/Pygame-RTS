@@ -46,7 +46,7 @@ class Turret(Building):
     def update(
         self,
         particles: pg.sprite.Group[Any],
-        projectiles: pg.sprite.Group[Any],
+        projectiles: set[Projectile],
         enemy_units: Iterable[GameObject],
         *args,
         **kwargs,
