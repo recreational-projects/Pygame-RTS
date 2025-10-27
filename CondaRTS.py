@@ -68,7 +68,7 @@ def draw(*, surface_: pg.Surface, game_: Game) -> None:
         ):
             projectile.draw(surface=surface_, camera=camera)
 
-    for particle in particles:
+    for particle in game.particles:
         if fog_of_war.is_visible(particle.position) or VIEW_DEBUG_MODE_IS_ENABLED:
             particle.draw(surface=surface_, camera=camera)
 
@@ -82,8 +82,6 @@ if __name__ == "__main__":
     screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     clock = pg.time.Clock()
     base_font = pg.font.SysFont(None, 24)
-
-    particles: pg.sprite.Group = pg.sprite.Group()
 
     player_team = Team(faction=Faction.GDI, iron=1500)
     ai_team = Team(faction=Faction.NOD, iron=1500)
@@ -325,7 +323,7 @@ if __name__ == "__main__":
         game.iron_fields.update()
         for building in game.buildings:
             if isinstance(building, Headquarters):
-                building.update(particles=particles, game=game)
+                building.update(particles=game.particles, game=game)
 
             elif isinstance(building, Turret):
                 if building.team == player_team:
@@ -334,27 +332,19 @@ if __name__ == "__main__":
                     _opposing_team = player_team
 
                     building.update(
-                        particles=particles,
+                        particles=game.particles,
                         projectiles=game.projectiles,
                         enemy_units=game.team_units(_opposing_team),
                     )
             else:
-                building.update(particles=particles)
+                building.update(particles=game.particles)
 
-        game.projectiles.update(particles)
-        particles.update()
+        game.projectiles.update()
+        game.particles.update()
         game.handle_collisions()
-        game.handle_attacks(
-            team=player_team,
-            opposing_team=ai_team,
-            particles=particles,
-        )
-        game.handle_attacks(
-            team=ai_team,
-            opposing_team=player_team,
-            particles=particles,
-        )
-        game.handle_projectiles(particles=particles)
+        game.handle_attacks(team=player_team, opposing_team=ai_team)
+        game.handle_attacks(team=ai_team, opposing_team=player_team)
+        game.handle_projectiles()
         ai.update(game=game, iron_fields=game.iron_fields)
         # AI units and buildings are indirectly manipulated here
         fog_of_war.update(

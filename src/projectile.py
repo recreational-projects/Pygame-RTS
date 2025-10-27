@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pygame as pg
 
@@ -44,7 +44,7 @@ class Projectile(pg.sprite.Sprite):
     def position(self) -> Coordinate:
         return Coordinate(self.rect.center)
 
-    def update(self, particles: pg.sprite.Group[Any]) -> None:
+    def update(self, particles: set[Particle]) -> None:
         if self.target_unit and self.target_unit.health > 0:
             if self.position.distance_to(self.target_unit.position) > HIT_RADIUS:
                 d = self.target_unit.position - self.position

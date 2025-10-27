@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pygame as pg
 
@@ -44,6 +44,7 @@ class Game:
     NB: only one building can be selected at a time."""
     iron_fields: set[IronField] = dataclass_field(init=False, default_factory=set)
     projectiles: set[Projectile] = dataclass_field(init=False, default_factory=set)
+    particles: set[Particle] = dataclass_field(init=False, default_factory=set)
 
     @property
     def buildings(self) -> set[Building]:
@@ -102,7 +103,6 @@ class Game:
         *,
         team: Team,
         opposing_team: Team,
-        particles: pg.sprite.Group[Any],
     ) -> None:
         """Handle all attacks by `team` on `opposing_team`."""
         for unit in self.team_units(team):
@@ -147,7 +147,7 @@ class Game:
                             unit.rect.width // 2 + 12
                         )
                         for _ in range(5):
-                            particles.add(
+                            self.particles.add(
                                 Particle(
                                     (smoke_x, smoke_y),
                                     random.uniform(-1.5, 1.5),
@@ -161,7 +161,7 @@ class Game:
                         closest_target.health -= unit.attack_damage
                         closest_target.under_attack = True
                         for _ in range(3):
-                            particles.add(
+                            self.particles.add(
                                 Particle(
                                     unit.position,
                                     random.uniform(-1, 1),
@@ -179,7 +179,6 @@ class Game:
 
     def handle_projectiles(
         self,
-        particles: pg.sprite.Group[Any],
     ) -> None:
         """Handle all projectiles."""
         for projectile in self.projectiles:
@@ -191,7 +190,7 @@ class Game:
                     e.health -= projectile.damage
                     e.under_attack = True  # Set under_attack when damage is applied
                     for _ in range(5):
-                        particles.add(
+                        self.particles.add(
                             Particle(
                                 projectile.position,
                                 random.uniform(-2, 2),
