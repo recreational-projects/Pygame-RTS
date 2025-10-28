@@ -18,8 +18,7 @@ from src.constants import (
 )
 from src.fog_of_war import FogOfWar
 from src.game import Game
-from src.game_objects.buildings.headquarters import Headquarters
-from src.game_objects.buildings.turret import Turret
+from src.game_objects.buildings import Headquarters, Turret
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.geometry import Coordinate

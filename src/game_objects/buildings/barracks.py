@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pygame as pg
 
-from src.game_objects.buildings.building import Building
+from src.game_objects.buildings import Building
 from src.team import Faction, Team
 
 

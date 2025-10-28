@@ -15,11 +15,13 @@ from src.constants import (
     SCREEN_WIDTH,
 )
 from src.draw_utils import draw_progress_bar
-from src.game_objects.buildings.barracks import Barracks
-from src.game_objects.buildings.headquarters import Headquarters
-from src.game_objects.buildings.power_plant import PowerPlant
-from src.game_objects.buildings.turret import Turret
-from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.buildings import (
+    Barracks,
+    Headquarters,
+    PowerPlant,
+    Turret,
+    WarFactory,
+)
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank

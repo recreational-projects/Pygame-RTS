@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from src.camera import Camera
-    from src.game_objects.buildings.headquarters import Headquarters
+    from src.game_objects.buildings import Headquarters
     from src.iron_field import IronField
     from src.team import Team
 

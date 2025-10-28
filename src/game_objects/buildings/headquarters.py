@@ -7,10 +7,7 @@ from src.constants import (
     GDI_COLOR,
     NOD_COLOR,
 )
-from src.game_objects.buildings.barracks import Barracks
-from src.game_objects.buildings.building import Building
-from src.game_objects.buildings.power_plant import PowerPlant
-from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.buildings import Barracks, Building, PowerPlant, WarFactory
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank

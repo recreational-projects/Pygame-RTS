@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src.game_objects.buildings.building import Building
+from src.game_objects.buildings import Building
 from src.particle import Particle
 from src.projectile import Projectile
 from src.team import Faction, Team

@@ -13,11 +13,13 @@ from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
 )
-from src.game_objects.buildings.barracks import Barracks
-from src.game_objects.buildings.headquarters import Headquarters
-from src.game_objects.buildings.power_plant import PowerPlant
-from src.game_objects.buildings.turret import Turret
-from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.buildings import (
+    Barracks,
+    Headquarters,
+    PowerPlant,
+    Turret,
+    WarFactory,
+)
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from src.game import Game
-    from src.game_objects.buildings.building import Building
+    from src.game_objects.buildings import Building
     from src.game_objects.game_object import GameObject
     from src.iron_field import IronField
     from src.team import Team

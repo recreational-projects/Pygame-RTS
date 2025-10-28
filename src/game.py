@@ -14,9 +14,7 @@ from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
 )
-from src.game_objects.buildings.barracks import Barracks
-from src.game_objects.buildings.building import Building
-from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.buildings import Barracks, Building, WarFactory
 from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
