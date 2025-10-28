@@ -415,10 +415,8 @@ class AI:
                 friendly_buildings=friendly_buildings,
                 iron_fields=iron_fields,
             )
-            self.hq.place_building(
-                position=self.hq.pending_building_pos,
-                unit_cls=self.hq.pending_building,
-                game=game,
+            self.hq.place_pending_building(
+                position=self.hq.pending_building_pos, game=game
             )
 
     def _coordinate_attack(

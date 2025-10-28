@@ -16,4 +16,6 @@ NOD_COLOR = pg.Color(200, 0, 0)
 SELECTION_INDICATOR_COLOR = pg.Color("white")
 DEBUG_COLOR = pg.Color("magenta")
 
+MOUSE_BUTTON = {1: 1, 3: 3}
+
 VIEW_DEBUG_MODE_IS_ENABLED = False

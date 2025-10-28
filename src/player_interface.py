@@ -321,7 +321,10 @@ class PlayerInterface:
             source=self.surface, dest=(SCREEN_WIDTH - PlayerInterface.WIDTH, 0)
         )
 
-    def handle_click(self, *, screen_pos: pg.typing.IntPoint, game: Game) -> bool:
+    def handle_mouse_1_click(
+        self, *, screen_pos: pg.typing.IntPoint, game: Game
+    ) -> bool:
+        """Returns `True` if a valid mouse button 1 click action is processed."""
         local_pos = self._local_pos(screen_pos)
         for tab_name, rect in self.tab_buttons.items():
             if rect.collidepoint(local_pos):

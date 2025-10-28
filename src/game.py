@@ -39,11 +39,18 @@ class Game:
 
     objects: set[GameObject] = dataclass_field(init=False, default_factory=set)
     """All `GameObject`s. Not other sprites at present."""
-    selected_units: set[UnitType] = dataclass_field(init=False, default_factory=set)
-    """The currently selected player units."""
     selected_building: Building | None = dataclass_field(init=False, default=None)
     """The currently selected player building.
     NB: only one building can be selected at a time."""
+    rect_selecting: bool = dataclass_field(init=False, default=False)
+    selection_start: pg.typing.IntPoint | None = dataclass_field(
+        init=False, default=None
+    )
+    """Initial point used to define selection rectangle, in screen units."""
+    selection_rect: pg.Rect | None = dataclass_field(init=False, default=None)
+    """Selection rectangle, in screen units."""
+    selected_units: set[UnitType] = dataclass_field(init=False, default_factory=set)
+    """Currently selected player units."""
     iron_fields: set[IronField] = dataclass_field(init=False, default_factory=set)
 
     @property
@@ -255,3 +262,28 @@ class Game:
         if self.selected_building:
             self.objects.remove(self.selected_building)
             self.selected_building = None
+
+    def get_team_building_at_pos(
+        self, *, position: pg.typing.Point, team: Team
+    ) -> Building | None:
+        """Returns `Building` belonging to `team` at `position`, or `None`."""
+        return next(
+            (b for b in self.team_buildings(team) if b.rect.collidepoint(position)),
+            None,
+        )
+
+    def get_team_unit_at_pos(
+        self, *, position: pg.typing.Point, team: Team
+    ) -> UnitType | None:
+        """Returns unit belonging to `team` at `position`, or `None`."""
+        return next(
+            (u for u in self.team_units(team) if u.rect.collidepoint(position)),
+            None,
+        )
+
+    def get_iron_field_at_pos(self, position: pg.typing.Point) -> IronField | None:
+        """Returns `IronField` at `world_pos`, or `None`."""
+        return next(
+            (f for f in self.iron_fields if f.rect.collidepoint(position)),
+            None,
+        )

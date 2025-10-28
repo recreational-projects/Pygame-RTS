@@ -158,11 +158,10 @@ class Headquarters(Building):
                     else 0
                 )
 
-    def place_building(
+    def place_pending_building(
         self,
         *,
         position: pg.typing.Point,
-        unit_cls: type[Building],
         game: Game,
     ) -> None:
         """
@@ -170,17 +169,21 @@ class Headquarters(Building):
             position:
                 Position of new `Building`.
                 Function handles snapping to tile grid.
-            unit_cls:
-                Type of new `Building`.
             game:
         """
+        if not self.pending_building:
+            raise TypeError(f"{self} has no pending building.")
 
-        snapped_pos = geometry.snap_to_grid(position)
+        _snapped_pos = geometry.snap_to_grid(position)
         if game.is_valid_building_position(
-            position=snapped_pos, new_building_class=unit_cls, team=self.team
+            position=_snapped_pos,
+            new_building_class=self.pending_building,
+            team=self.team,
         ):
             game.objects.add(
-                unit_cls(position=snapped_pos, team=self.team, font=self.font)
+                self.pending_building(
+                    position=_snapped_pos, team=self.team, font=self.font
+                )
             )
             self.pending_building = None
             self.pending_building_pos = None

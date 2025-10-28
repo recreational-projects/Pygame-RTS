@@ -10,9 +10,11 @@ from src.camera import Camera
 from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
+    MOUSE_BUTTON,
     PRODUCTION_INTERFACE_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SELECTION_INDICATOR_COLOR,
     TILE_SIZE,
     VIEW_DEBUG_MODE_IS_ENABLED,
 )
@@ -73,8 +75,8 @@ def draw(*, surface_: pg.Surface, game_: Game) -> None:
             particle.draw(surface=surface_, camera=camera)
 
     interface.draw(surface=surface_, game=game, camera=camera)
-    if selecting and select_rect:
-        pg.draw.rect(surface_, (255, 255, 255), select_rect, 2)
+    if game.rect_selecting and game.selection_rect:
+        pg.draw.rect(surface_, SELECTION_INDICATOR_COLOR, game.selection_rect, 2)
 
 
 if __name__ == "__main__":
@@ -138,10 +140,6 @@ if __name__ == "__main__":
         )
 
     fog_of_war = FogOfWar()
-
-    selecting = False
-    select_start = None
-    select_rect = None
     camera = Camera(
         pg.Rect(
             (0, 0),
@@ -167,134 +165,112 @@ if __name__ == "__main__":
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 running = False
+
             elif event.type == pg.MOUSEBUTTONDOWN:
-                world_pos = camera.to_world(event.pos)
-                target_x, target_y = event.pos
-                if event.button == 1:
+                _screen_click_pos = event.pos
+                _world_click_pos = camera.to_world(event.pos)
+
+                # Mouse 1 click
+                if event.button == MOUSE_BUTTON[1]:
                     if gdi_hq.pending_building:
-                        snapped_pos = geometry.snap_to_grid(world_pos)
-                        if game.is_valid_building_position(
-                            position=snapped_pos,
-                            new_building_class=gdi_hq.pending_building,
-                            team=gdi_hq.team,
-                        ):
-                            gdi_hq.place_building(
-                                position=world_pos,
-                                unit_cls=gdi_hq.pending_building,
-                                game=game,
-                            )
+                        gdi_hq.place_pending_building(
+                            position=_world_click_pos, game=game
+                        )
                         continue
 
-                    if interface.handle_click(screen_pos=event.pos, game=game):
+                    if interface.handle_mouse_1_click(
+                        screen_pos=_screen_click_pos, game=game
+                    ):
                         continue
 
                     for b in game.buildings:
                         b.is_selected = False
-
-                    clicked_building = next(
-                        (
-                            b
-                            for b in game.team_buildings(player_team)
-                            if camera.rect_to_screen(b.rect).collidepoint(
-                                target_x, target_y
-                            )
-                        ),
-                        None,
+                    _clicked_player_building = game.get_team_building_at_pos(
+                        position=_world_click_pos, team=player_team
                     )
-                    if clicked_building:
-                        game.selected_building = clicked_building
+                    if _clicked_player_building:
+                        game.selected_building = _clicked_player_building
                         game.selected_building.is_selected = True
                     else:
                         game.selected_building = None
-                        selecting = True
-                        select_start = event.pos
-                        select_rect = pg.Rect(target_x, target_y, 0, 0)
+                        game.rect_selecting = True
+                        game.selection_start = _screen_click_pos
+                        game.selection_rect = pg.Rect(game.selection_start, (0, 0))
 
-                elif event.button == 3:
+                # Mouse 3 click
+                elif event.button == MOUSE_BUTTON[3]:
                     if gdi_hq.pending_building:
-                        gdi_hq.pending_building = gdi_hq.pending_building_pos = None
+                        gdi_hq.pending_building = None
+                        gdi_hq.pending_building_pos = None
                         if gdi_hq.production_queue and gdi_hq.has_enough_power:
                             gdi_hq.production_timer = game.get_production_time(
                                 cls=gdi_hq.production_queue[0],
                                 team=player_team,
                             )
                         continue
-                    clicked_field = next(
-                        (
-                            f
-                            for f in game.iron_fields
-                            if camera.rect_to_screen(f.rect).collidepoint(
-                                target_x, target_y
-                            )
-                        ),
-                        None,
-                    )
-                    clicked_enemy_unit = next(
-                        (
-                            u
-                            for u in game.team_units(ai_team)
-                            if camera.rect_to_screen(u.rect).collidepoint(
-                                target_x, target_y
-                            )
-                        ),
-                        None,
-                    )
-                    clicked_enemy_building = next(
-                        (
-                            b
-                            for b in game.team_buildings(ai_team)
-                            if camera.rect_to_screen(b.rect).collidepoint(
-                                target_x, target_y
-                            )
-                        ),
-                        None,
-                    )
+
                     if game.selected_units:
                         group_center = geometry.mean_vector(
                             [u.position for u in game.selected_units]
                         )
                         formation_positions = geometry.calculate_formation_positions(
-                            center=world_pos,
-                            target=world_pos,
+                            center=_world_click_pos,
+                            target=_world_click_pos,
                             num_units=len(game.selected_units),
+                        )
+                        _clicked_iron_field = game.get_iron_field_at_pos(
+                            _world_click_pos
+                        )
+                        _clicked_ai_unit = game.get_team_unit_at_pos(
+                            position=_world_click_pos, team=ai_team
+                        )
+                        _clicked_ai_building = game.get_team_building_at_pos(
+                            position=_screen_click_pos, team=ai_team
                         )
                         for unit, pos in zip(game.selected_units, formation_positions):
                             unit.target = pos
                             unit.formation_target = pos
                             unit.target_object = None
-                            if clicked_enemy_unit:
-                                unit.target_object = clicked_enemy_unit
-                                unit.target = clicked_enemy_unit.position
-                            elif clicked_enemy_building:
-                                unit.target_object = clicked_enemy_building
-                                unit.target = clicked_enemy_building.position
-                            elif clicked_field:
-                                unit.target = clicked_field.position
+                            if _clicked_ai_unit:
+                                unit.target_object = _clicked_ai_unit
+                                unit.target = _clicked_ai_unit.position
+                            elif _clicked_ai_building:
+                                unit.target_object = _clicked_ai_building
+                                unit.target = _clicked_ai_building.position
+                            elif _clicked_iron_field:
+                                unit.target = _clicked_iron_field.position
                                 unit.formation_target = None
 
-            elif event.type == pg.MOUSEMOTION and selecting:
-                current_pos = event.pos
-                if not select_start:
+            # Mouse move
+            elif event.type == pg.MOUSEMOTION and game.rect_selecting:
+                _mouse_pos = event.pos
+                if not game.selection_start:
                     raise TypeError("No selection rect start point")
                     # Temporary handling, review later
 
-                select_rect = pg.Rect(
-                    min(select_start[0], current_pos[0]),
-                    min(select_start[1], current_pos[1]),
-                    abs(current_pos[0] - select_start[0]),
-                    abs(current_pos[1] - select_start[1]),
+                game.selection_rect = pg.Rect(
+                    min(game.selection_start[0], _mouse_pos[0]),
+                    min(game.selection_start[1], _mouse_pos[1]),
+                    abs(_mouse_pos[0] - game.selection_start[0]),
+                    abs(_mouse_pos[1] - game.selection_start[1]),
                 )
-            elif event.type == pg.MOUSEBUTTONUP and event.button == 1 and selecting:
-                if not select_start:
+
+            # Mouse 1 release
+            elif (
+                event.type == pg.MOUSEBUTTONUP
+                and event.button == MOUSE_BUTTON[1]
+                and game.rect_selecting
+            ):
+                if not game.selection_start:
                     raise TypeError("No selection rect start point")
                     # Temporary handling, review later
 
-                selecting = False
+                game.rect_selecting = False
                 for unit in game.team_units(player_team):
                     unit.is_selected = False
 
                 game.selected_units.clear()
-                world_start = camera.to_world(select_start)
+                world_start = camera.to_world(game.selection_start)
                 world_end = camera.to_world(event.pos)
                 world_rect = pg.Rect(
                     min(world_start[0], world_end[0]),
