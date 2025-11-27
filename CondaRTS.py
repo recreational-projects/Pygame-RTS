@@ -19,6 +19,7 @@ from src.constants import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TILE_SIZE,
+    VIEW_DEBUG_MODE_IS_ENABLED,
     Team,
 )
 from src.draw_utils import draw_progress_bar
@@ -191,24 +192,40 @@ def draw(surface_: pg.Surface) -> None:
     surface_.fill(pg.Color("black"))
     surface_.blit(source=base_map, dest=camera.map_offset)
     for field in iron_fields:
-        if field.resources > 0 and fog_of_war.is_explored(field.position):
+        if field.resources > 0 and (
+            fog_of_war.is_explored(field.position) or VIEW_DEBUG_MODE_IS_ENABLED
+        ):
             field.draw(surface=surface_, camera=camera)
 
     for building in global_buildings:
-        if building.health > 0 and (building.team == Team.GDI or building.is_explored):
+        if building.health > 0 and (
+            building.team == Team.GDI
+            or building.is_explored
+            or VIEW_DEBUG_MODE_IS_ENABLED
+        ):
             building.draw(surface=surface_, camera=camera)
 
-    fog_of_war.draw(surface=surface_, camera=camera)
+    if not VIEW_DEBUG_MODE_IS_ENABLED:
+        fog_of_war.draw(surface=surface_, camera=camera)
+
     for unit in global_units:
-        if unit.team == Team.GDI or fog_of_war.is_visible(unit.position):
+        if (
+            unit.team == Team.GDI
+            or fog_of_war.is_visible(unit.position)
+            or VIEW_DEBUG_MODE_IS_ENABLED
+        ):
             unit.draw(surface=surface_, camera=camera)
 
     for projectile in projectiles:
-        if projectile.team == Team.GDI or fog_of_war.is_visible(projectile.position):
+        if (
+            projectile.team == Team.GDI
+            or fog_of_war.is_visible(projectile.position)
+            or VIEW_DEBUG_MODE_IS_ENABLED
+        ):
             projectile.draw(surface=surface_, camera=camera)
 
     for particle in particles:
-        if fog_of_war.is_visible(particle.position):
+        if fog_of_war.is_visible(particle.position) or VIEW_DEBUG_MODE_IS_ENABLED:
             particle.draw(surface=surface_, camera=camera)
 
     interface.draw(
