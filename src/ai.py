@@ -88,6 +88,7 @@ class AI:
             * 60
             / 40
         )
+        previous_state = self.state
         self.state = (
             "BROKE"
             if self.hq.iron < 300 or self.iron_income_rate < 50
@@ -101,6 +102,8 @@ class AI:
             if self.wave_number >= 2 or player_base_size > 8
             else "BUILD_UP"
         )
+        if self.state != previous_state:
+            logger.debug(f"AI state {previous_state} -> {self.state}")
 
     def update_scouting(
         self,
@@ -265,10 +268,6 @@ class AI:
             current_units["infantry"] + current_units["tank"] + current_units["turret"]
         )
         iron = self.hq.iron
-        logger.debug(
-            f"AI production check: Iron = {iron}, Has Barracks = {has_barracks}, Has WarFactory = {has_warfactory}"
-        )
-
         if not has_barracks and iron >= Barracks.COST:
             self._produce_obj(Barracks)
             return
@@ -298,11 +297,11 @@ class AI:
             return
 
         if iron <= 0:
-            logger.debug("AI production halted: Insufficient iron")
+            logger.debug(f"AI production halted: Insufficient iron ({iron})")
             return
 
         production_options: list[type[GameObject]] = []
-        if self.state in ["Build Up", "Aggressive"]:
+        if self.state in ["BUILD UP", "AGGRESSIVE"]:
             if (
                 total_military < 6
                 and has_barracks
@@ -363,7 +362,7 @@ class AI:
             if production_options:
                 self._produce_obj(random.choice(production_options))
 
-        elif self.state in ["Attacked", "Threatened"]:
+        elif self.state in ["ATTACKED", "THREATENED"]:
             if (
                 iron >= Turret.COST
                 and current_units["turret"] < desired_units["turret"]
