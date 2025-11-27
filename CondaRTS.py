@@ -33,6 +33,7 @@ from src.game_objects.units.harvester import Harvester
 from src.game_objects.units.infantry import Infantry
 from src.game_objects.units.tank import Tank
 from src.geometry import (
+    Coordinate,
     calculate_formation_positions,
     is_valid_building_position,
     snap_to_grid,
@@ -593,10 +594,48 @@ if __name__ == "__main__":
     particles: pg.sprite.Group = pg.sprite.Group()
     selected_units: pg.sprite.Group = pg.sprite.Group()
 
-    gdi_hq = Headquarters(position=(300, 300), team=Team.GDI, font=base_font)
-    nod_hq = Headquarters(
-        position=(MAP_WIDTH - 300, MAP_HEIGHT - 300), team=Team.NOD, font=base_font
+    _map_bottom_right = Coordinate(MAP_WIDTH, MAP_HEIGHT)
+    _hq_offset_from_corner = Coordinate(300, 300)
+    _gdi_hq_pos = _hq_offset_from_corner
+    _nod_hq_pos = _map_bottom_right - _hq_offset_from_corner
+
+    gdi_hq = Headquarters(position=_gdi_hq_pos, team=Team.GDI, font=base_font)
+    nod_hq = Headquarters(position=_nod_hq_pos, team=Team.NOD, font=base_font)
+    global_buildings.add(gdi_hq, nod_hq)
+    for i in range(3):
+        _infantry_spawn_offset = Coordinate(50, 0) + i * Coordinate(20, 0)
+        player_units.add(
+            Infantry(position=_gdi_hq_pos + _infantry_spawn_offset, team=Team.GDI)
+        )
+        ai_units.add(
+            Infantry(position=_nod_hq_pos + _infantry_spawn_offset, team=Team.NOD)
+        )
+
+    player_units.add(
+        Harvester(
+            position=_gdi_hq_pos + Coordinate(100, 100),
+            team=Team.GDI,
+            hq=gdi_hq,
+            font=base_font,
+        )
     )
+    ai_units.add(
+        Harvester(
+            position=_nod_hq_pos + (100, 100),
+            team=Team.NOD,
+            hq=nod_hq,
+            font=base_font,
+        )
+    )
+    global_units.add(player_units, ai_units)
+    for _ in range(40):
+        iron_fields.add(
+            IronField(
+                x=random.randint(100, MAP_WIDTH - 100),
+                y=random.randint(100, MAP_HEIGHT - 100),
+                font=base_font,
+            ),
+        )
     nod_hq.iron = 1500
     interface = ProductionInterface(
         hq=gdi_hq, all_buildings=global_buildings, font=base_font
@@ -628,27 +667,6 @@ if __name__ == "__main__":
                 )  # Dark spots
 
     ai = AI(hq=nod_hq)
-
-    player_units.add(Infantry((350, 300), Team.GDI))
-    player_units.add(Infantry((370, 300), Team.GDI))
-    player_units.add(Infantry((390, 300), Team.GDI))
-    player_units.add(Harvester((400, 400), Team.GDI, gdi_hq, font=base_font))
-
-    ai_units.add(Infantry((2050, 1200), Team.NOD))
-    ai_units.add(Infantry((2070, 1200), Team.NOD))
-    ai_units.add(Infantry((2090, 1200), Team.NOD))
-    ai_units.add(Harvester((2200, 1300), Team.NOD, nod_hq, font=base_font))
-
-    global_units.add(player_units, ai_units)
-    global_buildings.add(gdi_hq, nod_hq)
-    for _ in range(40):
-        iron_fields.add(
-            IronField(
-                x=random.randint(100, MAP_WIDTH - 100),
-                y=random.randint(100, MAP_HEIGHT - 100),
-                font=base_font,
-            ),
-        )
 
     running = True
     while running:
