@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src import draw_utils
 from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
 from src.game_objects.game_object import GameObject
 
@@ -56,16 +55,10 @@ class Infantry(GameObject):
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
-        if VIEW_DEBUG_MODE_IS_ENABLED:
-            draw_utils.debug_outline_rect(
-                surface=surface, rect=camera.rect_to_screen(self.rect)
-            )
-            draw_utils.debug_marker(
-                surface=surface, position=camera.to_screen(self.position)
-            )
+        if self.is_selected:
+            self.draw_selection_indicator(surface=surface, camera=camera)
 
-        if self.selected:
-            pg.draw.circle(
-                surface, (255, 255, 255), camera.rect_to_screen(self.rect).center, 10, 2
-            )
+        if VIEW_DEBUG_MODE_IS_ENABLED:
+            self.draw_debug_info(surface=surface, camera=camera)
+
         self.draw_health_bar(surface=surface, camera=camera)

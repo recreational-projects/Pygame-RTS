@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import MAP_HEIGHT, MAP_WIDTH
+from src import draw_utils
+from src.constants import MAP_HEIGHT, MAP_WIDTH, SELECTION_INDICATOR_COLOR
 from src.geometry import Coordinate
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class GameObject(pg.sprite.Sprite):
         self.health = 0
         self.max_health = self.health
         self.cooldown_timer = 0
-        self.selected = False
+        self.is_selected = False
         self.under_attack = False
 
     @property
@@ -112,3 +113,21 @@ class GameObject(pg.sprite.Sprite):
             (screen_rect.x, screen_rect.y - 15, self.rect.width, 8),
             1,
         )  # Border
+
+    def draw_debug_info(self, *, surface: pg.Surface, camera: Camera) -> None:
+        """Draw debug helpers to `surface`."""
+        draw_utils.debug_outline_rect(
+            surface=surface, rect=camera.rect_to_screen(self.rect)
+        )
+        draw_utils.debug_marker(
+            surface=surface, position=camera.to_screen(self.position)
+        )
+
+    def draw_selection_indicator(self, *, surface: pg.Surface, camera: Camera) -> None:
+        """Draw an outline."""
+        pg.draw.rect(
+            surface=surface,
+            color=SELECTION_INDICATOR_COLOR,
+            rect=camera.rect_to_screen(self.rect),
+            width=2,
+        )

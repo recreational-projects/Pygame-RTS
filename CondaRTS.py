@@ -700,6 +700,9 @@ if __name__ == "__main__":
                     ):
                         continue
 
+                    for b in global_buildings:
+                        b.is_selected = False
+
                     clicked_building = next(
                         (
                             b
@@ -713,6 +716,7 @@ if __name__ == "__main__":
                     )
                     if clicked_building:
                         selected_building = clicked_building
+                        selected_building.is_selected = True
                     else:
                         selected_building = None
                         selecting = True
@@ -807,7 +811,7 @@ if __name__ == "__main__":
 
                 selecting = False
                 for unit in player_units:
-                    unit.selected = False
+                    unit.is_selected = False
                 selected_units.empty()
                 world_start = camera.to_world(select_start)
                 world_end = camera.to_world(event.pos)
@@ -819,7 +823,7 @@ if __name__ == "__main__":
                 )
                 for unit in player_units:
                     if world_rect.colliderect(unit.rect):
-                        unit.selected = True
+                        unit.is_selected = True
                         selected_units.add(unit)
 
         camera.update(

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src import draw_utils
 from src.constants import GDI_COLOR, VIEW_DEBUG_MODE_IS_ENABLED
 from src.game_objects.game_object import GameObject
 from src.particle import Particle
@@ -77,13 +76,11 @@ class Building(GameObject):
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         """Draw the building, and label with first letter of class."""
         surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
+        if self.is_selected:
+            self.draw_selection_indicator(surface=surface, camera=camera)
+
         if VIEW_DEBUG_MODE_IS_ENABLED:
-            draw_utils.debug_outline_rect(
-                surface=surface, rect=camera.rect_to_screen(self.rect)
-            )
-            draw_utils.debug_marker(
-                surface=surface, position=camera.to_screen(self.position)
-            )
+            self.draw_debug_info(surface=surface, camera=camera)
 
         _label = self.font.render(
             text=self.__class__.__name__[0],
