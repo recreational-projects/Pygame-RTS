@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from dataclasses import field as dataclass_field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pygame as pg
 
 from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
-    SCREEN_HEIGHT,
-    SCREEN_WIDTH,
 )
-from src.geometry import Coordinate
+from src.geometry import Coordinate, mean_vector
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -20,59 +17,65 @@ if TYPE_CHECKING:
     from src.game_object import GameObject
 
 
-@dataclass(kw_only=True)
+@dataclass
 class Camera:
-    rect: pg.Rect = dataclass_field(init=False)
+    PAN_MARGIN: ClassVar[int] = 30
 
-    def __post_init__(self) -> None:
-        self.rect = pg.Rect(0, 0, SCREEN_WIDTH - 200, SCREEN_HEIGHT)
+    viewport: pg.Rect
+
+    @property
+    def map_offset(self) -> tuple[int, int]:
+        return -self.viewport.x, -self.viewport.y
 
     def update(
         self,
+        *,
         selected_units: Sequence[GameObject],
         mouse_pos: pg.typing.SequenceLike,
-        interface_rect: pg.Rect,
     ) -> None:
-        mouse_coord = Coordinate(mouse_pos)
-        if interface_rect.collidepoint(mouse_coord) or mouse_coord.y > SCREEN_HEIGHT:
+        mouse_pos = Coordinate(mouse_pos)
+        if not self.viewport.collidepoint(mouse_pos):
             return
+
         if selected_units:
-            avg_x = sum(unit.position.x for unit in selected_units) / len(
-                selected_units
+            units_center = mean_vector([u.position for u in selected_units])
+            x = max(
+                self.viewport.width // 2,
+                min(MAP_WIDTH - self.viewport.width // 2, round(units_center.x)),
             )
-            avg_y = sum(unit.position.y for unit in selected_units) / len(
-                selected_units
+            y = max(
+                self.viewport.height // 2,
+                min(MAP_HEIGHT - self.viewport.height // 2, round(units_center.y)),
             )
-            self.rect.center = (
-                max(
-                    self.rect.width // 2,
-                    min(MAP_WIDTH - self.rect.width // 2, int(avg_x)),
-                ),
-                max(
-                    self.rect.height // 2,
-                    min(MAP_HEIGHT - self.rect.height // 2, int(avg_y)),
-                ),
-            )
+            self.viewport.center = x, y
+
         else:
-            if mouse_coord.x < 30 and self.rect.left > 0:
-                self.rect.x -= 10
-            elif mouse_coord.x > SCREEN_WIDTH - 230 and self.rect.right < MAP_WIDTH:
-                self.rect.x += 10
-            if mouse_coord.y < 30 and self.rect.top > 0:
-                self.rect.y -= 10
-            elif mouse_coord.y > SCREEN_HEIGHT - 30 and self.rect.bottom < MAP_HEIGHT:
-                self.rect.y += 10
-        self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
+            if mouse_pos.x < Camera.PAN_MARGIN and self.viewport.left > 0:
+                self.viewport.x -= 10
+            elif (
+                mouse_pos.x > self.viewport.width - Camera.PAN_MARGIN
+                and self.viewport.right < MAP_WIDTH
+            ):
+                self.viewport.x += 10
 
-    def apply(self, rect: pg.Rect) -> pg.Rect:
-        return pg.Rect(
-            rect.x - self.rect.x, rect.y - self.rect.y, rect.width, rect.height
-        )
+            if mouse_pos.y < Camera.PAN_MARGIN and self.viewport.top > 0:
+                self.viewport.y -= 10
+            elif (
+                mouse_pos.y > self.viewport.height - Camera.PAN_MARGIN
+                and self.viewport.bottom < MAP_HEIGHT
+            ):
+                self.viewport.y += 10
 
-    def screen_to_world(self, screen_pos: pg.typing.SequenceLike) -> Coordinate:
-        screen_coord = Coordinate(screen_pos)
-        map_area_y = int(min(screen_coord.y, SCREEN_HEIGHT))
-        return Coordinate(
-            max(0, min(MAP_WIDTH, int(screen_coord.x) + self.rect.x)),
-            max(0, min(MAP_HEIGHT, map_area_y + self.rect.y)),
-        )
+        self.viewport.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
+
+    def to_screen(self, world_pos: pg.typing.SequenceLike) -> Coordinate:
+        """Translate `world_pos` to screen."""
+        return Coordinate(world_pos) + self.map_offset
+
+    def rect_to_screen(self, rect: pg.Rect) -> pg.Rect:
+        """Translate world `rect` to screen."""
+        return rect.move(self.map_offset)
+
+    def to_world(self, screen_pos: pg.typing.SequenceLike) -> Coordinate:
+        """Translate `screen_pos` to world."""
+        return Coordinate(screen_pos) - self.map_offset

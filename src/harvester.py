@@ -122,15 +122,17 @@ class Harvester(GameObject):
                 self.target = None
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(self.image, camera.apply(self.rect).topleft)
+        _blit_pos = camera.to_screen(self.rect.topleft)
+        surface.blit(source=self.image, dest=_blit_pos)
         if self.selected:
-            pg.draw.rect(surface, (255, 255, 255), camera.apply(self.rect), 2)
+            pg.draw.rect(surface, (255, 255, 255), camera.rect_to_screen(self.rect), 2)
 
         self.draw_health_bar(surface=surface, camera=camera)
         if self.iron > 0:
-            surface.blit(
-                self.font.render(
-                    text=f"Iron: {self.iron}", antialias=True, color=(255, 255, 255)
-                ),
-                (camera.apply(self.rect).x, camera.apply(self.rect).y - 35),
+            _label = self.font.render(
+                text=f"Iron: {self.iron}",
+                antialias=True,
+                color=(255, 255, 255),
             )
+            _label_pos = _blit_pos + (0, -35)
+            surface.blit(source=_label, dest=_label_pos)

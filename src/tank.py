@@ -64,7 +64,9 @@ class Tank(GameObject):
             self.image = pg.Surface((40, 40), pg.SRCALPHA)
             # Rotate base image to face target (base image faces east, so -angle aligns it correctly)
             rotated_base = pg.transform.rotate(self.base_image, -self.angle)
-            self.image.blit(rotated_base, rotated_base.get_rect(center=(20, 20)))
+            self.image.blit(
+                source=rotated_base, dest=rotated_base.get_rect(center=(20, 20))
+            )
             # Handle barrel with recoil
             barrel_length = 20 - self.recoil * 2
             barrel_image = pg.Surface((barrel_length, 4), pg.SRCALPHA)
@@ -73,17 +75,19 @@ class Tank(GameObject):
             rotated_barrel = pg.transform.rotate(
                 barrel_image, -self.angle
             )  # Barrel also faces east initially
-            self.image.blit(rotated_barrel, rotated_barrel.get_rect(center=(20, 20)))
+            self.image.blit(
+                source=rotated_barrel, dest=rotated_barrel.get_rect(center=(20, 20))
+            )
             if self.recoil > 0:
                 self.recoil -= 1
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(self.image, camera.apply(self.rect).topleft)
+        surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
         if self.selected:
             pg.draw.circle(
                 surface,
                 (255, 255, 255),
-                camera.apply(self.rect).center,
+                camera.rect_to_screen(self.rect).center,
                 self.rect.width // 2 + 2,
                 2,
             )  # Circular selection

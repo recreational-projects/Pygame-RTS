@@ -16,6 +16,7 @@ from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
     NOD_COLOR,
+    PRODUCTION_INTERFACE_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TILE_SIZE,
@@ -188,7 +189,7 @@ def draw(surface_: pg.Surface) -> None:
     Uses global state.
     """
     surface_.fill(pg.Color("black"))
-    surface_.blit(base_map, (-camera.rect.x, -camera.rect.y))
+    surface_.blit(source=base_map, dest=camera.map_offset)
     for field in iron_fields:
         if field.resources > 0 and fog_of_war.is_explored(field.position):
             field.draw(surface=surface_, camera=camera)
@@ -223,7 +224,7 @@ def draw(surface_: pg.Surface) -> None:
 class ProductionInterface:
     """Interface for player."""
 
-    WIDTH: ClassVar = 200
+    WIDTH: ClassVar = PRODUCTION_INTERFACE_WIDTH
     MARGIN_X: ClassVar = 20
     """Margin on left and right."""
     IRON_POS_Y: ClassVar = 20
@@ -274,7 +275,7 @@ class ProductionInterface:
     font: pg.Font
 
     def __post_init__(self, all_buildings: Iterable[Building]) -> None:
-        self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT))
+        self.surface = pg.Surface((ProductionInterface.WIDTH, SCREEN_HEIGHT))
 
         tab_button_base = pg.Rect(
             (self.MARGIN_X, self.TAB_BUTTONS_POS_Y),
@@ -351,17 +352,15 @@ class ProductionInterface:
 
     def _local_pos(self, screen_pos: pg.typing.IntPoint) -> tuple[int, int]:
         """Convert screen position to local position."""
-        return screen_pos[0] - SCREEN_WIDTH + self.WIDTH, screen_pos[1]
+        return screen_pos[0] - SCREEN_WIDTH + ProductionInterface.WIDTH, screen_pos[1]
 
     def _draw_iron(self, *, y_pos: int) -> None:
-        self.surface.blit(
-            self.font.render(
-                f"Iron: {self.hq.iron}",
-                color=pg.Color("white"),
-                antialias=True,
-            ),
-            (self.MARGIN_X, y_pos),
+        _label = self.font.render(
+            f"Iron: {self.hq.iron}",
+            color=pg.Color("white"),
+            antialias=True,
         )
+        self.surface.blit(source=_label, dest=(self.MARGIN_X, y_pos))
 
     def _draw_power(self, *, y_pos: int) -> None:
         color_ = pg.Color("green") if self.hq.has_enough_power else pg.Color("red")
@@ -462,7 +461,7 @@ class ProductionInterface:
             raise TypeError("No pending building")
 
         pending_building_cls_ = self.hq.pending_building
-        world_pos = snap_to_grid(camera.screen_to_world(mouse_pos))
+        world_pos = snap_to_grid(camera.to_world(mouse_pos))
         temp_surface = pg.Surface(pending_building_cls_.SIZE, pg.SRCALPHA)
         temp_surface.fill(GDI_COLOR if self.hq.team == Team.GDI else NOD_COLOR)
         temp_surface.set_alpha(100)
@@ -521,7 +520,9 @@ class ProductionInterface:
                 all_buildings=all_buildings,
             )
 
-        surface_.blit(source=self.surface, dest=(SCREEN_WIDTH - self.WIDTH, 0))
+        surface_.blit(
+            source=self.surface, dest=(SCREEN_WIDTH - ProductionInterface.WIDTH, 0)
+        )
 
     def handle_click(
         self, screen_pos: pg.typing.IntPoint, own_buildings: Iterable[Building]
@@ -589,7 +590,12 @@ if __name__ == "__main__":
     selecting = False
     select_start = None
     select_rect = None
-    camera = Camera()
+    camera = Camera(
+        pg.Rect(
+            (0, 0),
+            (SCREEN_WIDTH - PRODUCTION_INTERFACE_WIDTH, SCREEN_HEIGHT),
+        )
+    )
     base_map = pg.Surface((MAP_WIDTH, MAP_HEIGHT))
     # Improved map with grass texture
     for x in range(0, MAP_WIDTH, TILE_SIZE):
@@ -633,7 +639,7 @@ if __name__ == "__main__":
             if event.type == pg.QUIT:
                 running = False
             elif event.type == pg.MOUSEBUTTONDOWN:
-                world_pos = camera.screen_to_world(event.pos)
+                world_pos = camera.to_world(event.pos)
                 target_x, target_y = event.pos
                 if event.button == 1:
                     if gdi_hq.pending_building:
@@ -664,7 +670,9 @@ if __name__ == "__main__":
                             b
                             for b in global_buildings
                             if b.team == Team.GDI
-                            and camera.apply(b.rect).collidepoint(target_x, target_y)
+                            and camera.rect_to_screen(b.rect).collidepoint(
+                                target_x, target_y
+                            )
                         ),
                         None,
                     )
@@ -691,7 +699,9 @@ if __name__ == "__main__":
                         (
                             f
                             for f in iron_fields
-                            if camera.apply(f.rect).collidepoint(target_x, target_y)
+                            if camera.rect_to_screen(f.rect).collidepoint(
+                                target_x, target_y
+                            )
                         ),
                         None,
                     )
@@ -700,7 +710,9 @@ if __name__ == "__main__":
                             u
                             for u in global_units
                             if u.team != Team.GDI
-                            and camera.apply(u.rect).collidepoint(target_x, target_y)
+                            and camera.rect_to_screen(u.rect).collidepoint(
+                                target_x, target_y
+                            )
                         ),
                         None,
                     )
@@ -709,7 +721,9 @@ if __name__ == "__main__":
                             b
                             for b in global_buildings
                             if b.team != Team.GDI
-                            and camera.apply(b.rect).collidepoint(target_x, target_y)
+                            and camera.rect_to_screen(b.rect).collidepoint(
+                                target_x, target_y
+                            )
                         ),
                         None,
                     )
@@ -760,8 +774,8 @@ if __name__ == "__main__":
                 for unit in player_units:
                     unit.selected = False
                 selected_units.empty()
-                world_start = camera.screen_to_world(select_start)
-                world_end = camera.screen_to_world(event.pos)
+                world_start = camera.to_world(select_start)
+                world_end = camera.to_world(event.pos)
                 world_rect = pg.Rect(
                     min(world_start[0], world_end[0]),
                     min(world_start[1], world_end[1]),
@@ -774,7 +788,7 @@ if __name__ == "__main__":
                         selected_units.add(unit)
 
         camera.update(
-            selected_units.sprites(), pg.mouse.get_pos(), interface.surface.get_rect()
+            selected_units=selected_units.sprites(), mouse_pos=pg.mouse.get_pos()
         )
         for unit in global_units:
             if isinstance(unit, Harvester):

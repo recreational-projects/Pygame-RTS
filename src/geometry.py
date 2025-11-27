@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from statistics import fmean
 from typing import TYPE_CHECKING
 
 import pygame as pg
@@ -96,3 +97,8 @@ def calculate_formation_positions(
         positions.append(Coordinate(center[0] + rotated_x, center[1] + rotated_y))
 
     return positions
+
+
+def mean_vector(vecs: Iterable[pg.Vector2]) -> pg.Vector2:
+    """Return mean vector of `vecs`."""
+    return pg.Vector2(fmean(vec.x for vec in vecs), fmean(vec.y for vec in vecs))

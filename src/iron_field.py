@@ -37,10 +37,10 @@ class IronField(pg.sprite.Sprite):
         self.image.set_alpha(int(255 * self.resources / 5000))
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
-        surface.blit(self.image, camera.apply(self.rect).topleft)
-        surface.blit(
-            self.font.render(
-                text=f"{self.resources}", antialias=True, color=(255, 255, 255)
-            ),
-            (camera.apply(self.rect).x, camera.apply(self.rect).y - 20),
+        _blit_pos = camera.to_screen(self.rect.topleft)
+        surface.blit(source=self.image, dest=_blit_pos)
+        _label = self.font.render(
+            text=f"{self.resources}", antialias=True, color=(255, 255, 255)
         )
+        _label_pos = _blit_pos + (0, -20)
+        surface.blit(source=_label, dest=_label_pos)

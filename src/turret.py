@@ -93,8 +93,10 @@ class Turret(Building):
         barrel = pg.Surface((25, 6), pg.SRCALPHA)
         pg.draw.line(barrel, (80, 80, 80), (0, 3), (18, 3), 4)
         rotated_barrel = pg.transform.rotate(barrel, self.angle)
-        self.image.blit(base, (5, 5))
-        self.image.blit(rotated_barrel, rotated_barrel.get_rect(center=(25, 25)))
+        self.image.blit(source=base, dest=(5, 5))
+        self.image.blit(
+            source=rotated_barrel, dest=rotated_barrel.get_rect(center=(25, 25))
+        )
         self.image.set_alpha(
             int(255 * self.construction_progress / self.CONSTRUCTION_TIME)
         )

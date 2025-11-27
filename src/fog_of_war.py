@@ -107,4 +107,4 @@ class FogOfWar:
                         (x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE),
                     )
 
-        surface.blit(self.surface, (-camera.rect.x, -camera.rect.y))
+        surface.blit(source=self.surface, dest=camera.map_offset)
