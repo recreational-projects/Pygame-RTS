@@ -12,7 +12,6 @@ from src.ai import AI
 from src.barracks import Barracks
 from src.camera import Camera
 from src.constants import (
-    CONSOLE_HEIGHT,
     GDI_COLOR,
     MAP_HEIGHT,
     MAP_WIDTH,
@@ -23,7 +22,6 @@ from src.constants import (
     Team,
 )
 from src.fog_of_war import FogOfWar
-from src.game_console import GameConsole
 from src.geometry import (
     calculate_formation_positions,
     is_valid_building_position,
@@ -220,8 +218,6 @@ def draw(surface_: pg.Surface) -> None:
     if selecting and select_rect:
         pg.draw.rect(surface_, (255, 255, 255), select_rect, 2)
 
-    console.draw(surface=surface_)
-
 
 @dataclass(kw_only=True)
 class ProductionInterface:
@@ -278,7 +274,7 @@ class ProductionInterface:
     font: pg.Font
 
     def __post_init__(self, all_buildings: Iterable[Building]) -> None:
-        self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT - CONSOLE_HEIGHT))
+        self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT))
 
         tab_button_base = pg.Rect(
             (self.MARGIN_X, self.TAB_BUTTONS_POS_Y),
@@ -587,7 +583,6 @@ if __name__ == "__main__":
     interface = ProductionInterface(
         hq=gdi_hq, all_buildings=global_buildings, font=base_font
     )
-    console = GameConsole()
     fog_of_war = FogOfWar()
 
     selected_building = None
@@ -609,7 +604,7 @@ if __name__ == "__main__":
                     TILE_SIZE // 4,
                 )  # Dark spots
 
-    ai = AI(hq=nod_hq, console=console)
+    ai = AI(hq=nod_hq)
 
     player_units.add(Infantry((350, 300), Team.GDI))
     player_units.add(Infantry((370, 300), Team.GDI))
@@ -777,7 +772,6 @@ if __name__ == "__main__":
                     if world_rect.colliderect(unit.rect):
                         unit.selected = True
                         selected_units.add(unit)
-            console.handle_event(event)
 
         camera.update(
             selected_units.sprites(), pg.mouse.get_pos(), interface.surface.get_rect()

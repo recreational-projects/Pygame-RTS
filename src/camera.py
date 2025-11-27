@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from src.constants import (
-    CONSOLE_HEIGHT,
     MAP_HEIGHT,
     MAP_WIDTH,
     SCREEN_HEIGHT,
@@ -26,7 +25,7 @@ class Camera:
     rect: pg.Rect = dataclass_field(init=False)
 
     def __post_init__(self) -> None:
-        self.rect = pg.Rect(0, 0, SCREEN_WIDTH - 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
+        self.rect = pg.Rect(0, 0, SCREEN_WIDTH - 200, SCREEN_HEIGHT)
 
     def update(
         self,
@@ -35,10 +34,7 @@ class Camera:
         interface_rect: pg.Rect,
     ) -> None:
         mouse_coord = Coordinate(mouse_pos)
-        if (
-            interface_rect.collidepoint(mouse_coord)
-            or mouse_coord.y > SCREEN_HEIGHT - CONSOLE_HEIGHT
-        ):
+        if interface_rect.collidepoint(mouse_coord) or mouse_coord.y > SCREEN_HEIGHT:
             return
         if selected_units:
             avg_x = sum(unit.position.x for unit in selected_units) / len(
@@ -64,10 +60,7 @@ class Camera:
                 self.rect.x += 10
             if mouse_coord.y < 30 and self.rect.top > 0:
                 self.rect.y -= 10
-            elif (
-                mouse_coord.y > SCREEN_HEIGHT - CONSOLE_HEIGHT - 30
-                and self.rect.bottom < MAP_HEIGHT
-            ):
+            elif mouse_coord.y > SCREEN_HEIGHT - 30 and self.rect.bottom < MAP_HEIGHT:
                 self.rect.y += 10
         self.rect.clamp_ip(pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
@@ -78,7 +71,7 @@ class Camera:
 
     def screen_to_world(self, screen_pos: pg.typing.SequenceLike) -> Coordinate:
         screen_coord = Coordinate(screen_pos)
-        map_area_y = int(min(screen_coord.y, SCREEN_HEIGHT - CONSOLE_HEIGHT))
+        map_area_y = int(min(screen_coord.y, SCREEN_HEIGHT))
         return Coordinate(
             max(0, min(MAP_WIDTH, int(screen_coord.x) + self.rect.x)),
             max(0, min(MAP_HEIGHT, map_area_y + self.rect.y)),

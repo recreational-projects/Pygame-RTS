@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, Literal
 
+from loguru import logger
+
 from src.barracks import Barracks
 from src.constants import (
     MAP_HEIGHT,
@@ -30,7 +32,6 @@ if TYPE_CHECKING:
     import pygame as pg
 
     from src.building import Building
-    from src.game_console import GameConsole
     from src.game_object import GameObject
     from src.iron_field import IronField
 
@@ -46,7 +47,6 @@ class AI:
     """THREATENED state allowed if any enemy unit is within this distance."""
 
     hq: Headquarters
-    console: GameConsole
     timer: int = dataclass_field(init=False, default=0)
     wave_timer: int = dataclass_field(init=False, default=0)
     wave_interval: int = dataclass_field(init=False)
@@ -213,7 +213,7 @@ class AI:
     def _produce_obj(self, cls: type[GameObject]) -> None:
         self.hq.production_queue.append(cls)
         self.hq.iron -= cls.COST
-        self.console.log(
+        logger.debug(
             f"AI produced {cls.__name__}, cost: {cls.COST}, new iron: {self.hq.iron}"
         )
 
@@ -265,7 +265,7 @@ class AI:
             current_units["infantry"] + current_units["tank"] + current_units["turret"]
         )
         iron = self.hq.iron
-        self.console.log(
+        logger.debug(
             f"AI production check: Iron = {iron}, Has Barracks = {has_barracks}, Has WarFactory = {has_warfactory}"
         )
 
@@ -298,7 +298,7 @@ class AI:
             return
 
         if iron <= 0:
-            self.console.log("AI production halted: Insufficient iron")
+            logger.debug("AI production halted: Insufficient iron")
             return
 
         production_options: list[type[GameObject]] = []
