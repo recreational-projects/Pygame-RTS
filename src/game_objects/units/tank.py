@@ -5,14 +5,17 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import Team
-from src.game_object import GameObject
+from src import draw_utils
+from src.constants import VIEW_DEBUG_MODE_IS_ENABLED, Team
+from src.game_objects.game_object import GameObject
 
 if TYPE_CHECKING:
     from src.camera import Camera
 
 
 class Tank(GameObject):
+    """Armored vehicle with ranged attack."""
+
     # Override base class(es):
     ATTACK_RANGE = 200
     COST = 500
@@ -83,6 +86,14 @@ class Tank(GameObject):
 
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         surface.blit(source=self.image, dest=camera.to_screen(self.rect.topleft))
+        if VIEW_DEBUG_MODE_IS_ENABLED:
+            draw_utils.debug_outline_rect(
+                surface=surface, rect=camera.rect_to_screen(self.rect)
+            )
+            draw_utils.debug_marker(
+                surface=surface, position=camera.to_screen(self.position)
+            )
+
         if self.selected:
             pg.draw.circle(
                 surface,

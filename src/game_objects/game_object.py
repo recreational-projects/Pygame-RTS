@@ -15,6 +15,8 @@ ARRIVAL_RADIUS = 5
 
 
 class GameObject(pg.sprite.Sprite):
+    """Base class for all buildings and units."""
+
     ATTACK_RANGE = 0
     COST = 0
     IS_MOBILE = False

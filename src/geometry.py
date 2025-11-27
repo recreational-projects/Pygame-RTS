@@ -11,8 +11,8 @@ from src.constants import BUILDING_CONSTRUCTION_RANGE, TILE_SIZE
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from src.building import Building
     from src.constants import Team
+    from src.game_objects.buildings.building import Building
 
 Coordinate = pg.Vector2
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pygame as pg
 
+from src.constants import DEBUG_COLOR
+
 
 def draw_progress_bar(
     *,
@@ -27,3 +29,13 @@ def draw_progress_bar(
     pg.draw.rect(surface=surface, color=pg.Color("black"), rect=rect)
     pg.draw.rect(surface=surface, color=pg.Color("white"), rect=inner_rect, width=1)
     pg.draw.rect(surface=surface, color=bar_color, rect=bar)
+
+
+def debug_outline_rect(*, surface: pg.Surface, rect: pg.typing.RectLike) -> None:
+    """Draw outline of `rect` on `surface`. Used for visual debugging."""
+    pg.draw.rect(surface=surface, color=DEBUG_COLOR, rect=rect, width=1)
+
+
+def debug_marker(*, surface: pg.Surface, position: pg.typing.SequenceLike) -> None:
+    """Draw marker at `position` on `surface`. Used for visual debugging."""
+    pg.draw.circle(surface=surface, color=DEBUG_COLOR, center=position, radius=5)

@@ -12,9 +12,9 @@ from src.geometry import Coordinate
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from src.building import Building
     from src.camera import Camera
-    from src.game_object import GameObject
+    from src.game_objects.buildings.building import Building
+    from src.game_objects.game_object import GameObject
 
 UNIT_EXPLORATION_RADIUS = 150
 BUILDING_EXPLORATION_RADIUS = 200

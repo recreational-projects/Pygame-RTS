@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pygame as pg
 
 from src.ai import AI
-from src.barracks import Barracks
 from src.camera import Camera
 from src.constants import (
     GDI_COLOR,
@@ -22,29 +21,30 @@ from src.constants import (
     TILE_SIZE,
     Team,
 )
+from src.draw_utils import draw_progress_bar
 from src.fog_of_war import FogOfWar
+from src.game_objects.buildings.barracks import Barracks
+from src.game_objects.buildings.headquarters import Headquarters
+from src.game_objects.buildings.power_plant import PowerPlant
+from src.game_objects.buildings.turret import Turret
+from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.units.harvester import Harvester
+from src.game_objects.units.infantry import Infantry
+from src.game_objects.units.tank import Tank
 from src.geometry import (
     calculate_formation_positions,
     is_valid_building_position,
     snap_to_grid,
 )
-from src.harvester import Harvester
-from src.headquarters import Headquarters
-from src.infantry import Infantry
 from src.iron_field import IronField
 from src.particle import Particle
-from src.power_plant import PowerPlant
 from src.projectile import Projectile
-from src.shapes import draw_progress_bar
-from src.tank import Tank
-from src.turret import Turret
-from src.war_factory import WarFactory
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from src.building import Building
-    from src.game_object import GameObject
+    from src.game_objects.buildings.building import Building
+    from src.game_objects.game_object import GameObject
 
 
 def handle_collisions(all_units: Iterable[GameObject]) -> None:

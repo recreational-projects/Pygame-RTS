@@ -4,15 +4,17 @@ from typing import TYPE_CHECKING, Literal
 
 import pygame as pg
 
-from src.game_object import GameObject
-from src.infantry import Infantry
+from src import draw_utils
+from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
+from src.game_objects.game_object import GameObject
+from src.game_objects.units.infantry import Infantry
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from src.camera import Camera
     from src.constants import Team
-    from src.headquarters import Headquarters
+    from src.game_objects.buildings.headquarters import Headquarters
     from src.iron_field import IronField
 
 IRON_TRANSFER_RANGE = 30
@@ -20,6 +22,8 @@ IRON_TRANSFER_RANGE = 30
 
 
 class Harvester(GameObject):
+    """Resource collector."""
+
     # Override base class(es):
     ATTACK_RANGE = 50
     COST = 800
@@ -124,6 +128,14 @@ class Harvester(GameObject):
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         _blit_pos = camera.to_screen(self.rect.topleft)
         surface.blit(source=self.image, dest=_blit_pos)
+        if VIEW_DEBUG_MODE_IS_ENABLED:
+            draw_utils.debug_outline_rect(
+                surface=surface, rect=camera.rect_to_screen(self.rect)
+            )
+            draw_utils.debug_marker(
+                surface=surface, position=camera.to_screen(self.position)
+            )
+
         if self.selected:
             pg.draw.rect(surface, (255, 255, 255), camera.rect_to_screen(self.rect), 2)
 

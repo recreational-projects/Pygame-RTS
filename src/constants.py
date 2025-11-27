@@ -14,6 +14,9 @@ BUILDING_CONSTRUCTION_RANGE = 160
 
 GDI_COLOR = pg.Color(200, 150, 0)
 NOD_COLOR = pg.Color(200, 0, 0)
+DEBUG_COLOR = pg.Color(255, 0, 255)
+
+VIEW_DEBUG_MODE_IS_ENABLED = False
 
 
 class Team(Enum):

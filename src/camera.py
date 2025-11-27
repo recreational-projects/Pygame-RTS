@@ -14,7 +14,7 @@ from src.geometry import Coordinate, mean_vector
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from src.game_object import GameObject
+    from src.game_objects.game_object import GameObject
 
 
 @dataclass

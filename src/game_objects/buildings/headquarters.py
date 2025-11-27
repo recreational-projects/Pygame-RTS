@@ -2,36 +2,38 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from src.barracks import Barracks
-from src.building import Building
 from src.constants import (
     GDI_COLOR,
     NOD_COLOR,
     Team,
 )
+from src.game_objects.buildings.barracks import Barracks
+from src.game_objects.buildings.building import Building
+from src.game_objects.buildings.power_plant import PowerPlant
+from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.units.harvester import Harvester
+from src.game_objects.units.infantry import Infantry
+from src.game_objects.units.tank import Tank
 from src.geometry import (
     calculate_formation_positions,
     is_valid_building_position,
     snap_to_grid,
 )
-from src.harvester import Harvester
-from src.infantry import Infantry
-from src.power_plant import PowerPlant
-from src.tank import Tank
-from src.war_factory import WarFactory
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     import pygame as pg
 
-    from src.game_object import GameObject
+    from src.game_objects.game_object import GameObject
 
 BASE_POWER = 300
 BASE_PRODUCTION_TIME = 180
 
 
 class Headquarters(Building):
+    """Main base building, resource storage, production hub."""
+
     # Override base class(es):
     COST = 2000
     SIZE = 80, 80

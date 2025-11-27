@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
+from src import draw_utils
+from src.constants import VIEW_DEBUG_MODE_IS_ENABLED
 from src.geometry import Coordinate
 
 if TYPE_CHECKING:
@@ -11,6 +13,8 @@ if TYPE_CHECKING:
 
 
 class IronField(pg.sprite.Sprite):
+    """Stationary resource node for harvesters."""
+
     def __init__(
         self, *, x: float, y: float, font: pg.Font, resources: int = 5000
     ) -> None:
@@ -39,6 +43,14 @@ class IronField(pg.sprite.Sprite):
     def draw(self, *, surface: pg.Surface, camera: Camera) -> None:
         _blit_pos = camera.to_screen(self.rect.topleft)
         surface.blit(source=self.image, dest=_blit_pos)
+        if VIEW_DEBUG_MODE_IS_ENABLED:
+            draw_utils.debug_outline_rect(
+                surface=surface, rect=camera.rect_to_screen(self.rect)
+            )
+            draw_utils.debug_marker(
+                surface=surface, position=camera.to_screen(self.position)
+            )
+
         _label = self.font.render(
             text=f"{self.resources}", antialias=True, color=(255, 255, 255)
         )

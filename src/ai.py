@@ -8,31 +8,31 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from loguru import logger
 
-from src.barracks import Barracks
 from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
 )
+from src.game_objects.buildings.barracks import Barracks
+from src.game_objects.buildings.headquarters import Headquarters
+from src.game_objects.buildings.power_plant import PowerPlant
+from src.game_objects.buildings.turret import Turret
+from src.game_objects.buildings.war_factory import WarFactory
+from src.game_objects.units.harvester import Harvester
+from src.game_objects.units.infantry import Infantry
+from src.game_objects.units.tank import Tank
 from src.geometry import (
     Coordinate,
     is_valid_building_position,
     snap_to_grid,
 )
-from src.harvester import Harvester
-from src.headquarters import Headquarters
-from src.infantry import Infantry
-from src.power_plant import PowerPlant
-from src.tank import Tank
-from src.turret import Turret
-from src.war_factory import WarFactory
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     import pygame as pg
 
-    from src.building import Building
-    from src.game_object import GameObject
+    from src.game_objects.buildings.building import Building
+    from src.game_objects.game_object import GameObject
     from src.iron_field import IronField
 
 

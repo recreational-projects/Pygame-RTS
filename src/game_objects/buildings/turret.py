@@ -6,18 +6,20 @@ from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 
-from src.building import Building
 from src.constants import Team
+from src.game_objects.buildings.building import Building
 from src.particle import Particle
 from src.projectile import Projectile
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from src.game_object import GameObject
+    from src.game_objects.game_object import GameObject
 
 
 class Turret(Building):
+    """Defensive structure with auto-targeting."""
+
     # Override base class(es):
     ATTACK_RANGE = 180
     COST = 600
