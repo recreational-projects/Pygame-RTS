@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pygame as pg
 
-from src.constants import BUILDING_CONSTRUCTION_RANGE, TILE_SIZE
+from src.constants import BUILDING_CONSTRUCTION_RANGE, MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -17,10 +17,16 @@ if TYPE_CHECKING:
 Coordinate = pg.Vector2
 
 
-def _is_within_building_range(
+def _rect_is_within_map(rect: pg.typing.RectLike) -> bool:
+    """Return whether `rect` is within the map."""
+    map_rect = pg.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT)
+    return map_rect.contains(rect)
+
+
+def _is_near_friendly_building(
     *, position: pg.typing.SequenceLike, team: Team, buildings: Iterable[Building]
 ) -> bool:
-    """Return whether `position` is within construction range of team's building."""
+    """Return whether `position` is within construction range of `team`'s buildings."""
     pos = Coordinate(position)
     return any(
         building.team == team
@@ -30,16 +36,14 @@ def _is_within_building_range(
     )
 
 
-def _collides_with_building(
+def _rect_collides_with_building(
     *,
-    position: pg.typing.SequenceLike,
-    new_building_cls: type[Building],
+    rect: pg.Rect,
     buildings: Iterable[Building],
 ) -> bool:
-    """Return whether pending building at `position` collides with existing building."""
-    new_rect = pg.Rect(position, new_building_cls.SIZE)
+    """Return whether pending building at `position` collides with any building."""
     return any(
-        building.health > 0 and new_rect.colliderect(building.rect)
+        building.health > 0 and rect.colliderect(building.rect)
         for building in buildings
     )
 
@@ -51,14 +55,19 @@ def is_valid_building_position(
     team: Team,
     buildings: Iterable[Building],
 ) -> bool:
-    return _is_within_building_range(
-        position=position,
-        team=team,
-        buildings=buildings,
-    ) and not _collides_with_building(
-        position=position,
-        new_building_cls=new_building_cls,
-        buildings=buildings,
+    new_building_footprint = pg.Rect(position, new_building_cls.SIZE)
+    return all(
+        (
+            _rect_is_within_map(
+                new_building_footprint,
+            ),
+            _is_near_friendly_building(
+                position=position, team=team, buildings=buildings
+            ),
+            not _rect_collides_with_building(
+                rect=new_building_footprint, buildings=buildings
+            ),
+        )
     )
 
 
