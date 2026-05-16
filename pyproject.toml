@@ -20,10 +20,38 @@ line-length = 120  # for both linter and formatter
 [tool.ruff.lint]
 future-annotations = true
 select = [
-    "F401", # unused import
+    "ANN",
+    "D212", # multi-line-summary-first-line
+    "E", # pycodestyle
+    "F",
     "I", # isort
+    "TC", # flake8-type-checking
     "UP", # pyupgrade
+]
+ignore = [
+    "COM812", # missing-trailing-comma: conflicts with formatter
 ]
 extend-safe-fixes = [
     "TC",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"CondaRTS*.py" = [
+    "ANN",
+    "D",
+    "E",
+    "E501", # line-too-long
+    "F841",
+]
+"modules/draw_2d.py" = [
+    "ANN001", # missing-type-function-argument
+]
+"modules/camera/*.py" = [
+    "ANN001", # missing-type-function-argument
+]
+"modules/screens.py" = [
+    "ANN401", # any-type
+]
+"modules/spatial_hash.py" = [
+    "ANN001", # missing-type-function-argument
 ]

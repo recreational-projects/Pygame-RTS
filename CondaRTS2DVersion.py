@@ -7,1482 +7,44 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import InitVar, dataclass
 from dataclasses import field as dataclass_field
-from enum import Enum
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
 
-# =============================================================================
-# Group: Screen & Map Constants
-# =============================================================================
-# These constants define the dimensions and behavior of the game screen, map, and related UI elements.
-# SCREEN_WIDTH and SCREEN_HEIGHT set the overall window size.
-# CONSOLE_HEIGHT reserves space at the bottom for a console (though not fully implemented).
-# MAP_WIDTH and MAP_HEIGHT define the playable world size.
-# TILE_SIZE is used for grid snapping and procedural map generation.
-# MINI_MAP_WIDTH and MINI_MAP_HEIGHT size the minimap in the corner.
-# PAN_EDGE and PAN_SPEED control edge-scrolling camera panning.
+from modules.camera.camera_2d import Camera2d
+from modules.constants_2d import (
+    CONSOLE_HEIGHT,
+    MAP_HEIGHT,
+    MAP_WIDTH,
+    MINI_MAP_HEIGHT,
+    MINI_MAP_WIDTH,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    TILE_SIZE,
+)
+from modules.data_2d import MAPS, UNIT_CLASSES
+from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
+from modules.fog_of_war import FogOfWar2d
+from modules.game_console import GameConsole
+from modules.game_state import GameState
+from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
+from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
+from modules.spatial_hash import SpatialHash2d
+from modules.team import Team, team_to_color, team_to_name
 
-SCREEN_WIDTH = 1280
-SCREEN_HEIGHT = 720
-CONSOLE_HEIGHT = 100
-MAP_WIDTH = 100000
-MAP_HEIGHT = 80000
-TILE_SIZE = 40
-MINI_MAP_WIDTH = 200
-MINI_MAP_HEIGHT = 150
-PAN_EDGE = 30
-PAN_SPEED = 10
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
-# =============================================================================
-# Group: Team Colors & Mapping
-# =============================================================================
-# Enum for teams, mapping to distinct colors for visual identification.
-# team_to_color dictionary links teams to Pygame Color objects for rendering.
-
-
-class Team(Enum):
-    RED = 1
-    BLUE = 2
-    GREEN = 3
-    CYAN = 4
-    MAGENTA = 5
-    ORANGE = 6
-    YELLOW = 7
-    GREY = 8
-
-
-RED_COLOR = pg.Color(255, 0, 0)
-BLUE_COLOR = pg.Color(0, 0, 255)
-GREEN_COLOR = pg.Color(0, 255, 0)
-CYAN_COLOR = pg.Color(0, 255, 255)
-MAGENTA_COLOR = pg.Color(255, 0, 255)
-ORANGE_COLOR = pg.Color(255, 165, 0)
-YELLOW_COLOR = pg.Color(255, 255, 0)
-GREY_COLOR = pg.Color(128, 128, 128)
-
-team_to_color = {
-    Team.RED: RED_COLOR,
-    Team.BLUE: BLUE_COLOR,
-    Team.GREEN: GREEN_COLOR,
-    Team.CYAN: CYAN_COLOR,
-    Team.MAGENTA: MAGENTA_COLOR,
-    Team.ORANGE: ORANGE_COLOR,
-    Team.YELLOW: YELLOW_COLOR,
-    Team.GREY: GREY_COLOR,
-}
-
-team_to_name = {
-    Team.RED: "Red",
-    Team.BLUE: "Blue",
-    Team.GREEN: "Green",
-    Team.CYAN: "Cyan",
-    Team.MAGENTA: "Magenta",
-    Team.ORANGE: "Orange",
-    Team.YELLOW: "Yellow",
-    Team.GREY: "Grey",
-}
-
-# =============================================================================
-# Group: Game States
-# =============================================================================
-# Enum defining the high-level states of the game, used by the GameManager for state transitions.
-
-
-class GameState(Enum):
-    MENU = 1  # Main menu screen.
-    SKIRMISH_SETUP = 2  # Setup screen for skirmish games.
-    PLAYING = 3  # Active gameplay.
-    VICTORY = 4  # Victory screen.
-    DEFEAT = 5  # Defeat screen.
-
-
-# =============================================================================
 # Group: Game Data & Config
 # =============================================================================
-# Dictionary of maps with dimensions and base colors for procedural terrain generation.
-# UNIT_CLASSES defines stats for all unit and building types: cost, health, speed, weapons, etc.
 # PROJECTILE_LIFETIME, PARTICLES_PER_EXPLOSION, etc., are global effects constants.
-
-MAPS = {
-    "Desert": {"width": 2560, "height": 1440, "color": (139, 120, 80)},
-    "Forest": {"width": 3200, "height": 1800, "color": (34, 100, 34)},
-    "Ice": {"width": 2560, "height": 1440, "color": (180, 200, 220)},
-    "Urban": {"width": 2560, "height": 1440, "color": (100, 100, 100)},
-}
-
-UNIT_CLASSES = {
-    "Infantry": {
-        "cost": 100,
-        "hp": 125,
-        "speed": 0.5,
-        "attack_range": 40,
-        "sight_range": 120,
-        "weapons": [
-            {
-                "name": "Rifle",
-                "damage": 10,
-                "fire_rate": 0.6,
-                "projectile_speed": 10,
-                "projectile_length": 8,
-                "projectile_width": 4,
-                "cooldown": 25,
-            }
-        ],
-        "size": (16, 16),
-        "air": False,
-        "is_building": False,
-    },
-    "Tank": {
-        "cost": 700,
-        "hp": 300,
-        "speed": 0.6,
-        "attack_range": 80,
-        "sight_range": 200,
-        "weapons": [
-            {
-                "name": "Cannon",
-                "damage": 80,
-                "fire_rate": 0.3,
-                "projectile_speed": 10,
-                "projectile_length": 12,
-                "projectile_width": 6,
-                "cooldown": 50,
-            }
-        ],
-        "size": (30, 20),
-        "air": False,
-        "is_building": False,
-    },
-    "Grenadier": {
-        "cost": 300,
-        "hp": 100,
-        "speed": 0.5,
-        "attack_range": 100,
-        "sight_range": 120,
-        "weapons": [
-            {
-                "name": "Grenade",
-                "damage": 20,
-                "fire_rate": 0.75,
-                "projectile_speed": 10,
-                "projectile_length": 10,
-                "projectile_width": 5,
-                "cooldown": 20,
-            }
-        ],
-        "size": (16, 16),
-        "air": False,
-        "is_building": False,
-    },
-    "MachineGunVehicle": {
-        "cost": 600,
-        "hp": 200,
-        "speed": 0.8,
-        "attack_range": 120,
-        "sight_range": 200,
-        "weapons": [
-            {
-                "name": "MG",
-                "damage": 25,
-                "fire_rate": 0.3,
-                "projectile_speed": 10,
-                "projectile_length": 6,
-                "projectile_width": 3,
-                "cooldown": 50,
-            }
-        ],
-        "size": (35, 25),
-        "air": False,
-        "is_building": False,
-    },
-    "RocketArtillery": {
-        "cost": 800,
-        "hp": 150,
-        "speed": 0.5,
-        "attack_range": 150,
-        "sight_range": 175,
-        "weapons": [
-            {
-                "name": "Rockets",
-                "damage": 200,
-                "fire_rate": 0.1,
-                "projectile_speed": 10,
-                "projectile_length": 15,
-                "projectile_width": 8,
-                "cooldown": 150,
-            }
-        ],
-        "size": (40, 25),
-        "air": False,
-        "is_building": False,
-    },
-    "AttackHelicopter": {
-        "cost": 1200,
-        "hp": 200,
-        "speed": 0.9,
-        "attack_range": 100,
-        "sight_range": 175,
-        "weapons": [
-            {
-                "name": "Missiles",
-                "damage": 30,
-                "fire_rate": 0.375,
-                "projectile_speed": 10,
-                "projectile_length": 10,
-                "projectile_width": 4,
-                "cooldown": 40,
-            }
-        ],
-        "size": (25, 15),
-        "air": True,
-        "fly_height": 10,
-        "is_building": False,
-    },
-    "Headquarters": {
-        "cost": 1000,
-        "starting_credits": 7500,
-        "hp": 500,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "size": (40, 40),
-        "air": False,
-        "is_building": True,
-    },
-    "Barracks": {
-        "cost": 300,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "producible": ["Infantry", "Grenadier"],
-        "production_time": 60,
-        "gate_width": 16,
-        "half_door_offset": 12,
-        "door_color": (60, 60, 60),
-        "size": (32, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "WarFactory": {
-        "cost": 500,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "producible": ["Tank", "MachineGunVehicle", "RocketArtillery"],
-        "production_time": 60,
-        "gate_width": 16,
-        "half_door_offset": 12,
-        "door_color": (60, 60, 60),
-        "size": (40, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "Hangar": {
-        "cost": 600,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "producible": ["AttackHelicopter"],
-        "production_time": 90,
-        "gate_width": 8,
-        "half_door_offset": 8,
-        "door_color": (80, 80, 80),
-        "size": (36, 28),
-        "air": False,
-        "is_building": True,
-    },
-    "PowerPlant": {
-        "cost": 300,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "size": (32, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "OilDerrick": {
-        "cost": 300,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 100,
-        "income_interval": 300,
-        "size": (24, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "Refinery": {
-        "cost": 2000,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 125,
-        "income_interval": 300,
-        "size": (48, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "ShaleFracker": {
-        "cost": 800,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 165,
-        "income_interval": 300,
-        "size": (28, 28),
-        "air": False,
-        "is_building": True,
-    },
-    "BlackMarket": {
-        "cost": 1500,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 200,
-        "income_interval": 300,
-        "size": (36, 24),
-        "air": False,
-        "is_building": True,
-    },
-    "Turret": {
-        "cost": 400,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 300,
-        "sight_range": 200,
-        "weapons": [
-            {
-                "name": "TurretGun",
-                "damage": 20,
-                "fire_rate": 0.67,
-                "projectile_speed": 5,
-                "projectile_length": 10,
-                "projectile_width": 4,
-                "cooldown": 30,
-            }
-        ],
-        "size": (24, 24),
-        "air": False,
-        "is_building": True,
-    },
-}
 
 PROJECTILE_LIFETIME = 5.0
 PARTICLES_PER_EXPLOSION = 20
 PLASMA_BURN_PARTICLES = 10
 PLASMA_BURN_DURATION = 2.0
 
-# =============================================================================
-# Group: Drawing Recipes
-# =============================================================================
-# These functions generate static or dynamic images for units and buildings using Pygame drawing primitives.
-# SIMPLE_DRAW_RECIPES, COMPLEX_DRAW_CLASSES, and BUILDING_DRAW_RECIPES organize rendering logic modularly.
-# Complex units use separate body/turret/barrel surfaces for rotation and independent turret aiming.
-
-
-# Modular drawing functions for units and buildings
-def create_infantry_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    Creates a simple pixel-art style image for an Infantry unit.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn infantry image.
-    """
-    # Creates a simple pixel-art style image for an Infantry unit.
-    # Draws head, eyes, helmet, body, arms, legs, and weapon using basic shapes.
-    team_color = team_to_color[team]
-    image = pg.Surface(size, pg.SRCALPHA)
-    pg.draw.circle(image, (150, 150, 150), (8, 4), 4)  # Head
-    pg.draw.circle(image, (0, 0, 0), (7, 3), 1)  # Left eye
-    pg.draw.circle(image, (0, 0, 0), (9, 3), 1)  # Right eye
-    pg.draw.rect(image, team_color, (6, 2, 4, 2))  # Helmet top
-    pg.draw.rect(image, (100, 100, 100), (6, 8, 4, 8))  # Body
-    pg.draw.line(image, (120, 120, 120), (6, 10), (2, 12), 2)  # Left arm
-    pg.draw.line(image, (120, 120, 120), (10, 10), (14, 12), 2)  # Right arm
-    pg.draw.line(image, team_color, (14, 10), (18, 8), 2)  # Rifle barrel
-    pg.draw.rect(image, team_color, (18, 7, 3, 2))  # Rifle body
-    pg.draw.line(image, (80, 80, 80), (7, 16), (7, 20), 2)  # Left leg
-    pg.draw.line(image, (80, 80, 80), (9, 16), (9, 20), 2)  # Right leg
-    return image
-
-
-def create_grenadier_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    Creates a simple pixel-art style image for a Grenadier unit.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn grenadier image.
-    """
-    # Similar to Infantry but with grenade launcher details.
-    team_color = team_to_color[team]
-    image = pg.Surface(size, pg.SRCALPHA)
-    pg.draw.circle(image, (150, 150, 150), (8, 4), 4)  # Head
-    pg.draw.circle(image, (0, 0, 0), (7, 3), 1)  # Left eye
-    pg.draw.circle(image, (0, 0, 0), (9, 3), 1)  # Right eye
-    pg.draw.rect(image, team_color, (6, 2, 4, 2))  # Helmet top
-    pg.draw.rect(image, (100, 100, 100), (6, 8, 4, 8))  # Body
-    pg.draw.line(image, (120, 120, 120), (6, 10), (2, 12), 2)  # Left arm
-    pg.draw.line(image, (120, 120, 120), (10, 10), (14, 12), 2)  # Right arm
-    pg.draw.line(image, (200, 100, 100), (14, 10), (18, 12), 2)  # Grenade launcher barrel
-    pg.draw.circle(image, (200, 0, 0), (18, 12), 3)  # Grenade tip
-    pg.draw.circle(image, (150, 0, 0), (12, 10), 2)  # Grenade chamber
-    pg.draw.line(image, (80, 80, 80), (7, 16), (7, 20), 2)  # Left leg
-    pg.draw.line(image, (80, 80, 80), (9, 16), (9, 20), 2)  # Right leg
-    return image
-
-
-def create_tank_surfaces(team: Team):
-    """
-    Creates separate surfaces for tank body, turret, and barrel for modular rotation.
-
-    :param team: The team enum for color selection.
-    :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
-    """
-    # Creates separate surfaces for tank body, turret, and barrel for modular rotation.
-    team_color = team_to_color[team]
-    body_surf = pg.Surface((30, 20), pg.SRCALPHA)
-    pg.draw.rect(body_surf, (50, 50, 50), (0, 0, 30, 3), width=2)  # Top track
-    pg.draw.rect(body_surf, (50, 50, 50), (0, 17, 30, 3), width=2)  # Bottom track
-    pg.draw.rect(body_surf, team_color, (2, 3, 26, 14), width=2)  # Hull outline
-    pg.draw.line(body_surf, team_color, (0, 3), (30, 3), width=2)  # Hull top
-    pg.draw.circle(body_surf, (60, 60, 60), (5, 10), 1, width=1)  # Left wheel hub
-    pg.draw.circle(body_surf, (60, 60, 60), (25, 10), 1, width=1)  # Right wheel hub
-    turret_surf = pg.Surface((12, 12), pg.SRCALPHA)
-    pg.draw.circle(turret_surf, team_color, (6, 6), 6, width=2)  # Turret circle
-    barrel_surf = pg.Surface((20, 6), pg.SRCALPHA)
-    pg.draw.line(barrel_surf, team_color, (0, 3), (20, 3), width=3)  # Barrel
-    pg.draw.line(barrel_surf, (90, 90, 90), (20, 2), (20, 4), width=1)  # Muzzle brake
-    return body_surf, turret_surf, barrel_surf
-
-
-def draw_tank(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
-    """
-    Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
-    Handles selection circle and health bar.
-
-    :param self: The Tank instance.
-    :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
-    :param mouse_pos: Optional mouse position for hover effects.
-    """
-    # Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
-    # Handles selection circle and health bar.
-    if self.health <= 0:
-        return
-    screen_pos = camera.world_to_screen(self.position)
-    zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(30 * zoom), int(20 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
-    body_rect = rotated_body.get_rect(center=screen_pos)
-    surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(12 * zoom), int(12 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
-    turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
-    turret_center = Vector2(body_rect.center) + offset_rot
-    turret_rect.center = turret_center
-    surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(20 * zoom), int(6 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
-    barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
-    barrel_center = Vector2(turret_center) + barrel_offset_rot
-    barrel_rect.center = barrel_center
-    surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
-        radius = 15 * zoom + 3
-        pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
-
-
-def create_machinegunvehicle_surfaces(team: Team):
-    """
-    Creates surfaces for MachineGunVehicle: body with wheels, turret, and MG barrel.
-
-    :param team: The team enum for color selection.
-    :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
-    """
-    # Creates surfaces for MachineGunVehicle: body with wheels, turret, and MG barrel.
-    team_color = team_to_color[team]
-    body_surf = pg.Surface((35, 25), pg.SRCALPHA)
-    pg.draw.rect(body_surf, team_color, (0, 5, 35, 15), width=2)  # Hull
-    wheel_positions = [5, 15, 25]
-    for px in wheel_positions:
-        pg.draw.circle(body_surf, (50, 50, 50), (px, 5), 3, width=2)  # Top wheels
-        pg.draw.circle(body_surf, (50, 50, 50), (px, 20), 3, width=2)  # Bottom wheels
-    pg.draw.line(body_surf, team_color, (0, 5), (35, 5), width=2)  # Hull top
-    for px in wheel_positions:
-        pg.draw.circle(body_surf, (40, 40, 40), (px, 5), 1, width=1)  # Wheel hubs top
-        pg.draw.circle(body_surf, (40, 40, 40), (px, 20), 1, width=1)  # Wheel hubs bottom
-    turret_surf = pg.Surface((8, 8), pg.SRCALPHA)
-    pg.draw.rect(turret_surf, team_color, (0, 0, 8, 8), width=2)  # Turret
-    barrel_surf = pg.Surface((25, 2), pg.SRCALPHA)
-    pg.draw.line(barrel_surf, team_color, (0, 1), (25, 1), width=2)  # MG barrel
-    return body_surf, turret_surf, barrel_surf
-
-
-def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
-    """
-    Custom draw for MachineGunVehicle, similar to Tank.
-
-    :param self: The MachineGunVehicle instance.
-    :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
-    :param mouse_pos: Optional mouse position for hover effects.
-    """
-    # Custom draw for MachineGunVehicle, similar to Tank.
-    if self.health <= 0:
-        return
-    screen_pos = camera.world_to_screen(self.position)
-    zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(35 * zoom), int(25 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
-    body_rect = rotated_body.get_rect(center=screen_pos)
-    surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(8 * zoom), int(8 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
-    turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
-    turret_center = Vector2(body_rect.center) + offset_rot
-    turret_rect.center = turret_center
-    surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(25 * zoom), int(2 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
-    barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
-    barrel_center = Vector2(turret_center) + barrel_offset_rot
-    barrel_rect.center = barrel_center
-    surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
-        radius = 17.5 * zoom + 3
-        pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
-
-
-def create_rocketartillery_surfaces(team: Team):
-    """
-    Surfaces for RocketArtillery: body with tracks, rectangular turret, triple rocket barrels.
-
-    :param team: The team enum for color selection.
-    :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
-    """
-    # Surfaces for RocketArtillery: body with tracks, rectangular turret, triple rocket barrels.
-    team_color = team_to_color[team]
-    body_surf = pg.Surface((40, 25), pg.SRCALPHA)
-    pg.draw.rect(body_surf, team_color, (0, 5, 40, 15), width=2)  # Hull
-    pg.draw.rect(body_surf, (50, 50, 50), (0, 0, 40, 5), width=2)  # Top track
-    pg.draw.rect(body_surf, (50, 50, 50), (0, 20, 40, 5), width=2)  # Bottom track
-    pg.draw.line(body_surf, team_color, (0, 5), (40, 5), width=2)  # Hull top
-    pg.draw.circle(body_surf, (40, 40, 40), (8, 12.5), 3, width=2)  # Left wheel
-    pg.draw.circle(body_surf, (40, 40, 40), (32, 12.5), 3, width=2)  # Right wheel
-    turret_surf = pg.Surface((12, 12), pg.SRCALPHA)
-    pg.draw.rect(turret_surf, team_color, (0, 0, 12, 12), width=2)  # Turret
-    barrel_surf = pg.Surface((30, 8), pg.SRCALPHA)
-    for i in range(3):
-        pg.draw.line(barrel_surf, team_color, (i * 10, 4), (i * 10 + 20, 4), width=2)  # Three rocket tubes
-    return body_surf, turret_surf, barrel_surf
-
-
-def draw_rocketartillery(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
-    """
-    Custom draw for RocketArtillery, analogous to previous vehicle draws.
-
-    :param self: The RocketArtillery instance.
-    :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
-    :param mouse_pos: Optional mouse position for hover effects.
-    """
-    # Custom draw for RocketArtillery, analogous to previous vehicle draws.
-    if self.health <= 0:
-        return
-    screen_pos = camera.world_to_screen(self.position)
-    zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(40 * zoom), int(25 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
-    body_rect = rotated_body.get_rect(center=screen_pos)
-    surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(12 * zoom), int(12 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
-    turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
-    turret_center = Vector2(body_rect.center) + offset_rot
-    turret_rect.center = turret_center
-    surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(30 * zoom), int(8 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
-    barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
-    barrel_center = Vector2(turret_center) + barrel_offset_rot
-    barrel_rect.center = barrel_center
-    surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
-        radius = 20 * zoom + 3
-        pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
-
-
-def create_attackhelicopter_surfaces(team: Team):
-    """
-    Surfaces for AttackHelicopter: fuselage, cockpit, tail rotor, skids, turret, and missile pod.
-
-    :param team: The team enum for color selection.
-    :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
-    """
-    # Surfaces for AttackHelicopter: fuselage, cockpit, tail rotor, skids, turret, and missile pod.
-    team_color = team_to_color[team]
-    body_surf = pg.Surface((25, 15), pg.SRCALPHA)
-    pg.draw.ellipse(body_surf, team_color, (0, 2, 25, 11), width=2)  # Fuselage outline
-    pg.draw.ellipse(body_surf, (80, 80, 80), (2, 4, 21, 7), width=2)  # Cockpit
-    pg.draw.ellipse(body_surf, (150, 200, 255), (18, 3, 6, 5), width=2)  # Canopy
-    pg.draw.line(body_surf, (90, 90, 90), (0, 7), (-5, 7), width=2)  # Tail boom
-    pg.draw.circle(body_surf, team_color, (-5, 7), 2, width=2)  # Tail rotor
-    pg.draw.circle(body_surf, (60, 60, 60), (12, 7), 3, width=2)  # Main rotor hub
-    pg.draw.line(body_surf, team_color, (0, 0), (25, 0), width=2)  # Rotor spine
-    pg.draw.line(body_surf, team_color, (5, 12), (9, 12), width=2)  # Left skid
-    pg.draw.line(body_surf, team_color, (16, 12), (20, 12), width=2)  # Right skid
-    turret_surf = pg.Surface((8, 6), pg.SRCALPHA)
-    pg.draw.rect(turret_surf, team_color, (0, 0, 8, 6), width=2)  # Turret
-    barrel_surf = pg.Surface((12, 2), pg.SRCALPHA)
-    pg.draw.line(barrel_surf, team_color, (0, 1), (12, 1), width=2)  # Missile pod
-    return body_surf, turret_surf, barrel_surf
-
-
-def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
-    """
-    Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
-
-    :param self: The AttackHelicopter instance.
-    :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
-    :param mouse_pos: Optional mouse position for hover effects.
-    """
-    # Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
-    if self.health <= 0:
-        return
-    fly_screen_pos = camera.world_to_screen((self.position.x, self.position.y - self.fly_height))
-    zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(25 * zoom), int(15 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
-    body_rect = rotated_body.get_rect(center=fly_screen_pos)
-    surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(8 * zoom), int(6 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
-    turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
-    turret_center = Vector2(body_rect.center) + offset_rot
-    turret_rect.center = turret_center
-    surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(12 * zoom), int(2 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
-    barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
-    barrel_center = Vector2(turret_center) + barrel_offset_rot
-    barrel_rect.center = barrel_center
-    surface.blit(rotated_barrel, barrel_rect.topleft)
-    rotor_size = int(20 * zoom)
-    pg.draw.circle(
-        surface, self.team_color, (int(fly_screen_pos[0]), int(fly_screen_pos[1])), rotor_size // 2, int(2 * zoom)
-    )  # Rotor blades
-    if self.selected:
-        radius = 12.5 * zoom + 3
-        pg.draw.circle(
-            surface, (255, 255, 0), (int(fly_screen_pos[0]), int(fly_screen_pos[1])), int(radius), int(2 * zoom)
-        )
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
-
-
-def create_headquarters_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    Static building image for Headquarters: multi-story with windows, antenna, flag.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn headquarters image.
-    """
-    # Static building image for Headquarters: multi-story with windows, antenna, flag.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((80, 80, 80))  # Base gray
-    pg.draw.rect(
-        image,
-        (100, 100, 100),
-        (int(5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(35 * scale_factor)),
-    )  # Main structure
-    pg.draw.rect(
-        image,
-        team_color,
-        (int(5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(10 * scale_factor)),
-    )  # Roof
-    for i in range(3):
-        win_x = int(7.5 * scale_factor + i * 7.5 * scale_factor)
-        win_y = int(15 * scale_factor + (i % 2) * 7.5 * scale_factor)
-        pg.draw.rect(
-            image, (100, 150, 255), (win_x, win_y, int(4 * scale_factor), int(3 * scale_factor))
-        )  # Left windows
-        pg.draw.rect(
-            image,
-            (100, 150, 255),
-            (
-                int(38.5 * scale_factor - (i % 2) * 4 * scale_factor),
-                win_y,
-                int(4 * scale_factor),
-                int(3 * scale_factor),
-            ),
-        )  # Right windows
-    pg.draw.rect(
-        image,
-        (50, 50, 50),
-        (int(20 * scale_factor), int(40 * scale_factor), int(10 * scale_factor), int(10 * scale_factor)),
-    )  # Door
-    pg.draw.line(
-        image,
-        (30, 30, 30),
-        (int(20 * scale_factor), int(40 * scale_factor)),
-        (int(30 * scale_factor), int(50 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Antenna base
-    pg.draw.line(
-        image,
-        team_color,
-        (int(25 * scale_factor), int(5 * scale_factor)),
-        (int(25 * scale_factor), 0),
-        int(1 * scale_factor),
-    )  # Flagpole
-    pg.draw.circle(
-        image, team_color, (int(25 * scale_factor), int(25 * scale_factor)), int(5 * scale_factor)
-    )  # Central emblem
-    pg.draw.arc(
-        image,
-        (40, 40, 40),
-        (int(20 * scale_factor), int(20 * scale_factor), int(10 * scale_factor), int(10 * scale_factor)),
-        0,
-        math.pi,
-        int(1 * scale_factor),
-    )  # Arc detail
-    pg.draw.rect(
-        image,
-        (60, 60, 60),
-        (int(10 * scale_factor), int(42.5 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Left door panel
-    pg.draw.rect(
-        image,
-        (60, 60, 60),
-        (int(35 * scale_factor), int(42.5 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Right door panel
-    return image
-
-
-def create_barracks_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    Barracks: sloped roof, windows, door with gate details.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn barracks image.
-    """
-    # Barracks: sloped roof, windows, door with gate details.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((100, 100, 100))  # Base
-    pg.draw.rect(
-        image,
-        (120, 120, 120),
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(35 * scale_factor), int(30 * scale_factor)),
-    )  # Walls
-    pg.draw.polygon(
-        image,
-        (90, 90, 90),
-        [
-            (0, int(2.5 * scale_factor)),
-            (int(40 * scale_factor), int(2.5 * scale_factor)),
-            (int(30 * scale_factor), 0),
-            (int(10 * scale_factor), 0),
-        ],
-    )  # Roof
-    for i in range(2):
-        win_y = int(10 * scale_factor + i * 6 * scale_factor)
-        pg.draw.rect(
-            image, (100, 150, 255), (int(7.5 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
-        )  # Left windows
-        pg.draw.rect(
-            image, (100, 150, 255), (int(28.5 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
-        )  # Right windows
-    pg.draw.rect(
-        image,
-        (60, 60, 60),
-        (int(15 * scale_factor), int(32.5 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
-    )  # Door
-    pg.draw.line(
-        image,
-        (40, 40, 40),
-        (int(15 * scale_factor), int(32.5 * scale_factor)),
-        (int(25 * scale_factor), int(40 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Left gate arm
-    pg.draw.line(
-        image,
-        (40, 40, 40),
-        (int(25 * scale_factor), int(32.5 * scale_factor)),
-        (int(35 * scale_factor), int(40 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Right gate arm
-    pg.draw.rect(
-        image,
-        (70, 70, 70),
-        (int(35 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor), int(5 * scale_factor)),
-    )  # Chimney
-    pg.draw.rect(
-        image,
-        (50, 50, 50),
-        (int(36 * scale_factor), int(2.5 * scale_factor), int(0.5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Chimney smoke
-    pg.draw.line(
-        image, team_color, (int(2.5 * scale_factor), int(2.5 * scale_factor)), (0, 0), int(1.5 * scale_factor)
-    )  # Team accent
-    return image
-
-
-def create_warfactory_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    WarFactory: industrial building with smokestack, windows, conveyor details.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn war factory image.
-    """
-    # WarFactory: industrial building with smokestack, windows, conveyor details.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((150, 150, 150))  # Base
-    pg.draw.rect(
-        image,
-        (130, 130, 130),
-        (int(5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(25 * scale_factor)),
-    )  # Main walls
-    pg.draw.rect(image, (140, 140, 140), (0, 0, int(50 * scale_factor), int(40 * scale_factor)))  # Foundation
-    pg.draw.rect(
-        image, (110, 110, 110), (int(42.5 * scale_factor), 0, int(7.5 * scale_factor), int(15 * scale_factor))
-    )  # Smokestack base
-    pg.draw.rect(
-        image,
-        (200, 200, 200),
-        (int(43.5 * scale_factor), int(1 * scale_factor), int(5.5 * scale_factor), int(13 * scale_factor)),
-    )  # Smokestack
-    pg.draw.circle(
-        image, (100, 150, 255), (int(46 * scale_factor), int(9 * scale_factor)), int(1.5 * scale_factor)
-    )  # Stack light
-    for y in [10, 20]:
-        pg.draw.rect(
-            image,
-            (100, 150, 255),
-            (int(10 * scale_factor), int(y * scale_factor), int(6 * scale_factor), int(4 * scale_factor)),
-        )  # Left windows
-        pg.draw.rect(
-            image,
-            (100, 150, 255),
-            (int(34 * scale_factor), int(y * scale_factor), int(6 * scale_factor), int(4 * scale_factor)),
-        )  # Right windows
-    pg.draw.rect(
-        image,
-        (70, 70, 70),
-        (int(20 * scale_factor), int(30 * scale_factor), int(10 * scale_factor), int(10 * scale_factor)),
-    )  # Door
-    pg.draw.line(
-        image,
-        (50, 50, 50),
-        (int(20 * scale_factor), int(30 * scale_factor)),
-        (int(30 * scale_factor), int(40 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Left conveyor
-    pg.draw.line(
-        image,
-        (50, 50, 50),
-        (int(30 * scale_factor), int(30 * scale_factor)),
-        (int(40 * scale_factor), int(40 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Right conveyor
-    pg.draw.line(
-        image,
-        (90, 90, 90),
-        (int(5 * scale_factor), int(35 * scale_factor)),
-        (int(45 * scale_factor), int(35 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Conveyor belt
-    pg.draw.rect(
-        image,
-        team_color,
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Team logo
-    return image
-
-
-def create_hangar_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    Hangar: arched roof, control tower, doors for aircraft.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn hangar image.
-    """
-    # Hangar: arched roof, control tower, doors for aircraft.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((120, 120, 120))  # Base
-    pg.draw.rect(
-        image,
-        (140, 140, 140),
-        (int(2.5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(25 * scale_factor)),
-    )  # Walls
-    pg.draw.polygon(
-        image,
-        (100, 100, 100),
-        [
-            (0, int(5 * scale_factor)),
-            (int(45 * scale_factor), int(5 * scale_factor)),
-            (int(35 * scale_factor), 0),
-            (int(10 * scale_factor), 0),
-        ],
-    )  # Roof
-    pg.draw.rect(
-        image,
-        (80, 80, 80),
-        (int(20 * scale_factor), int(30 * scale_factor), int(5 * scale_factor), int(5 * scale_factor)),
-    )  # Door
-    pg.draw.line(
-        image,
-        (60, 60, 60),
-        (int(20 * scale_factor), int(30 * scale_factor)),
-        (int(25 * scale_factor), int(35 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Left door arm
-    pg.draw.line(
-        image,
-        (60, 60, 60),
-        (int(25 * scale_factor), int(30 * scale_factor)),
-        (int(30 * scale_factor), int(35 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Right door arm
-    pg.draw.rect(
-        image,
-        (110, 110, 110),
-        (int(40 * scale_factor), int(2.5 * scale_factor), int(5 * scale_factor), int(12.5 * scale_factor)),
-    )  # Tower
-    pg.draw.circle(
-        image, (100, 150, 255), (int(42.5 * scale_factor), int(7.5 * scale_factor)), int(1 * scale_factor)
-    )  # Tower light
-    pg.draw.rect(
-        image,
-        team_color,
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(40 * scale_factor), int(1.5 * scale_factor)),
-    )  # Team stripe
-    return image
-
-
-def create_powerplant_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    PowerPlant: cooling towers, windows, exhaust pipes.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn power plant image.
-    """
-    # PowerPlant: cooling towers, windows, exhaust pipes.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((200, 180, 100))  # Base yellow
-    pg.draw.rect(
-        image,
-        (220, 200, 120),
-        (int(5 * scale_factor), int(5 * scale_factor), int(30 * scale_factor), int(25 * scale_factor)),
-    )  # Main building
-    pg.draw.rect(
-        image,
-        (150, 150, 150),
-        (int(32.5 * scale_factor), int(2.5 * scale_factor), int(5 * scale_factor), int(12.5 * scale_factor)),
-    )  # Left tower
-    pg.draw.rect(
-        image,
-        (150, 150, 150),
-        (int(32.5 * scale_factor), int(20 * scale_factor), int(5 * scale_factor), int(12.5 * scale_factor)),
-    )  # Right tower
-    pg.draw.rect(
-        image,
-        (100, 100, 100),
-        (int(33.5 * scale_factor), int(3.5 * scale_factor), int(3 * scale_factor), int(11.5 * scale_factor)),
-    )  # Left tower vent
-    pg.draw.rect(
-        image,
-        (100, 100, 100),
-        (int(33.5 * scale_factor), int(21 * scale_factor), int(3 * scale_factor), int(11.5 * scale_factor)),
-    )  # Right tower vent
-    pg.draw.rect(
-        image, (120, 120, 120), (int(34 * scale_factor), 0, int(2 * scale_factor), int(2.5 * scale_factor))
-    )  # Left exhaust
-    pg.draw.rect(
-        image,
-        (120, 120, 120),
-        (int(34 * scale_factor), int(17.5 * scale_factor), int(2 * scale_factor), int(2.5 * scale_factor)),
-    )  # Right exhaust
-    for i in range(2):
-        win_y = int(10 * scale_factor + i * 5 * scale_factor)
-        pg.draw.rect(
-            image, (255, 255, 150), (int(10 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
-        )  # Left windows
-        pg.draw.rect(
-            image, (255, 255, 150), (int(26 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
-        )  # Right windows
-    pg.draw.rect(
-        image,
-        (120, 120, 120),
-        (int(17.5 * scale_factor), int(30 * scale_factor), int(5 * scale_factor), int(10 * scale_factor)),
-    )  # Door
-    pg.draw.line(
-        image,
-        (140, 140, 140),
-        (int(35 * scale_factor), int(15 * scale_factor)),
-        (int(40 * scale_factor), int(15 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Left pipe
-    pg.draw.line(
-        image,
-        (140, 140, 140),
-        (int(35 * scale_factor), int(25 * scale_factor)),
-        (int(40 * scale_factor), int(25 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Right pipe
-    pg.draw.rect(image, team_color, (0, 0, int(40 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
-    return image
-
-
-def create_oilderrick_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    OilDerrick: derrick structure, platform, pump jack.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn oil derrick image.
-    """
-    # OilDerrick: derrick structure, platform, pump jack.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((139, 120, 80))  # Desert base
-    pg.draw.rect(
-        image,
-        (100, 80, 60),
-        (int(10 * scale_factor), int(10 * scale_factor), int(10 * scale_factor), int(25 * scale_factor)),
-    )  # Platform
-    pg.draw.line(
-        image,
-        (80, 80, 80),
-        (int(15 * scale_factor), int(12.5 * scale_factor)),
-        (int(22.5 * scale_factor), int(7.5 * scale_factor)),
-        int(2 * scale_factor),
-    )  # Derrick leg left
-    pg.draw.line(
-        image,
-        (60, 60, 60),
-        (int(22.5 * scale_factor), int(7.5 * scale_factor)),
-        (int(22.5 * scale_factor), int(15 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Derrick beam
-    pg.draw.circle(
-        image, (60, 60, 60), (int(22.5 * scale_factor), int(7.5 * scale_factor)), int(2.5 * scale_factor)
-    )  # Derrick top
-    pg.draw.rect(
-        image,
-        (120, 100, 80),
-        (int(5 * scale_factor), int(35 * scale_factor), int(20 * scale_factor), int(5 * scale_factor)),
-    )  # Pump base
-    pg.draw.rect(
-        image,
-        team_color,
-        (int(12.5 * scale_factor), int(37.5 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Pump head
-    pg.draw.line(
-        image,
-        (90, 70, 50),
-        (int(5 * scale_factor), int(35 * scale_factor)),
-        (int(5 * scale_factor), int(10 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Left support
-    pg.draw.line(
-        image,
-        (90, 70, 50),
-        (int(25 * scale_factor), int(35 * scale_factor)),
-        (int(25 * scale_factor), int(10 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Right support
-    pg.draw.rect(
-        image,
-        (70, 50, 30),
-        (int(20 * scale_factor), int(5 * scale_factor), int(5 * scale_factor), int(5 * scale_factor)),
-    )  # Engine
-    return image
-
-
-def create_refinery_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    Refinery: tanks, pipes, distillation tower.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn refinery image.
-    """
-    # Refinery: tanks, pipes, distillation tower.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((100, 50, 0))  # Brown base
-    pg.draw.ellipse(
-        image,
-        (120, 80, 40),
-        (int(5 * scale_factor), int(5 * scale_factor), int(25 * scale_factor), int(30 * scale_factor)),
-    )  # Left tank
-    pg.draw.ellipse(
-        image,
-        (120, 80, 40),
-        (int(30 * scale_factor), int(5 * scale_factor), int(25 * scale_factor), int(30 * scale_factor)),
-    )  # Right tank
-    pg.draw.circle(
-        image, (140, 100, 60), (int(17.5 * scale_factor), int(20 * scale_factor)), int(2.5 * scale_factor)
-    )  # Left valve
-    pg.draw.circle(
-        image, (140, 100, 60), (int(42.5 * scale_factor), int(20 * scale_factor)), int(2.5 * scale_factor)
-    )  # Right valve
-    pg.draw.rect(
-        image,
-        (80, 80, 80),
-        (int(27.5 * scale_factor), int(17.5 * scale_factor), int(5 * scale_factor), int(5 * scale_factor)),
-    )  # Pump
-    pg.draw.rect(
-        image,
-        (60, 60, 60),
-        (int(50 * scale_factor), int(10 * scale_factor), int(10 * scale_factor), int(20 * scale_factor)),
-    )  # Tower base
-    pg.draw.rect(
-        image,
-        (80, 80, 80),
-        (int(51 * scale_factor), int(11 * scale_factor), int(8 * scale_factor), int(18 * scale_factor)),
-    )  # Tower
-    pg.draw.line(
-        image,
-        (50, 50, 50),
-        (int(30 * scale_factor), int(20 * scale_factor)),
-        (int(50 * scale_factor), int(20 * scale_factor)),
-        int(2 * scale_factor),
-    )  # Top pipe
-    pg.draw.line(
-        image,
-        (50, 50, 50),
-        (int(30 * scale_factor), int(25 * scale_factor)),
-        (int(50 * scale_factor), int(25 * scale_factor)),
-        int(2 * scale_factor),
-    )  # Bottom pipe
-    pg.draw.rect(image, team_color, (0, 0, int(60 * scale_factor), int(2.5 * scale_factor)))  # Team stripe
-    return image
-
-
-def create_shalefracker_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    ShaleFracker: drilling rig with piston and wellhead.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn shale fracker image.
-    """
-    # ShaleFracker: drilling rig with piston and wellhead.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((80, 60, 40))  # Earth base
-    pg.draw.rect(
-        image,
-        (100, 80, 60),
-        (int(5 * scale_factor), int(5 * scale_factor), int(25 * scale_factor), int(25 * scale_factor)),
-    )  # Rig base
-    pg.draw.rect(
-        image,
-        (120, 100, 80),
-        (int(10 * scale_factor), int(30 * scale_factor), int(15 * scale_factor), int(5 * scale_factor)),
-    )  # Platform
-    pg.draw.line(
-        image,
-        (60, 40, 20),
-        (int(17.5 * scale_factor), int(5 * scale_factor)),
-        (int(17.5 * scale_factor), int(30 * scale_factor)),
-        int(4 * scale_factor),
-    )  # Drill pipe
-    pg.draw.polygon(
-        image,
-        (40, 20, 0),
-        [
-            (int(16.5 * scale_factor), int(32.5 * scale_factor)),
-            (int(17.5 * scale_factor), int(35 * scale_factor)),
-            (int(18.5 * scale_factor), int(32.5 * scale_factor)),
-        ],
-    )  # Drill bit
-    pg.draw.line(
-        image,
-        (90, 70, 50),
-        (int(5 * scale_factor), int(30 * scale_factor)),
-        (int(5 * scale_factor), int(5 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Left leg
-    pg.draw.line(
-        image,
-        (90, 70, 50),
-        (int(30 * scale_factor), int(30 * scale_factor)),
-        (int(30 * scale_factor), int(5 * scale_factor)),
-        int(1.5 * scale_factor),
-    )  # Right leg
-    pg.draw.rect(
-        image,
-        team_color,
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Team logo
-    return image
-
-
-def create_blackmarket_image(size: tuple, team: Team) -> pg.Surface:
-    """
-    BlackMarket: tent-like structure with stalls and signage.
-
-    :param size: Tuple of (width, height) for the surface.
-    :param team: The team enum for color selection.
-    :return: A Pygame Surface with the drawn black market image.
-    """
-    # BlackMarket: tent-like structure with stalls and signage.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
-    image = pg.Surface(scaled_size)
-    image.fill((40, 40, 80))  # Blue base
-    pg.draw.polygon(
-        image,
-        (60, 60, 100),
-        [
-            (int(5 * scale_factor), int(10 * scale_factor)),
-            (int(17.5 * scale_factor), int(2.5 * scale_factor)),
-            (int(30 * scale_factor), int(10 * scale_factor)),
-        ],
-    )  # Left tent
-    pg.draw.line(
-        image,
-        (50, 50, 90),
-        (int(5 * scale_factor), int(10 * scale_factor)),
-        (int(30 * scale_factor), int(10 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Tent base
-    pg.draw.polygon(
-        image,
-        (60, 60, 100),
-        [
-            (int(5 * scale_factor), int(20 * scale_factor)),
-            (int(17.5 * scale_factor), int(12.5 * scale_factor)),
-            (int(30 * scale_factor), int(20 * scale_factor)),
-        ],
-    )  # Right tent
-    pg.draw.line(
-        image,
-        (50, 50, 90),
-        (int(5 * scale_factor), int(20 * scale_factor)),
-        (int(30 * scale_factor), int(20 * scale_factor)),
-        int(1 * scale_factor),
-    )  # Tent base
-    pg.draw.rect(
-        image,
-        (80, 60, 40),
-        (int(32.5 * scale_factor), int(5 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
-    )  # Stall left
-    pg.draw.rect(
-        image,
-        (80, 60, 40),
-        (int(32.5 * scale_factor), int(15 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
-    )  # Stall right
-    pg.draw.line(
-        image,
-        (70, 50, 30),
-        (int(32.5 * scale_factor), int(7.5 * scale_factor)),
-        (int(42.5 * scale_factor), int(7.5 * scale_factor)),
-        int(0.5 * scale_factor),
-    )  # Stall shelf left
-    pg.draw.line(
-        image,
-        (70, 50, 30),
-        (int(32.5 * scale_factor), int(17.5 * scale_factor)),
-        (int(42.5 * scale_factor), int(17.5 * scale_factor)),
-        int(0.5 * scale_factor),
-    )  # Stall shelf right
-    pg.draw.rect(
-        image,
-        (70, 70, 70),
-        (int(10 * scale_factor), int(22.5 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
-    )  # Counter
-    pg.draw.rect(image, team_color, (0, 0, int(45 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
-    return image
-
-
-def create_turret_surfaces(team: Team):
-    """
-    Turret: base platform, rotating turret, gun barrel.
-
-    :param team: The team enum for color selection.
-    :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
-    """
-    # Turret: base platform, rotating turret, gun barrel.
-    team_color = team_to_color[team]
-    scale_factor = 0.8
-    body_surf = pg.Surface((int(30 * scale_factor), int(30 * scale_factor)), pg.SRCALPHA)
-    pg.draw.rect(
-        body_surf,
-        (100, 100, 100),
-        (int(7.5 * scale_factor), int(17.5 * scale_factor), int(15 * scale_factor), int(12.5 * scale_factor)),
-    )  # Base
-    pg.draw.rect(
-        body_surf,
-        (80, 80, 80),
-        (int(8.5 * scale_factor), int(18.5 * scale_factor), int(13 * scale_factor), int(10.5 * scale_factor)),
-    )  # Pedestal
-    pg.draw.circle(
-        body_surf, (60, 60, 60), (int(10 * scale_factor), int(27.5 * scale_factor)), int(1 * scale_factor)
-    )  # Left foot
-    pg.draw.circle(
-        body_surf, (60, 60, 60), (int(20 * scale_factor), int(27.5 * scale_factor)), int(1 * scale_factor)
-    )  # Right foot
-    pg.draw.rect(
-        body_surf,
-        (120, 120, 120),
-        (int(12.5 * scale_factor), int(25 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
-    )  # Foot detail
-    turret_surf = pg.Surface((int(10 * scale_factor), int(10 * scale_factor)), pg.SRCALPHA)
-    pg.draw.circle(
-        turret_surf, team_color, (int(5 * scale_factor), int(5 * scale_factor)), int(5 * scale_factor)
-    )  # Turret outer
-    pg.draw.circle(
-        turret_surf, (120, 120, 120), (int(5 * scale_factor), int(5 * scale_factor)), int(4 * scale_factor)
-    )  # Inner ring
-    pg.draw.circle(
-        turret_surf, (100, 150, 255), (int(5 * scale_factor), int(6 * scale_factor)), int(1 * scale_factor)
-    )  # Sight
-    barrel_surf = pg.Surface((int(10 * scale_factor), int(2.5 * scale_factor)), pg.SRCALPHA)
-    pg.draw.rect(barrel_surf, team_color, (0, 0, int(10 * scale_factor), int(2.5 * scale_factor)))  # Barrel
-    pg.draw.rect(
-        barrel_surf,
-        (90, 90, 90),
-        (int(9 * scale_factor), int(1 * scale_factor), int(1 * scale_factor), int(0.5 * scale_factor)),
-    )  # Muzzle
-    return body_surf, turret_surf, barrel_surf
-
-
-def draw_turret(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
-    """
-    Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
-
-    :param self: The Turret instance.
-    :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
-    :param mouse_pos: Optional mouse position for hover effects.
-    """
-    # Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
-    if self.health <= 0:
-        return
-    screen_pos = camera.world_to_screen(self.position)
-    zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(30 * zoom * 0.8), int(30 * zoom * 0.8)))
-    body_rect = body_scaled.get_rect(center=screen_pos)
-    surface.blit(body_scaled, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(10 * zoom * 0.8), int(10 * zoom * 0.8)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
-    turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
-    turret_center = Vector2(body_rect.center) + offset_rot
-    turret_rect.center = turret_center
-    surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(10 * zoom * 0.8), int(2.5 * zoom * 0.8)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
-    barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
-    barrel_center = Vector2(turret_center) + barrel_offset_rot
-    barrel_rect.center = barrel_center
-    surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
-        screen_rect = camera.get_screen_rect(self.rect)
-        pg.draw.rect(surface, (255, 255, 0), screen_rect, int(3 * zoom))
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
-
-
-# Drawing recipe dictionary for simple rotated units
-SIMPLE_DRAW_RECIPES = {
-    "Infantry": create_infantry_image,
-    "Grenadier": create_grenadier_image,
-}
-
-# Complex draw mappings
-COMPLEX_DRAW_CLASSES = {
-    "Tank": (create_tank_surfaces, draw_tank),
-    "MachineGunVehicle": (create_machinegunvehicle_surfaces, draw_machinegunvehicle),
-    "RocketArtillery": (create_rocketartillery_surfaces, draw_rocketartillery),
-    "AttackHelicopter": (create_attackhelicopter_surfaces, draw_attackhelicopter),
-    "Turret": (create_turret_surfaces, draw_turret),
-}
-
-# Static image recipes for buildings
-BUILDING_DRAW_RECIPES = {
-    "Headquarters": create_headquarters_image,
-    "Barracks": create_barracks_image,
-    "WarFactory": create_warfactory_image,
-    "Hangar": create_hangar_image,
-    "PowerPlant": create_powerplant_image,
-    "OilDerrick": create_oilderrick_image,
-    "Refinery": create_refinery_image,
-    "ShaleFracker": create_shalefracker_image,
-    "BlackMarket": create_blackmarket_image,
-}
 
 # =============================================================================
 # Group: Placement & Spawn Utilities
@@ -1490,20 +52,8 @@ BUILDING_DRAW_RECIPES = {
 # Helper functions for grid snapping, building placement validation, spawn finding, formation calculation, and starting positions.
 
 
-def snap_to_grid(pos: tuple[float, float], grid_size: int = TILE_SIZE) -> tuple[float, float]:
-    """
-    Rounds a world position to the nearest grid cell for aligned building placement.
-
-    :param pos: Tuple of (x, y) world position.
-    :param grid_size: Size of the grid cell (default: TILE_SIZE).
-    :return: Snapped position tuple.
-    """
-    # Rounds a world position to the nearest grid cell for aligned building placement.
-    return (round(pos[0] / grid_size) * grid_size, round(pos[1] / grid_size) * grid_size)
-
-
 def is_valid_building_position(
-    position: tuple[float, float],
+    position: Point,
     team: Team,
     new_building_cls: type,
     buildings: list,
@@ -1556,8 +106,8 @@ def is_valid_building_position(
 
 
 def find_free_spawn_position(
-    building_pos: tuple, target_pos: tuple, global_buildings, global_units, unit_size=(40, 40)
-):
+    building_pos: Point, target_pos: Point, global_buildings, global_units, unit_size=(40, 40)
+) -> Point:
     """
     Finds a nearby free position for spawning units, avoiding overlaps with buildings/units.
 
@@ -1582,430 +132,6 @@ def find_free_spawn_position(
     return target_pos
 
 
-def calculate_formation_positions(
-    center: tuple[float, float],
-    target: tuple[float, float],
-    num_units: int,
-) -> list[tuple[float, float]]:
-    """
-    Computes a grid formation around a center point for group movement.
-
-    :param center: Center position for the formation.
-    :param target: Target direction (unused in current implementation).
-    :param num_units: Number of units in the formation.
-    :return: List of position tuples for the formation.
-    """
-    # Computes a grid formation around a center point for group movement.
-    if num_units == 0:
-        return []
-    positions = []
-    spacing = 30
-    cols = max(1, int(math.sqrt(num_units)))
-    for i in range(num_units):
-        row, col = i // cols, i % cols
-        x = center[0] + (col - cols / 2) * spacing
-        y = center[1] + (row - num_units / cols / 2) * spacing
-        positions.append((x, y))
-    return positions
-
-
-def get_starting_positions(map_width: int, map_height: int, num_players: int):
-    """
-    Generates balanced starting positions around the map edges for multiple players.
-
-    :param map_width: Width of the map.
-    :param map_height: Height of the map.
-    :param num_players: Number of players.
-    :return: List of starting position tuples.
-    """
-    # Generates balanced starting positions around the map edges for multiple players.
-    edge_dist = 50
-    half_w = map_width / 2
-    half_h = map_height / 2
-
-    base_positions = [
-        (half_w, edge_dist),
-        (map_width - edge_dist, edge_dist),
-        (map_width - edge_dist, half_h),
-        (map_width - edge_dist, map_height - edge_dist),
-        (half_w, map_height - edge_dist),
-        (edge_dist, map_height - edge_dist),
-        (edge_dist, half_h),
-        (edge_dist, edge_dist),
-    ]
-
-    step = max(1, 8 // num_players)
-    selected_positions = base_positions[::step][:num_players]
-
-    while len(selected_positions) < num_players:
-        selected_positions.append(base_positions[len(selected_positions) % 8])
-
-    return selected_positions
-
-
-# =============================================================================
-# Group: Spatial Query System
-# =============================================================================
-# SpatialHash implements a simple grid-based spatial index for efficient nearby object queries.
-
-
-class SpatialHash:
-    """
-    Simple grid-based spatial index for efficient nearby object queries.
-
-    Uses a dictionary of grid cells to bucket objects by position.
-    """
-
-    def __init__(self, cell_size: int = 200):
-        """
-        Initializes the hash with a grid cell size for bucketing objects.
-
-        :param cell_size: Size of each grid cell (default: 200).
-        """
-        # Initializes the hash with a grid cell size for bucketing objects.
-        self.cell_size = cell_size
-        self.grid: dict[tuple[int, int], list] = {}
-
-    def get_key(self, pos: Vector2) -> tuple[int, int]:
-        """
-        Computes the grid cell key for a position.
-
-        :param pos: Vector2 position.
-        :return: Tuple (cell_x, cell_y) key.
-        """
-        # Computes the grid cell key for a position.
-        return (int(pos.x // self.cell_size), int(pos.y // self.cell_size))
-
-    def add(self, obj):
-        """
-        Adds an object to its corresponding grid cell.
-
-        :param obj: Object with a 'position' attribute (Vector2).
-        """
-        # Adds an object to its corresponding grid cell.
-        key = self.get_key(obj.position)
-        if key not in self.grid:
-            self.grid[key] = []
-        self.grid[key].append(obj)
-
-    def query(self, pos: Vector2, radius: float) -> list:
-        """
-        Returns all objects within radius of pos, checking neighboring cells.
-
-        :param pos: Query position (Vector2).
-        :param radius: Search radius.
-        :return: List of nearby objects.
-        """
-        # Returns all objects within radius of pos, checking neighboring cells.
-        cx = int(pos.x // self.cell_size)
-        cy = int(pos.y // self.cell_size)
-        keys = set()
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                keys.add((cx + dx, cy + dy))
-        nearby = []
-        for k in keys:
-            if k in self.grid:
-                for o in self.grid[k]:
-                    if o.distance_to(pos) <= radius:
-                        nearby.append(o)
-        return nearby
-
-
-# =============================================================================
-# Group: Camera System
-# =============================================================================
-# Camera class handles viewport transformation, zooming, panning, and clamping to map bounds.
-
-
-class Camera:
-    """
-    Handles viewport transformation, zooming, panning, and clamping to map bounds.
-
-    Manages the visible rectangle in world coordinates.
-    """
-
-    def __init__(self):
-        """
-        Initializes camera with default map and screen dimensions.
-        """
-        # Initializes camera with default map and screen dimensions.
-        self.map_width = MAP_WIDTH
-        self.map_height = MAP_HEIGHT
-        self.width = SCREEN_WIDTH - 200  # Account for UI sidebar
-        self.height = SCREEN_HEIGHT
-        self.zoom = 1.0
-        self.rect = pg.Rect(0, 0, self.width, self.height)
-        self.update_view_size()
-
-    def update_view_size(self):
-        """
-        Updates the view rectangle size based on current zoom.
-        """
-        # Updates the view rectangle size based on current zoom.
-        view_w = self.width / self.zoom
-        view_h = self.height / self.zoom
-        self.rect.size = (view_w, view_h)
-
-    def update_zoom(self, delta, mouse_world_pos=None):
-        """
-        Zooms in/out by 20% steps, clamped between 0.5x and 3x; centers on mouse if provided.
-
-        :param delta: Zoom direction (+1 zoom in, -1 zoom out).
-        :param mouse_world_pos: Optional world position to center zoom on.
-        """
-        # Zooms in/out by 20% steps, clamped between 0.5x and 3x; centers on mouse if provided.
-        old_zoom = self.zoom
-        old_center = self.rect.center
-        if delta > 0:
-            self.zoom = min(self.zoom * 1.2, 3.0)
-        else:
-            self.zoom = max(self.zoom / 1.2, 0.5)
-        if self.zoom != old_zoom:
-            self.update_view_size()
-            if mouse_world_pos:
-                self.rect.center = mouse_world_pos
-            else:
-                self.rect.center = old_center
-            self.clamp()
-
-    def world_to_screen(self, world_pos: tuple) -> tuple[float, float]:
-        """
-        Converts world coordinates to screen-relative coordinates.
-
-        :param world_pos: Tuple (x, y) in world space.
-        :return: Tuple (x, y) in screen space.
-        """
-        # Converts world coordinates to screen-relative coordinates.
-        dx = world_pos[0] - self.rect.x
-        dy = world_pos[1] - self.rect.y
-        return (dx * self.zoom, dy * self.zoom)
-
-    def screen_to_world(self, screen_pos: tuple) -> tuple[float, float]:
-        """
-        Converts screen coordinates to world coordinates.
-
-        :param screen_pos: Tuple (x, y) in screen space.
-        :return: Tuple (x, y) in world space.
-        """
-        # Converts screen coordinates to world coordinates.
-        return (self.rect.x + screen_pos[0] / self.zoom, self.rect.y + screen_pos[1] / self.zoom)
-
-    def get_screen_rect(self, world_rect: pg.Rect) -> pg.Rect:
-        """
-        Transforms a world Rect to screen coordinates.
-
-        :param world_rect: Rect in world space.
-        :return: Transformed Rect in screen space.
-        """
-        # Transforms a world Rect to screen coordinates.
-        screen_left = (world_rect.left - self.rect.x) * self.zoom
-        screen_top = (world_rect.top - self.rect.y) * self.zoom
-        screen_w = world_rect.width * self.zoom
-        screen_h = world_rect.height * self.zoom
-        return pg.Rect(screen_left, screen_top, screen_w, screen_h)
-
-    def update(self, selected_units: list, mouse_pos: tuple, interface_rect: pg.Rect, keys=None):
-        """
-        Handles panning via keys, edge-scrolling, and centering on selected units.
-
-        :param selected_units: List of selected units to center camera on.
-        :param mouse_pos: Current mouse position for edge panning.
-        :param interface_rect: Rect of UI interface to ignore panning in.
-        :param keys: Pygame key states (default: get_pressed()).
-        """
-        # Handles panning via keys, edge-scrolling, and centering on selected units.
-        if keys is None:
-            keys = pg.key.get_pressed()
-
-        pressed_pan = keys[pg.K_w] or keys[pg.K_a] or keys[pg.K_s] or keys[pg.K_d]
-
-        mx, my = mouse_pos
-
-        if mx < PAN_EDGE and self.rect.left > 0:
-            self.rect.x -= PAN_SPEED
-        if mx > SCREEN_WIDTH - PAN_EDGE and self.rect.right < self.map_width:
-            self.rect.x += PAN_SPEED
-        if my < PAN_EDGE and self.rect.top > 0:
-            self.rect.y -= PAN_SPEED
-        if my > SCREEN_HEIGHT - PAN_EDGE and self.rect.bottom < self.map_height:
-            self.rect.y += PAN_SPEED
-
-        if keys[pg.K_w] and self.rect.top > 0:
-            self.rect.y -= PAN_SPEED
-        if keys[pg.K_s] and self.rect.bottom < self.map_height:
-            self.rect.y += PAN_SPEED
-        if keys[pg.K_a] and self.rect.left > 0:
-            self.rect.x -= PAN_SPEED
-        if keys[pg.K_d] and self.rect.right < self.map_width:
-            self.rect.x += PAN_SPEED
-
-        if interface_rect.collidepoint(mx, my):
-            self.clamp()
-            return
-
-        if selected_units and not pressed_pan:
-            avg_x = sum(u.position[0] for u in selected_units) / len(selected_units)
-            avg_y = sum(u.position[1] for u in selected_units) / len(selected_units)
-            self.rect.centerx = avg_x
-            self.rect.centery = avg_y
-
-        self.clamp()
-
-    def clamp(self):
-        """
-        Ensures camera view stays within map bounds.
-        """
-        # Ensures camera view stays within map bounds.
-        self.rect.x = max(0, min(self.rect.x, self.map_width - self.rect.width))
-        self.rect.y = max(0, min(self.rect.y, self.map_height - self.rect.height))
-
-    def apply(self, rect: pg.Rect) -> pg.Rect:
-        """
-        Moves a rect relative to camera offset (used internally if needed).
-
-        :param rect: Input Rect.
-        :return: Offset Rect.
-        """
-        # Moves a rect relative to camera offset (used internally if needed).
-        return rect.move(-self.rect.x, -self.rect.y)
-
-
-# =============================================================================
-# Group: Fog of War
-# =============================================================================
-# FogOfWar manages explored/visible tiles on a grid, revealing areas based on unit sight ranges.
-
-
-class FogOfWar:
-    """
-    Manages explored/visible tiles on a grid, revealing areas based on unit sight ranges.
-
-    Uses 2D boolean grids for explored and currently visible tiles.
-    """
-
-    def __init__(self, map_width: int, map_height: int, tile_size: int = TILE_SIZE, spectator: bool = False):
-        """
-        Initializes 2D grids for explored and visible tiles.
-
-        :param map_width: Map width in pixels.
-        :param map_height: Map height in pixels.
-        :param tile_size: Size of each fog tile (default: TILE_SIZE).
-        :param spectator: If True, reveals entire map.
-        """
-        # Initializes 2D grids for explored and visible tiles.
-        self.tile_size = tile_size
-        num_tiles_x = map_width // tile_size
-        num_tiles_y = map_height // tile_size
-        self.explored = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        if spectator:
-            self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-            self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-
-    def reveal(self, center: tuple, radius: int):
-        """
-        Reveals tiles within radius of center as both explored and visible.
-
-        :param center: Center position (x, y) to reveal around.
-        :param radius: Reveal radius in pixels.
-        """
-        # Reveals tiles within radius of center as both explored and visible.
-        cx, cy = center
-        tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
-        radius_tiles = radius // self.tile_size
-        for ty in range(max(0, tile_y - radius_tiles), min(len(self.explored[0]), tile_y + radius_tiles + 1)):
-            for tx in range(max(0, tile_x - radius_tiles), min(len(self.explored), tile_x + radius_tiles + 1)):
-                tile_center_x = tx * self.tile_size + self.tile_size // 2
-                tile_center_y = ty * self.tile_size + self.tile_size // 2
-                if math.sqrt((cx - tile_center_x) ** 2 + (cy - tile_center_y) ** 2) <= radius:
-                    self.explored[tx][ty] = True
-                    self.visible[tx][ty] = True
-
-    def update_visibility(self, ally_units, ally_buildings, global_buildings):
-        """
-        Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
-
-        :param ally_units: List of ally units for sight revelation.
-        :param ally_buildings: List of ally buildings for sight revelation.
-        :param global_buildings: All buildings to update 'is_seen' flag.
-        """
-        # Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
-        if not ally_units and not ally_buildings:
-            return
-        num_tiles_x = len(self.visible)
-        num_tiles_y = len(self.visible[0])
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        for unit in ally_units:
-            self.reveal(unit.position, unit.sight_range)
-        for building in ally_buildings:
-            if building.health > 0:
-                self.reveal(building.position, building.sight_range)
-        for building in global_buildings:
-            if building.health > 0:
-                tx, ty = int(building.position[0] // self.tile_size), int(building.position[1] // self.tile_size)
-                if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
-                    building.is_seen = building.is_seen or self.visible[tx][ty]
-
-    def is_visible(self, pos: tuple) -> bool:
-        """
-        Checks if a position's tile is currently visible.
-
-        :param pos: Position (x, y) to check.
-        :return: True if visible.
-        """
-        # Checks if a position's tile is currently visible.
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.visible) and 0 <= ty < len(self.visible[0]):
-            return self.visible[tx][ty]
-        return False
-
-    def is_explored(self, pos: tuple) -> bool:
-        """
-        Checks if a position's tile has been explored (visible in the past).
-
-        :param pos: Position (x, y) to check.
-        :return: True if explored.
-        """
-        # Checks if a position's tile has been explored (visible in the past).
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.explored) and 0 <= ty < len(self.explored[0]):
-            return self.explored[tx][ty]
-        return False
-
-    def draw(self, surface: pg.Surface, camera: Camera):
-        """
-        Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
-
-        :param surface: Surface to draw fog on.
-        :param camera: Camera for viewport culling.
-        """
-        # Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
-        start_tx = max(0, int(camera.rect.x // self.tile_size))
-        start_ty = max(0, int(camera.rect.y // self.tile_size))
-        end_tx = min(len(self.visible), start_tx + int(camera.rect.width // self.tile_size) + 2)
-        end_ty = min(len(self.visible[0]), start_ty + int(camera.rect.height // self.tile_size) + 2)
-        zoom = camera.zoom
-        tile_sw = self.tile_size * zoom
-        tile_sh = self.tile_size * zoom
-        fog_overlay = pg.Surface((int(camera.width), int(camera.height)), pg.SRCALPHA)
-        fog_overlay.fill((0, 0, 0, 0))
-        for tx in range(start_tx, end_tx):
-            wx = tx * self.tile_size
-            sx = (wx - camera.rect.x) * zoom
-            if sx < -tile_sw or sx > camera.width:
-                continue
-            for ty in range(start_ty, end_ty):
-                wy = ty * self.tile_size
-                sy = (wy - camera.rect.y) * zoom
-                if sy < -tile_sh or sy > camera.height:
-                    continue
-                if not self.visible[tx][ty]:
-                    alpha = 255 if not self.explored[tx][ty] else 100
-                    pg.draw.rect(fog_overlay, (0, 0, 0, alpha), (sx, sy, tile_sw, tile_sh))
-        surface.blit(fog_overlay, (0, 0))
-
-
 # =============================================================================
 # Group: Particle Effects
 # =============================================================================
@@ -2019,9 +145,9 @@ class Particle(pg.sprite.Sprite):
     Used for explosion effects.
     """
 
-    def __init__(self, pos: tuple, vx: float, vy: float, size: int, color: pg.Color, lifetime: int):
+    def __init__(self, pos: Point, vx: float, vy: float, size: int, color: pg.Color, lifetime: int) -> None:
         """
-        :param pos: Initial position tuple (x, y).
+        :param pos: Initial position.
         :param vx: Initial x velocity.
         :param vy: Initial y velocity.
         :param size: Particle size in pixels.
@@ -2041,7 +167,7 @@ class Particle(pg.sprite.Sprite):
         pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
         self.rect = self.image.get_rect(center=self.position)
 
-    def update(self):
+    def update(self) -> None:
         """
         Updates position, age, and alpha; kills when lifetime exceeded.
         """
@@ -2055,19 +181,22 @@ class Particle(pg.sprite.Sprite):
         if self.age >= self.lifetime:
             self.kill()
 
-    def draw(self, surface: pg.Surface, camera: Camera):
+    def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
         """
         Draws scaled and positioned particle if on-screen.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         """
         # Draws scaled and positioned particle if on-screen.
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
         screen_pos = camera.world_to_screen(self.position)
-        scaled_size = (int(self.image.get_width() * camera.zoom), int(self.image.get_height() * camera.zoom))
+        scaled_size = (
+            int(self.image.get_width() * camera.zoom),
+            int(self.image.get_height() * camera.zoom),
+        )
         if scaled_size[0] > 0 and scaled_size[1] > 0:
             scaled_image = pg.transform.smoothscale(self.image, scaled_size)
             offset_x = scaled_size[0] / 2
@@ -2083,7 +212,7 @@ class PlasmaBurnParticle(Particle):
     Used for damage burn effects on entities.
     """
 
-    def __init__(self, pos: tuple, entity, color: pg.Color, lifetime: int):
+    def __init__(self, pos: Point, entity, color: pg.Color, lifetime: int) -> None:
         """
         :param pos: Initial position (unused, as it follows entity).
         :param entity: Entity to attach to.
@@ -2096,7 +225,7 @@ class PlasmaBurnParticle(Particle):
         self.offset = Vector2(random.uniform(-20, 20), random.uniform(-10, 10))
         self.initial_lifetime = lifetime * 30
 
-    def update(self):
+    def update(self) -> None:
         """
         Updates position relative to entity, fades over time.
         """
@@ -2112,7 +241,9 @@ class PlasmaBurnParticle(Particle):
             self.kill()
 
 
-def create_explosion(position: tuple, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION):
+def create_explosion(
+    position: Point, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION
+) -> None:
     """
     Spawns a burst of particles at position with team color.
 
@@ -2144,7 +275,7 @@ class Projectile(pg.sprite.Sprite):
     Creates a tapered image with a fading trail deque.
     """
 
-    def __init__(self, pos: tuple, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]):
+    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]) -> None:
         """
         Initializes projectile with tapered image, trail deque for fading tail.
 
@@ -2174,7 +305,7 @@ class Projectile(pg.sprite.Sprite):
         self.rect = self.image.get_rect(center=self.position)
         self.trail = deque(maxlen=15)
 
-    def update(self):
+    def update(self) -> None:
         """
         Advances position, adds to trail, kills after lifetime.
         """
@@ -2186,12 +317,12 @@ class Projectile(pg.sprite.Sprite):
         if self.age >= self.lifetime:
             self.kill()
 
-    def draw(self, surface: pg.Surface, camera: Camera):
+    def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
         """
         Draws trail segments with fading intensity, then the main projectile.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         """
         # Draws trail segments with fading intensity, then the main projectile.
         screen_rect = camera.get_screen_rect(self.rect)
@@ -2254,7 +385,7 @@ class GameObject(pg.sprite.Sprite, ABC):
     Provides common properties like position, health, selection, drawing.
     """
 
-    def __init__(self, position: tuple, team: Team):
+    def __init__(self, position: Point, team: Team) -> None:
         """
         Base entity: position, team, health, selection, plasma particles, basic image/rect.
 
@@ -2276,7 +407,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         self.image = pg.Surface((32, 32))
         self.rect = self.image.get_rect(center=position)
 
-    def distance_to(self, other_pos: tuple) -> float:
+    def distance_to(self, other_pos: Point) -> float:
         """
         Euclidean distance to another position.
 
@@ -2286,7 +417,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         # Euclidean distance to another position.
         return self.position.distance_to(other_pos)
 
-    def displacement_to(self, other_pos: tuple) -> float:
+    def displacement_to(self, other_pos: Point) -> Point:
         """
         Returns (dx, dy) vector to another position.
 
@@ -2298,12 +429,12 @@ class GameObject(pg.sprite.Sprite, ABC):
         dy = other_pos[1] - self.position.y
         return (dx, dy)
 
-    def draw(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
         """
         Base draw: scales image, handles rotation if needed, selection circle, health bar, particles.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         :param mouse_pos: Optional for hover.
         """
         # Base draw: scales image, handles rotation if needed, selection circle, health bar, particles.
@@ -2321,17 +452,23 @@ class GameObject(pg.sprite.Sprite, ABC):
             surface.blit(scaled_image, blit_pos)
         if self.selected:
             radius = max(self.rect.width, self.rect.height) / 2 * zoom + 3
-            pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
+            pg.draw.circle(
+                surface,
+                (255, 255, 0),
+                (int(screen_pos[0]), int(screen_pos[1])),
+                int(radius),
+                int(2 * zoom),
+            )
 
         for particle in self.plasma_burn_particles:
             particle.draw(surface, camera)
 
-    def draw_health_bar(self, screen, camera, mouse_pos: tuple = None):
+    def draw_health_bar(self, screen: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
         """
         Draws health bar above entity if under attack, hovered, or building with damage.
 
         :param screen: Surface to draw on.
-        :param camera: Camera for positioning.
+        :param camera: Camera2d for positioning.
         :param mouse_pos: Mouse position for hover detection.
         """
         # Draws health bar above entity if under attack, hovered, or building with damage.
@@ -2363,7 +500,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
         pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
 
-    def take_damage(self, damage: int, particles: pg.sprite.Group):
+    def take_damage(self, damage: int, particles: pg.sprite.Group) -> bool:
         """
         Applies damage, sets attack flag, spawns plasma burn particles if low health.
 
@@ -2382,7 +519,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         return self.health <= 0
 
     @abstractmethod
-    def update(self):
+    def update(self) -> None:
         """
         Abstract update method for entity-specific logic.
         """
@@ -2396,7 +533,7 @@ class Unit(GameObject):
     Extends GameObject with movement, combat, production, income.
     """
 
-    def __init__(self, position: tuple, team: Team, unit_type: str, hq=None):
+    def __init__(self, position: Point, team: Team, unit_type: str, hq=None) -> None:
         """
         Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
 
@@ -2444,12 +581,12 @@ class Unit(GameObject):
         # Modular drawing setup
         self._setup_drawing(unit_type)
 
-    def _closest_point_on_rect(self, rect: pg.Rect, pos: tuple) -> tuple[float, float]:
+    def _closest_point_on_rect(self, rect: pg.Rect, pos: Point) -> tuple[float, float]:
         """
         Computes the closest point on the rect to the position.
 
         :param rect: Pygame Rect.
-        :param pos: Position tuple.
+        :param pos: Position.
         :return: Closest point on rect.
         """
         # Computes the closest point on the rect to the position.
@@ -2478,7 +615,7 @@ class Unit(GameObject):
         target_pos += perp_dir * spread_dist
         return target_pos
 
-    def _setup_drawing(self, unit_type: str):
+    def _setup_drawing(self, unit_type: str) -> None:
         """
         Sets up image or complex draw method based on type.
 
@@ -2489,8 +626,8 @@ class Unit(GameObject):
             self.image = SIMPLE_DRAW_RECIPES[unit_type](UNIT_CLASSES[unit_type]["size"], self.team)
             if unit_type in ["Infantry", "Grenadier"]:
                 self.needs_rotation = True
-        elif unit_type in COMPLEX_DRAW_CLASSES:
-            create_surfaces, draw_func = COMPLEX_DRAW_CLASSES[unit_type]
+        elif unit_type in COMPLEX_DRAW_RECIPES:
+            create_surfaces, draw_func = COMPLEX_DRAW_RECIPES[unit_type]
             self.body_surf, self.turret_surf, self.barrel_surf = create_surfaces(self.team)
             if unit_type == "AttackHelicopter":
                 self.turret_offset = Vector2(12, 0)
@@ -2514,12 +651,12 @@ class Unit(GameObject):
             self.image.fill(self.team_color)
         self.rect = self.image.get_rect(center=self.position)
 
-    def _draw_gate(self, surface: pg.Surface, camera: Camera):
+    def _draw_gate(self, surface: pg.Surface, camera: Camera2d) -> None:
         """
         Draws animated opening gates for production buildings.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         """
         # Draws animated opening gates for production buildings.
         door_width = self.stats.get("gate_width", 20)
@@ -2534,7 +671,7 @@ class Unit(GameObject):
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_left))
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_right))
 
-    def _update_production(self, friendly_units, all_units):
+    def _update_production(self, friendly_units, all_units) -> None:
         """
         Advances production queue, spawns units at gate, opens gate animation.
 
@@ -2580,7 +717,7 @@ class Unit(GameObject):
         projectiles=None,
         enemy_units=None,
         enemy_buildings=None,
-    ):
+    ) -> None:
         """
         Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
 
@@ -2681,12 +818,12 @@ class Unit(GameObject):
 
         self.plasma_burn_particles = [p for p in self.plasma_burn_particles if p.alive()]
 
-    def draw(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
         """
         Overridden draw for units: handles air height, rotation, rally point, gate animation.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         :param mouse_pos: Mouse position for hover.
         """
         # Overridden draw for units: handles air height, rotation, rally point, gate animation.
@@ -2718,7 +855,11 @@ class Unit(GameObject):
             else:
                 radius = max(self.rect.width, self.rect.height) / 2 * zoom + 3
                 pg.draw.circle(
-                    surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom)
+                    surface,
+                    (255, 255, 0),
+                    (int(screen_pos[0]), int(screen_pos[1])),
+                    int(radius),
+                    int(2 * zoom),
                 )
         if hasattr(self, "rally_point") and self.selected:
             rally_screen = camera.world_to_screen(self.rally_point)
@@ -2749,7 +890,7 @@ class Unit(GameObject):
             return self.weapons[0]["damage"]
         return 0
 
-    def shoot(self, target, projectiles: pg.sprite.Group):
+    def shoot(self, target, projectiles: pg.sprite.Group) -> None:
         """
         Fires a projectile at target with lead prediction; triggers small explosion.
 
@@ -2798,7 +939,7 @@ class Infantry(Unit):
     Infantry unit class.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Infantry", hq=hq)
 
 
@@ -2807,7 +948,7 @@ class Tank(Unit):
     Tank unit class.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Tank", hq=hq)
 
 
@@ -2816,7 +957,7 @@ class Grenadier(Unit):
     Grenadier unit class.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Grenadier", hq=hq)
 
 
@@ -2825,7 +966,7 @@ class MachineGunVehicle(Unit):
     Machine Gun Vehicle unit class.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "MachineGunVehicle", hq=hq)
 
 
@@ -2834,7 +975,7 @@ class RocketArtillery(Unit):
     Rocket Artillery unit class.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "RocketArtillery", hq=hq)
 
 
@@ -2843,7 +984,7 @@ class AttackHelicopter(Unit):
     Attack Helicopter unit class.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "AttackHelicopter", hq=hq)
 
 
@@ -2858,7 +999,7 @@ class Headquarters(Unit):
     Headquarters building: main base with credits, power management, building placement.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Headquarters", hq=hq)
         # HQ-specific: starts with credits, manages power, building placement queue.
         self.credits = self.stats["starting_credits"]
@@ -2881,7 +1022,7 @@ class Headquarters(Unit):
             "credits_earned": 0,
         }
 
-    def place_building(self, position: tuple, unit_cls: type, all_buildings):
+    def place_building(self, position: Point, unit_cls: type, all_buildings) -> None:
         """
         Instantiates and places a building if valid, deducts cost.
 
@@ -2907,7 +1048,7 @@ class Barracks(Unit):
     Barracks building: produces infantry units.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Barracks", hq=hq)
         self.parent_hq = None
 
@@ -2917,7 +1058,7 @@ class WarFactory(Unit):
     War Factory building: produces ground vehicles.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "WarFactory", hq=hq)
         self.parent_hq = None
 
@@ -2927,7 +1068,7 @@ class Hangar(Unit):
     Hangar building: produces air units.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Hangar", hq=hq)
         self.parent_hq = None
 
@@ -2937,7 +1078,7 @@ class PowerPlant(Unit):
     Power Plant building: provides power.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "PowerPlant", hq=hq)
 
 
@@ -2946,7 +1087,7 @@ class OilDerrick(Unit):
     Oil Derrick building: generates income from oil.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "OilDerrick", hq=hq)
 
 
@@ -2955,7 +1096,7 @@ class Refinery(Unit):
     Refinery building: processes oil for income.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Refinery", hq=hq)
         self.radius = 60
 
@@ -2965,7 +1106,7 @@ class ShaleFracker(Unit):
     Shale Fracker building: extracts shale for income.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "ShaleFracker", hq=hq)
 
 
@@ -2974,7 +1115,7 @@ class BlackMarket(Unit):
     Black Market building: illicit income source.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "BlackMarket", hq=hq)
 
 
@@ -2983,49 +1124,8 @@ class Turret(Unit):
     Defensive turret building: auto-fires on enemies.
     """
 
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Turret", hq=hq)
-
-
-# =============================================================================
-# Group: Console & Logging
-# =============================================================================
-# Placeholder for console logging; currently minimal.
-
-
-class GameConsole:
-    """
-    Placeholder console for logging messages.
-
-    Not fully implemented.
-    """
-
-    def __init__(self):
-        self.messages = []
-
-    def log(self, message: str):
-        """
-        Adds a message to the console log.
-
-        :param message: Log message.
-        """
-        self.messages.append(message)
-
-    def handle_event(self, event):
-        """
-        Handles console-specific events (placeholder).
-
-        :param event: Pygame event.
-        """
-        pass
-
-    def draw(self, surface: pg.Surface):
-        """
-        Draws console (placeholder).
-
-        :param surface: Surface to draw on.
-        """
-        pass
 
 
 # =============================================================================
@@ -3041,7 +1141,7 @@ class AI:
     Supports personalities for varied behavior.
     """
 
-    def __init__(self, hq, console, build_dir=math.pi, allies: set[Team] = frozenset()):
+    def __init__(self, hq, console, build_dir: float = math.pi, allies: frozenset[Team] = frozenset()) -> None:
         """
         Initializes AI with personality traits, timers, biases for varied behavior.
 
@@ -3097,7 +1197,7 @@ class AI:
         self.preferred_build_direction = build_dir
         self.build_bias_strength = 0.3
 
-    def assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings):
+    def assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings) -> None:
         """
         Evaluates economy, military, threats to adjust priorities dynamically.
 
@@ -3214,7 +1314,9 @@ class AI:
             )
             if not unit_target:
                 unit_target = min(
-                    (u for u in enemy_units if u.health > 0), key=lambda u: u.distance_to(from_pos), default=None
+                    (u for u in enemy_units if u.health > 0),
+                    key=lambda u: u.distance_to(from_pos),
+                    default=None,
                 )
         else:
             unit_target = None
@@ -3230,7 +1332,22 @@ class AI:
             return unit_target
         return None
 
-    def find_build_position(self, building_cls, all_buildings, map_width, map_height, prefer_near_hq=True):
+    def find_build_position(
+        self,
+        building_cls: type[Barracks]
+        | type[BlackMarket]
+        | type[Hangar]
+        | type[OilDerrick]
+        | type[PowerPlant]
+        | type[Refinery]
+        | type[ShaleFracker]
+        | type[Turret]
+        | type[WarFactory],
+        all_buildings,
+        map_width,
+        map_height,
+        prefer_near_hq=True,
+    ) -> tuple[float, float] | None:
         """
         Searches for valid build spot in expanding rings around HQ, with directional bias.
 
@@ -3284,10 +1401,16 @@ class AI:
                 center_y = hq_pos.y + dist * math.sin(angle)
                 center_x = max(half_w, min(map_width - half_w, center_x))
                 center_y = max(half_h, min(map_height - half_h, center_y))
-                snapped_center = snap_to_grid((center_x, center_y))
+                snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
                 position = snapped_center
                 if is_valid_building_position(
-                    position, self.hq.team, building_cls, list(all_buildings), map_width, map_height, margin=60
+                    position,
+                    self.hq.team,
+                    building_cls,
+                    list(all_buildings),
+                    map_width,
+                    map_height,
+                    margin=60,
                 ):
                     return position
                 attempts += 1
@@ -3297,7 +1420,7 @@ class AI:
                 break
         return None
 
-    def queue_unit_production(self, barracks_list, war_factory_list, hangar_list, friendly_units):
+    def queue_unit_production(self, barracks_list, war_factory_list, hangar_list, friendly_units) -> None:
         """
         Queues unit production based on priorities, economy, threats; cycles factories.
 
@@ -3317,11 +1440,13 @@ class AI:
                 if len(barracks.production_queue) < 5:
                     if self.threat_level > 0.5:
                         unit_type = random.choices(
-                            list(self.production_priorities.keys()), weights=[0.7, 0.2, 0.1, 0, 0, 0]
+                            list(self.production_priorities.keys()),
+                            weights=[0.7, 0.2, 0.1, 0, 0, 0],
                         )[0]
                     else:
                         unit_type = random.choices(
-                            list(self.production_priorities.keys()), weights=list(self.production_priorities.values())
+                            list(self.production_priorities.keys()),
+                            weights=list(self.production_priorities.values()),
                         )[0]
 
                     cost = UNIT_CLASSES[unit_type]["cost"]
@@ -3349,7 +1474,7 @@ class AI:
                         hangar.production_queue.append({"unit_type": "AttackHelicopter", "repeat": False})
                         self.hq.credits -= UNIT_CLASSES["AttackHelicopter"]["cost"]
 
-    def build_defenses(self, all_buildings, map_width, map_height):
+    def build_defenses(self, all_buildings, map_width, map_height) -> None:
         """
         Builds turrets near HQ if threatened and affordable.
 
@@ -3363,7 +1488,7 @@ class AI:
             if pos:
                 self.hq.place_building(pos, Turret, all_buildings)
 
-    def strategize_attacks(self, friendly_units, enemy_hq, enemy_buildings=None, enemy_units=None):
+    def strategize_attacks(self, friendly_units, enemy_hq, enemy_buildings=None, enemy_units=None) -> None:
         """
         Periodic scouting and attack waves; aggressive push if superior.
 
@@ -3462,9 +1587,9 @@ class AI:
         enemy_units,
         enemy_buildings,
         all_buildings,
-        map_width=MAP_WIDTH,
-        map_height=MAP_HEIGHT,
-    ):
+        map_width: int = MAP_WIDTH,
+        map_height: int = MAP_HEIGHT,
+    ) -> None:
         """
         Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
 
@@ -3541,7 +1666,12 @@ class AI:
                     elif rand < 0.7:
                         cls = random.choice([OilDerrick, Refinery, ShaleFracker, BlackMarket])
                     else:
-                        all_possible = [PowerPlant, Turret] + [OilDerrick, Refinery, ShaleFracker, BlackMarket]
+                        all_possible = [PowerPlant, Turret] + [
+                            OilDerrick,
+                            Refinery,
+                            ShaleFracker,
+                            BlackMarket,
+                        ]
                         cls = random.choice(all_possible)
 
             cost = UNIT_CLASSES[cls.__name__]["cost"]
@@ -3637,7 +1767,7 @@ class ProductionInterface:
         }
     )
 
-    def __post_init__(self, all_buildings):
+    def __post_init__(self, all_buildings) -> None:
         """
         Post-init: creates surface, top buttons, labels, defaults to HQ producer.
 
@@ -3667,7 +1797,7 @@ class ProductionInterface:
         }
         self.update_producer(self.hq)
 
-    def _create_top_buttons(self):
+    def _create_top_buttons(self) -> None:
         """
         Creates rects for Repair/Sell/Map buttons.
         """
@@ -3679,7 +1809,7 @@ class ProductionInterface:
             rect = pg.Rect(x, self.TOP_BUTTONS_POS_Y, self.TOP_BUTTON_WIDTH, self.TOP_BUTTON_HEIGHT)
             self.top_rects[label] = rect
 
-    def update_producer(self, selected_building):
+    def update_producer(self, selected_building: Headquarters) -> None:
         """
         Updates producible items based on selected producer (HQ or building).
 
@@ -3713,7 +1843,7 @@ class ProductionInterface:
             rect = pg.Rect(self.MARGIN_X, y + i * self.ITEM_HEIGHT, self._BUTTON_WIDTH, self.ITEM_BUTTON_HEIGHT)
             self.item_rects[item] = rect
 
-    def draw(self, surface_: pg.Surface, own_buildings, all_buildings):
+    def draw(self, surface_: pg.Surface, own_buildings, all_buildings) -> None:
         """
         Renders sidebar: credits/power, buttons, queue with progress.
 
@@ -3792,14 +1922,16 @@ class ProductionInterface:
                     )
                     bar_width = 100 * progress
                     pg.draw.rect(
-                        self.surface, self.ACTION_ALLOWED_COLOR, (self.MARGIN_X + 10, queue_y + 20, bar_width, 5)
+                        self.surface,
+                        self.ACTION_ALLOWED_COLOR,
+                        (self.MARGIN_X + 10, queue_y + 20, bar_width, 5),
                     )
                     pg.draw.rect(self.surface, self.LINE_COLOR, (self.MARGIN_X + 10, queue_y + 20, 100, 5), 1)
                 queue_y += 25
 
         surface_.blit(self.surface, (SCREEN_WIDTH - self.WIDTH, 0))
 
-    def handle_click(self, screen_pos, own_buildings):
+    def handle_click(self, screen_pos: Point, own_buildings):
         """
         Handles clicks on buttons: repair, sell, queue items, start placement.
 
@@ -3850,20 +1982,20 @@ class ProductionInterface:
 
 def draw_mini_map(
     screen: pg.Surface,
-    camera: Camera,
-    fog_of_war: FogOfWar,
+    camera: Camera2d,
+    fog_of_war: FogOfWar2d,
     map_width: int,
     map_height: int,
     map_color: tuple,
     buildings,
     all_units,
     player_allies: set[Team],
-):
+) -> pg.Rect:
     """
     Renders scaled top-down map with terrain variation, entities, camera view outline.
 
     :param screen: Main screen.
-    :param camera: Camera.
+    :param camera: Camera2d.
     :param fog_of_war: FogOfWar instance.
     :param map_width: Map width.
     :param map_height: Map height.
@@ -3875,7 +2007,10 @@ def draw_mini_map(
     """
     # Renders scaled top-down map with terrain variation, entities, camera view outline.
     mini_map_rect = pg.Rect(
-        SCREEN_WIDTH - MINI_MAP_WIDTH, SCREEN_HEIGHT - MINI_MAP_HEIGHT, MINI_MAP_WIDTH, MINI_MAP_HEIGHT
+        SCREEN_WIDTH - MINI_MAP_WIDTH,
+        SCREEN_HEIGHT - MINI_MAP_HEIGHT,
+        MINI_MAP_WIDTH,
+        MINI_MAP_HEIGHT,
     )
     mini_map = pg.Surface((MINI_MAP_WIDTH, MINI_MAP_HEIGHT))
     mini_map.fill((0, 0, 0))
@@ -3935,7 +2070,10 @@ def draw_mini_map(
             pg.draw.circle(mini_map, color, (x, y), 2)
 
     cam_rect = pg.Rect(
-        camera.rect.x * scale_x, camera.rect.y * scale_y, camera.rect.width * scale_x, camera.rect.height * scale_y
+        camera.rect.x * scale_x,
+        camera.rect.y * scale_y,
+        camera.rect.width * scale_x,
+        camera.rect.height * scale_y,
     )
     pg.draw.rect(mini_map, (255, 255, 255), cam_rect, 1)
 
@@ -3943,12 +2081,12 @@ def draw_mini_map(
     return mini_map_rect
 
 
-def handle_unit_collisions(all_units: list, unit_hash: SpatialHash):
+def handle_unit_collisions(all_units: list, unit_hash: SpatialHash2d) -> None:
     """
     Resolves overlaps between ground units using simple repulsion.
 
     :param all_units: List of all units.
-    :param unit_hash: SpatialHash for nearby queries.
+    :param unit_hash: SpatialHash2d for nearby queries.
     """
     # Resolves overlaps between ground units using simple repulsion.
     for i, unit in enumerate(all_units):
@@ -3976,13 +2114,13 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHash):
                         other.position.y += direction_y * push
 
 
-def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash):
+def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash2d) -> None:
     """
     Pushes units away from building overlaps.
 
     :param all_units: List of units.
     :param all_buildings: List of buildings.
-    :param building_hash: SpatialHash for buildings.
+    :param building_hash: SpatialHash2d for buildings.
     """
     # Pushes units away from building overlaps.
     for unit in [u for u in all_units if u.health > 0 and not u.air]:
@@ -4009,10 +2147,10 @@ def handle_attacks(
     all_buildings: list,
     projectiles,
     particles,
-    unit_hash: SpatialHash,
-    building_hash: SpatialHash,
+    unit_hash: SpatialHash2d,
+    building_hash: SpatialHash2d,
     alliances: dict[Team, set[Team]],
-):
+) -> None:
     """
     For a team, finds targets in sight range and shoots if in attack range; handles chasing.
 
@@ -4097,7 +2235,7 @@ def handle_attacks(
                         entity.move_target = closest_target.position
 
 
-def handle_projectiles(projectiles, all_units, all_buildings, particles, g):
+def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> None:
     """
     Updates projectiles, checks hits on enemies, applies damage/explosions.
 
@@ -4140,7 +2278,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g):
             projectile.kill()
 
 
-def cleanup_dead_entities(g):
+def cleanup_dead_entities(g) -> None:
     """
     Removes dead entities from groups, cleans up particles.
 
@@ -4184,492 +2322,6 @@ def cleanup_dead_entities(g):
 
 
 # =============================================================================
-# Group: Menu Components
-# =============================================================================
-# UI classes for main menu, skirmish setup, victory/defeat screens.
-
-
-class MenuButton:
-    """
-    Simple clickable button with hover effect.
-    """
-
-    def __init__(self, x, y, width, height, text, color, hover_color):
-        """
-        :param x: X position.
-        :param y: Y position.
-        :param width: Button width.
-        :param height: Button height.
-        :param text: Button text.
-        :param color: Normal color.
-        :param hover_color: Hover color.
-        """
-        # Simple clickable button with hover effect.
-        self.rect = pg.Rect(x, y, width, height)
-        self.text = text
-        self.color = color
-        self.hover_color = hover_color
-        self.current_color = color
-
-    def update(self, mouse_pos):
-        """
-        Updates button color based on hover.
-
-        :param mouse_pos: Mouse position.
-        """
-        self.current_color = self.hover_color if self.rect.collidepoint(mouse_pos) else self.color
-
-    def draw(self, surface, font):
-        """
-        Draws button and text.
-
-        :param surface: Surface to draw on.
-        :param font: Font for text.
-        """
-        pg.draw.rect(surface, self.current_color, self.rect, border_radius=10)
-        text_surf = font.render(self.text, True, pg.Color("white"))
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        surface.blit(text_surf, text_rect)
-
-    def is_clicked(self, mouse_pos):
-        """
-        Checks if button is clicked.
-
-        :param mouse_pos: Mouse position.
-        :return: True if clicked.
-        """
-        return self.rect.collidepoint(mouse_pos)
-
-
-class MainMenu:
-    """
-    Main menu with Single Player and Quit buttons.
-    """
-
-    def __init__(self, font_large, font_medium):
-        """
-        :param font_large: Large font for title.
-        :param font_medium: Medium font for buttons.
-        """
-        # Main menu with Single Player and Quit buttons.
-        self.font_large = font_large
-        self.font_medium = font_medium
-        self.skirmish_btn = MenuButton(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 - 60,
-            200,
-            60,
-            "Single Player",
-            pg.Color(50, 150, 50),
-            pg.Color(100, 200, 100),
-        )
-        self.quit_btn = MenuButton(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 40,
-            200,
-            60,
-            "Quit",
-            pg.Color(150, 50, 50),
-            pg.Color(200, 100, 100),
-        )
-
-    def handle_event(self, event):
-        """
-        Handles menu events.
-
-        :param event: Pygame event.
-        :return: Transition string or None.
-        """
-        if event.type == pg.MOUSEBUTTONDOWN:
-            if self.skirmish_btn.is_clicked(event.pos):
-                return "skirmish_setup"
-            if self.quit_btn.is_clicked(event.pos):
-                return "quit"
-        return None
-
-    def update(self, mouse_pos):
-        """
-        Updates button hovers.
-
-        :param mouse_pos: Mouse position.
-        """
-        self.skirmish_btn.update(mouse_pos)
-        self.quit_btn.update(mouse_pos)
-
-    def draw(self, surface):
-        """
-        Draws menu.
-
-        :param surface: Surface to draw on.
-        """
-        surface.fill(pg.Color(40, 40, 40))
-        title = self.font_large.render("RTS GAME", True, pg.Color(0, 255, 200))
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 100))
-        surface.blit(title, title_rect)
-        self.skirmish_btn.draw(surface, self.font_medium)
-        self.quit_btn.draw(surface, self.font_medium)
-
-
-class SkirmishSetup:
-    """
-    Setup menu for mode, size, map selection.
-    """
-
-    def __init__(self, font_large, font_medium):
-        """
-        :param font_large: Large font.
-        :param font_medium: Medium font.
-        """
-        # Setup menu for mode, size, map selection.
-        self.font_large = font_large
-        self.font_medium = font_medium
-        self.game_mode = None
-        self.size_choice = None
-        self.map_choice = None
-
-        self.mode_1v1 = MenuButton(
-            SCREEN_WIDTH // 2 - 300, 150, 80, 50, "1v1", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
-        )
-        self.mode_2v2 = MenuButton(
-            SCREEN_WIDTH // 2 - 200, 150, 80, 50, "2v2", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
-        )
-        self.mode_3v3 = MenuButton(
-            SCREEN_WIDTH // 2 - 100, 150, 80, 50, "3v3", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
-        )
-        self.mode_4v4 = MenuButton(
-            SCREEN_WIDTH // 2, 150, 80, 50, "4v4", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
-        )
-        self.mode_4ffa = MenuButton(
-            SCREEN_WIDTH // 2 + 100, 150, 80, 50, "4FFA", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
-        )
-
-        self.size_tiny = MenuButton(200, 220, 120, 50, "Tiny", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_small = MenuButton(350, 220, 120, 50, "Small", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_medium = MenuButton(500, 220, 120, 50, "Medium", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_large = MenuButton(650, 220, 120, 50, "Large", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_huge = MenuButton(800, 220, 120, 50, "Huge", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-
-        self.map_buttons = {}
-        map_list = list(MAPS.keys())
-        for i, map_name in enumerate(map_list):
-            x = 100 + (i % 2) * 300
-            y = 350 + (i // 2) * 80
-            self.map_buttons[map_name] = MenuButton(
-                x, y, 200, 60, map_name, pg.Color(100, 100, 100), pg.Color(150, 150, 150)
-            )
-
-        self.start_btn = MenuButton(
-            SCREEN_WIDTH // 2 - 80,
-            SCREEN_HEIGHT - 100,
-            160,
-            50,
-            "Start Game",
-            pg.Color(50, 150, 50),
-            pg.Color(100, 200, 100),
-        )
-        self.spectate_btn = MenuButton(
-            SCREEN_WIDTH // 2 + 100,
-            SCREEN_HEIGHT - 100,
-            160,
-            50,
-            "Spectate",
-            pg.Color(100, 50, 150),
-            pg.Color(150, 100, 200),
-        )
-        self.back_btn = MenuButton(
-            20, SCREEN_HEIGHT - 70, 120, 50, "Back", pg.Color(150, 100, 50), pg.Color(200, 150, 100)
-        )
-
-    def handle_event(self, event):
-        """
-        Handles setup events.
-
-        :param event: Pygame event.
-        :return: Transition tuple or None.
-        """
-        if event.type == pg.MOUSEBUTTONDOWN:
-            if self.mode_1v1.is_clicked(event.pos):
-                self.game_mode = "1v1"
-            elif self.mode_2v2.is_clicked(event.pos):
-                self.game_mode = "2v2"
-            elif self.mode_3v3.is_clicked(event.pos):
-                self.game_mode = "3v3"
-            elif self.mode_4v4.is_clicked(event.pos):
-                self.game_mode = "4v4"
-            elif self.mode_4ffa.is_clicked(event.pos):
-                self.game_mode = "4ffa"
-
-            if self.size_tiny.is_clicked(event.pos):
-                self.size_choice = "tiny"
-            elif self.size_small.is_clicked(event.pos):
-                self.size_choice = "small"
-            elif self.size_medium.is_clicked(event.pos):
-                self.size_choice = "medium"
-            elif self.size_large.is_clicked(event.pos):
-                self.size_choice = "large"
-            elif self.size_huge.is_clicked(event.pos):
-                self.size_choice = "huge"
-
-            for map_name, btn in self.map_buttons.items():
-                if btn.is_clicked(event.pos):
-                    self.map_choice = map_name
-
-            if self.start_btn.is_clicked(event.pos) and self.game_mode and self.size_choice and self.map_choice:
-                return ("start_game", self.game_mode, self.size_choice, self.map_choice, False)
-
-            if self.spectate_btn.is_clicked(event.pos) and self.game_mode and self.size_choice and self.map_choice:
-                return ("start_game", self.game_mode, self.size_choice, self.map_choice, True)
-
-            if self.back_btn.is_clicked(event.pos):
-                return "menu"
-
-        return None
-
-    def update(self, mouse_pos):
-        """
-        Updates button hovers.
-
-        :param mouse_pos: Mouse position.
-        """
-        self.mode_1v1.update(mouse_pos)
-        self.mode_2v2.update(mouse_pos)
-        self.mode_3v3.update(mouse_pos)
-        self.mode_4v4.update(mouse_pos)
-        self.mode_4ffa.update(mouse_pos)
-        self.size_tiny.update(mouse_pos)
-        self.size_small.update(mouse_pos)
-        self.size_medium.update(mouse_pos)
-        self.size_large.update(mouse_pos)
-        self.size_huge.update(mouse_pos)
-        for btn in self.map_buttons.values():
-            btn.update(mouse_pos)
-        self.start_btn.update(mouse_pos)
-        self.spectate_btn.update(mouse_pos)
-        self.back_btn.update(mouse_pos)
-
-    def draw(self, surface):
-        """
-        Draws setup menu.
-
-        :param surface: Surface to draw on.
-        """
-        surface.fill(pg.Color(40, 40, 40))
-
-        title = self.font_large.render("Skirmish Setup", True, pg.Color(0, 255, 200))
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 40))
-        surface.blit(title, title_rect)
-
-        mode_label = self.font_medium.render("Select Game Mode:", True, pg.Color(200, 200, 200))
-        surface.blit(mode_label, (50, 120))
-        self.mode_1v1.draw(surface, self.font_medium)
-        self.mode_2v2.draw(surface, self.font_medium)
-        self.mode_3v3.draw(surface, self.font_medium)
-        self.mode_4v4.draw(surface, self.font_medium)
-        self.mode_4ffa.draw(surface, self.font_medium)
-
-        if self.game_mode:
-            mode_text = self.font_medium.render(f"Selected: {self.game_mode}", True, pg.Color(100, 255, 100))
-            surface.blit(mode_text, (SCREEN_WIDTH - 250, 160))
-
-        size_label = self.font_medium.render("Select Size:", True, pg.Color(200, 200, 200))
-        surface.blit(size_label, (50, 190))
-        self.size_tiny.draw(surface, self.font_medium)
-        self.size_small.draw(surface, self.font_medium)
-        self.size_medium.draw(surface, self.font_medium)
-        self.size_large.draw(surface, self.font_medium)
-        self.size_huge.draw(surface, self.font_medium)
-
-        if self.size_choice:
-            size_text = self.font_medium.render(f"Selected: {self.size_choice}", True, pg.Color(100, 255, 100))
-            surface.blit(size_text, (SCREEN_WIDTH - 250, 230))
-
-        map_label = self.font_medium.render("Select Map:", True, pg.Color(200, 200, 200))
-        surface.blit(map_label, (50, 320))
-        for btn in self.map_buttons.values():
-            btn.draw(surface, self.font_medium)
-
-        if self.map_choice:
-            map_text = self.font_medium.render(f"Selected: {self.map_choice}", True, pg.Color(100, 255, 100))
-            surface.blit(map_text, (SCREEN_WIDTH - 250, 390))
-
-        self.start_btn.draw(surface, self.font_medium)
-        self.spectate_btn.draw(surface, self.font_medium)
-        self.back_btn.draw(surface, self.font_medium)
-
-
-class VictoryScreen:
-    """
-    Displays win/loss message with continue button.
-    """
-
-    def __init__(self, font_large, font_medium, is_victory: bool | None, all_stats: dict, player_team=None):
-        """
-        :param font_large: Large font.
-        :param font_medium: Medium font.
-        :param is_victory: Victory status (True/False/None).
-        :param all_stats: Dict of team stats.
-        :param player_team: Player's team.
-        """
-        # Displays win/loss message with continue button.
-        self.font_large = font_large
-        self.font_medium = font_medium
-        self.is_victory = is_victory
-        self.all_stats = all_stats
-        self.player_team = player_team
-        self.continue_btn = MenuButton(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 300,
-            200,
-            60,
-            "Continue",
-            pg.Color(50, 150, 50),
-            pg.Color(100, 200, 100),
-        )
-
-        # Table configuration
-        self.table_x = 100
-        self.table_y = 250
-        self.table_width = 800
-        self.col_widths = (
-            [100] * 8
-        )  # Player, Units Created, Units Killed, Units Lost, Buildings Constructed, Buildings Razed, Buildings Lost, Credits Earned
-        self.row_height = 30
-        self.num_rows = len(all_stats) + 1  # +1 for header
-        self.table_height = self.num_rows * self.row_height
-        self.line_color = pg.Color(255, 255, 255)
-        self.header_color = pg.Color(100, 100, 100)
-        self.row_color_even = pg.Color(40, 40, 40)
-        self.row_color_odd = pg.Color(60, 60, 60)
-
-    def get_team_enum(self, name):
-        """
-        Maps team name to enum.
-
-        :param name: Team name string.
-        :return: Team enum or None.
-        """
-        for t, n in team_to_name.items():
-            if n == name:
-                return t
-        return None
-
-    def handle_event(self, event):
-        """
-        Handles victory screen events.
-
-        :param event: Pygame event.
-        :return: Transition string or None.
-        """
-        if event.type == pg.MOUSEBUTTONDOWN:
-            if self.continue_btn.is_clicked(event.pos):
-                return "menu"
-        return None
-
-    def update(self, mouse_pos):
-        """
-        Updates button hover.
-
-        :param mouse_pos: Mouse position.
-        """
-        self.continue_btn.update(mouse_pos)
-
-    def draw(self, surface):
-        """
-        Draws victory screen with stats table.
-
-        :param surface: Surface to draw on.
-        """
-        surface.fill(pg.Color(20, 20, 20))
-
-        if self.is_victory is None:
-            title_text = "MATCH ENDED"
-            title_color = pg.Color(0, 255, 200)
-            message_text = "All HQs have been destroyed."
-            message_color = pg.Color(200, 200, 200)
-        elif self.is_victory:
-            title_text = "VICTORY!"
-            title_color = pg.Color(0, 255, 100)
-            message_text = "All enemies defeated!"
-            message_color = pg.Color(100, 255, 150)
-        else:
-            title_text = "DEFEAT!"
-            title_color = pg.Color(255, 50, 50)
-            message_text = "Your HQ was destroyed!"
-            message_color = pg.Color(255, 100, 100)
-
-        title = self.font_large.render(title_text, True, title_color)
-        message = self.font_medium.render(message_text, True, message_color)
-
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 150))
-        msg_rect = message.get_rect(center=(SCREEN_WIDTH // 2, 200))
-
-        surface.blit(title, title_rect)
-        surface.blit(message, msg_rect)
-
-        if self.all_stats:
-            # Draw table
-            # Horizontal lines
-            for i in range(self.num_rows + 1):
-                y = self.table_y + i * self.row_height
-                pg.draw.line(surface, self.line_color, (self.table_x, y), (self.table_x + self.table_width, y), 2)
-
-            # Vertical lines
-            x_pos = self.table_x
-            for width in self.col_widths:
-                pg.draw.line(
-                    surface, self.line_color, (x_pos, self.table_y), (x_pos, self.table_y + self.table_height), 2
-                )
-                x_pos += width
-
-            # Header row
-            headers = ["Player", "Produced", "Killed", "Casualties", "Built", "Raized", "Raized by", "Economy"]
-            x_pos = self.table_x
-            for i, header in enumerate(headers):
-                text_surf = self.font_medium.render(header, True, pg.Color("white"))
-                text_rect = text_surf.get_rect(
-                    center=(x_pos + self.col_widths[i] // 2, self.table_y + self.row_height // 2)
-                )
-                # Background for header
-                pg.draw.rect(surface, self.header_color, (x_pos, self.table_y, self.col_widths[i], self.row_height))
-                surface.blit(text_surf, text_rect)
-                x_pos += self.col_widths[i]
-
-            # Data rows
-            sorted_stats = sorted(self.all_stats.items(), key=lambda item: item[0])  # Sort by team name
-            x_pos = self.table_x
-            for row_idx, (team_name, stats) in enumerate(sorted_stats):
-                row_y = self.table_y + (row_idx + 1) * self.row_height
-                row_color = self.row_color_even if row_idx % 2 == 0 else self.row_color_odd
-                pg.draw.rect(surface, row_color, (self.table_x, row_y, self.table_width, self.row_height))
-
-                team_enum = self.get_team_enum(team_name)
-                team_color = team_to_color[team_enum] if team_enum else pg.Color(255, 255, 255)
-
-                values = [
-                    team_name,
-                    str(stats.get("units_created", 0)),
-                    str(stats.get("units_destroyed", 0)),
-                    str(stats.get("units_lost", 0)),
-                    str(stats.get("buildings_constructed", 0)),
-                    str(stats.get("buildings_destroyed", 0)),
-                    str(stats.get("buildings_lost", 0)),
-                    f"${stats.get('credits_earned', 0):,}",
-                ]
-
-                for col_idx, value in enumerate(values):
-                    color = team_color if col_idx == 0 else pg.Color(255, 255, 255)
-                    text_surf = self.font_medium.render(value, True, color)
-                    text_rect = text_surf.get_rect(
-                        center=(x_pos + self.col_widths[col_idx] // 2, row_y + self.row_height // 2)
-                    )
-                    surface.blit(text_surf, text_rect)
-                    x_pos += self.col_widths[col_idx]
-                x_pos = self.table_x  # Reset for next row
-
-        self.continue_btn.draw(surface, self.font_medium)
-
-
-# =============================================================================
 # Group: Game Orchestrator
 # =============================================================================
 # GameManager orchestrates state machine, initializes game data, runs loops.
@@ -4682,7 +2334,7 @@ class GameManager:
     Handles menu, setup, playing, victory/defeat states.
     """
 
-    def __init__(self, screen, clock, font_large, font_medium):
+    def __init__(self, screen, clock, font_large, font_medium) -> None:
         """
         Sets up screen, clock, fonts, initial menu state.
 
@@ -4698,14 +2350,15 @@ class GameManager:
         self.font_medium = font_medium
         self.state = GameState.MENU
 
-        self.main_menu = MainMenu(font_large, font_medium)
-        self.skirmish_setup = SkirmishSetup(font_large, font_medium)
+        screen_size_ = self.screen.size
+        self.main_menu = MainMenu(font_large=font_large, font_medium=font_medium, screen_size=screen_size_)
+        self.skirmish_setup = SkirmishSetup(font_large=font_large, font_medium=font_medium, screen_size=screen_size_)
         self.victory_screen = None
 
         self.game_data = None
         self.running = True
 
-    def initialize_game(self, game_mode, size_name, map_name, spectate=False):
+    def initialize_game(self, game_mode, size_name, map_name, spectate: bool = False) -> None:
         """
         Sets up game world: scales map, creates teams/HQs/units, alliances, AI, camera, UI.
 
@@ -4767,7 +2420,9 @@ class GameManager:
             num_players = 4
 
         teams_list = player_side + enemy_side
-        positions = get_starting_positions(map_width, map_height, num_players)
+        positions = get_starting_positions(
+            map_width=map_width, map_height=map_height, num_players=num_players, edge_dist=50
+        )
 
         for i, team in enumerate(teams_list):
             pos = positions[i]
@@ -4835,9 +2490,7 @@ class GameManager:
             ai = AI(hqs[team], GameConsole(), build_dir=build_dir, allies=alliances[team])
             ais.append(ai)
 
-        camera = Camera()
-        camera.map_width = map_width
-        camera.map_height = map_height
+        camera = Camera2d(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
         if spectate:
             camera.rect.center = (map_width / 2, map_height / 2)
 
@@ -4865,7 +2518,9 @@ class GameManager:
             "alliances": alliances,
             "interface": interface,
             "console": GameConsole(),
-            "fog_of_war": FogOfWar(map_width, map_height, spectator=spectate),
+            "fog_of_war": FogOfWar2d(
+                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectate
+            ),
             "camera": camera,
             "map_color": color,
             "map_width": map_width,
@@ -4882,7 +2537,7 @@ class GameManager:
             "teams": teams_list,
         }
 
-    def run_game(self):
+    def run_game(self) -> None:
         """
         Main game loop: event handling, updates, rendering, win/loss checks.
         """
@@ -4950,7 +2605,7 @@ class GameManager:
                             continue
 
                         if g["interface"].placing_cls is not None and not g["interface_rect"].collidepoint(mouse_pos):
-                            snapped = snap_to_grid(world_pos)
+                            snapped = snap_to_grid(pos=world_pos, grid_size=TILE_SIZE)
                             buildings_list = list(g["global_buildings"])
                             unit_type = g["interface"].placing_cls.__name__
                             cost = UNIT_CLASSES[unit_type]["cost"]
@@ -5036,8 +2691,10 @@ class GameManager:
                                         unit.move_target = clicked_enemy.position
                             else:
                                 # Normal move
-                                formation_positions = calculate_formation_positions(
-                                    center=world_pos, target=world_pos, num_units=len(g["selected_units"])
+                                formation_positions = calculate_formation_positions_2d(
+                                    center=world_pos,
+                                    target=world_pos,
+                                    num_units=len(g["selected_units"]),
                                 )
                                 for unit, pos in zip(g["selected_units"], formation_positions):
                                     unit.move_target = pos
@@ -5097,7 +2754,7 @@ class GameManager:
             unit_list = list(g["global_units"])
             building_list = [b for b in g["global_buildings"] if b.health > 0]
 
-            def update_unit(unit):
+            def update_unit(unit) -> None:
                 unit.update()
 
             with ThreadPoolExecutor(max_workers=4) as executor:
@@ -5128,11 +2785,11 @@ class GameManager:
             g["projectiles"].update()
             g["particles"].update()
 
-            unit_hash = SpatialHash(200)
+            unit_hash = SpatialHash2d(200)
             for u in unit_list:
                 unit_hash.add(u)
 
-            building_hash = SpatialHash(200)
+            building_hash = SpatialHash2d(200)
             for b in building_list:
                 building_hash.add(b)
 
@@ -5194,7 +2851,12 @@ class GameManager:
             if g["player_hq"] and g["player_hq"].health <= 0:
                 self.state = GameState.DEFEAT
                 self.victory_screen = VictoryScreen(
-                    self.font_large, self.font_medium, False, all_stats, g["player_team"]
+                    font_large=self.font_large,
+                    font_medium=self.font_medium,
+                    is_victory=False,
+                    all_stats=all_stats,
+                    player_team=g["player_team"],
+                    screen_size=screen.size,
                 )
             elif len(alive_hqs) <= 1:
                 if len(alive_hqs) == 0:
@@ -5209,7 +2871,12 @@ class GameManager:
                     self.state = GameState.VICTORY if is_player_victory else GameState.DEFEAT
 
                 self.victory_screen = VictoryScreen(
-                    self.font_large, self.font_medium, is_player_victory, all_stats, g.get("player_team")
+                    font_large=self.font_large,
+                    font_medium=self.font_medium,
+                    is_victory=is_player_victory,
+                    all_stats=all_stats,
+                    player_team=g.get("player_team"),
+                    screen_size=screen.size,
                 )
 
             self.screen.fill(pg.Color("black"))
@@ -5222,7 +2889,10 @@ class GameManager:
             start_tx = max(0, int(g["camera"].rect.x // TILE_SIZE))
             start_ty = max(0, int(g["camera"].rect.y // TILE_SIZE))
             end_tx = min(g["map_width"] // TILE_SIZE, start_tx + int(g["camera"].rect.width // TILE_SIZE + 2))
-            end_ty = min(g["map_height"] // TILE_SIZE, start_ty + int(g["camera"].rect.height // TILE_SIZE + 2))
+            end_ty = min(
+                g["map_height"] // TILE_SIZE,
+                start_ty + int(g["camera"].rect.height // TILE_SIZE + 2),
+            )
             for tx in range(start_tx, end_tx):
                 wx = tx * TILE_SIZE
                 sx = (wx - g["camera"].rect.x) * zoom
@@ -5264,7 +2934,7 @@ class GameManager:
                 if g["interface"].placing_cls is not None:
                     mouse_pos = pg.mouse.get_pos()
                     ghost_pos = g["camera"].screen_to_world(mouse_pos)
-                    snapped = snap_to_grid(ghost_pos)
+                    snapped = snap_to_grid(pos=ghost_pos, grid_size=TILE_SIZE)
                     buildings_list = list(g["global_buildings"])
                     unit_type = g["interface"].placing_cls.__name__
                     valid = is_valid_building_position(
@@ -5304,7 +2974,9 @@ class GameManager:
 
             if g["interface"] and not g.get("spectator", False):
                 g["interface"].draw(
-                    self.screen, [b for b in g["global_buildings"] if b.team == g["player_team"]], g["global_buildings"]
+                    self.screen,
+                    [b for b in g["global_buildings"] if b.team == g["player_team"]],
+                    g["global_buildings"],
                 )
 
             if not g.get("spectator", False) and g["selecting"] and g["select_rect"]:
@@ -5326,7 +2998,7 @@ class GameManager:
             pg.display.flip()
             self.clock.tick(60)
 
-    def run(self):
+    def run(self) -> None:
         """
         State machine loop: menu -> setup -> playing -> victory/defeat -> menu.
         """
@@ -5358,7 +3030,11 @@ class GameManager:
                     result = self.skirmish_setup.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.font_large, self.font_medium)
+                        self.skirmish_setup = SkirmishSetup(
+                            font_large=self.font_large,
+                            font_medium=self.font_medium,
+                            screen_size=screen.size,
+                        )
                     elif result and result[0] == "start_game":
                         _, game_mode, size_choice, map_choice, spectate = result
                         self.initialize_game(game_mode, size_choice, map_choice, spectate)
@@ -5380,7 +3056,11 @@ class GameManager:
                     result = self.victory_screen.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.font_large, self.font_medium)
+                        self.skirmish_setup = SkirmishSetup(
+                            font_large=self.font_large,
+                            font_medium=self.font_medium,
+                            screen_size=screen.size,
+                        )
 
                 pg.display.flip()
                 self.clock.tick(60)
