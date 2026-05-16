@@ -20,10 +20,26 @@ line-length = 120  # for both linter and formatter
 [tool.ruff.lint]
 future-annotations = true
 select = [
-    "F401", # unused import
+    "ANN201", # missing-return...public-function
+    "ANN202", #...private-function
+    "D212", # multi-line-summary-first-line
+    "E", # pycodestyle
+    "F",
     "I", # isort
     "UP", # pyupgrade
 ]
+ignore = [
+    "COM812", # missing-trailing-comma: conflicts with formatter
+]
 extend-safe-fixes = [
     "TC",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"CondaRTS*" = [
+    "ANN",
+    "D",
+    "E",
+    "E501", # line-too-long
+    "F841",
 ]
