@@ -7,384 +7,30 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import InitVar, dataclass
 from dataclasses import field as dataclass_field
-from enum import Enum
 from typing import Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
 
-# =============================================================================
-# Group: Screen & Map Constants
-# =============================================================================
-# These constants define the dimensions and behavior of the game screen, map, and related UI elements.
-# SCREEN_WIDTH and SCREEN_HEIGHT set the overall window size.
-# CONSOLE_HEIGHT reserves space at the bottom for a console (though not fully implemented).
-# MAP_WIDTH and MAP_HEIGHT define the playable world size.
-# TILE_SIZE is used for grid snapping and procedural map generation.
-# MINI_MAP_WIDTH and MINI_MAP_HEIGHT size the minimap in the corner.
-# PAN_EDGE and PAN_SPEED control edge-scrolling camera panning.
-
-SCREEN_WIDTH = 1280
-SCREEN_HEIGHT = 720
-CONSOLE_HEIGHT = 100
-MAP_WIDTH = 100000
-MAP_HEIGHT = 80000
-TILE_SIZE = 40
-MINI_MAP_WIDTH = 200
-MINI_MAP_HEIGHT = 150
-PAN_EDGE = 30
-PAN_SPEED = 10
-
-# =============================================================================
-# Group: Team Colors & Mapping
-# =============================================================================
-# Enum for teams, mapping to distinct colors for visual identification.
-# team_to_color dictionary links teams to Pygame Color objects for rendering.
-
-
-class Team(Enum):
-    RED = 1
-    BLUE = 2
-    GREEN = 3
-    CYAN = 4
-    MAGENTA = 5
-    ORANGE = 6
-    YELLOW = 7
-    GREY = 8
-
-
-RED_COLOR = pg.Color(255, 0, 0)
-BLUE_COLOR = pg.Color(0, 0, 255)
-GREEN_COLOR = pg.Color(0, 255, 0)
-CYAN_COLOR = pg.Color(0, 255, 255)
-MAGENTA_COLOR = pg.Color(255, 0, 255)
-ORANGE_COLOR = pg.Color(255, 165, 0)
-YELLOW_COLOR = pg.Color(255, 255, 0)
-GREY_COLOR = pg.Color(128, 128, 128)
-
-team_to_color = {
-    Team.RED: RED_COLOR,
-    Team.BLUE: BLUE_COLOR,
-    Team.GREEN: GREEN_COLOR,
-    Team.CYAN: CYAN_COLOR,
-    Team.MAGENTA: MAGENTA_COLOR,
-    Team.ORANGE: ORANGE_COLOR,
-    Team.YELLOW: YELLOW_COLOR,
-    Team.GREY: GREY_COLOR,
-}
-
-team_to_name = {
-    Team.RED: "Red",
-    Team.BLUE: "Blue",
-    Team.GREEN: "Green",
-    Team.CYAN: "Cyan",
-    Team.MAGENTA: "Magenta",
-    Team.ORANGE: "Orange",
-    Team.YELLOW: "Yellow",
-    Team.GREY: "Grey",
-}
-
-# =============================================================================
-# Group: Game States
-# =============================================================================
-# Enum defining the high-level states of the game, used by the GameManager for state transitions.
-
-
-class GameState(Enum):
-    MENU = 1  # Main menu screen.
-    SKIRMISH_SETUP = 2  # Setup screen for skirmish games.
-    PLAYING = 3  # Active gameplay.
-    VICTORY = 4  # Victory screen.
-    DEFEAT = 5  # Defeat screen.
-
+from modules.camera.camera_2d import Camera2d
+from modules.constants_2d import (
+    CONSOLE_HEIGHT,
+    MAP_HEIGHT,
+    MAP_WIDTH,
+    MINI_MAP_HEIGHT,
+    MINI_MAP_WIDTH,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    TILE_SIZE,
+)
+from modules.data_2d import MAPS, UNIT_CLASSES
+from modules.game_state import GameState
+from modules.team import Team, team_to_color, team_to_name
 
 # =============================================================================
 # Group: Game Data & Config
 # =============================================================================
-# Dictionary of maps with dimensions and base colors for procedural terrain generation.
-# UNIT_CLASSES defines stats for all unit and building types: cost, health, speed, weapons, etc.
 # PROJECTILE_LIFETIME, PARTICLES_PER_EXPLOSION, etc., are global effects constants.
-
-MAPS = {
-    "Desert": {"width": 2560, "height": 1440, "color": (139, 120, 80)},
-    "Forest": {"width": 3200, "height": 1800, "color": (34, 100, 34)},
-    "Ice": {"width": 2560, "height": 1440, "color": (180, 200, 220)},
-    "Urban": {"width": 2560, "height": 1440, "color": (100, 100, 100)},
-}
-
-UNIT_CLASSES = {
-    "Infantry": {
-        "cost": 100,
-        "hp": 125,
-        "speed": 0.5,
-        "attack_range": 40,
-        "sight_range": 120,
-        "weapons": [
-            {
-                "name": "Rifle",
-                "damage": 10,
-                "fire_rate": 0.6,
-                "projectile_speed": 10,
-                "projectile_length": 8,
-                "projectile_width": 4,
-                "cooldown": 25,
-            }
-        ],
-        "size": (16, 16),
-        "air": False,
-        "is_building": False,
-    },
-    "Tank": {
-        "cost": 700,
-        "hp": 300,
-        "speed": 0.6,
-        "attack_range": 80,
-        "sight_range": 200,
-        "weapons": [
-            {
-                "name": "Cannon",
-                "damage": 80,
-                "fire_rate": 0.3,
-                "projectile_speed": 10,
-                "projectile_length": 12,
-                "projectile_width": 6,
-                "cooldown": 50,
-            }
-        ],
-        "size": (30, 20),
-        "air": False,
-        "is_building": False,
-    },
-    "Grenadier": {
-        "cost": 300,
-        "hp": 100,
-        "speed": 0.5,
-        "attack_range": 100,
-        "sight_range": 120,
-        "weapons": [
-            {
-                "name": "Grenade",
-                "damage": 20,
-                "fire_rate": 0.75,
-                "projectile_speed": 10,
-                "projectile_length": 10,
-                "projectile_width": 5,
-                "cooldown": 20,
-            }
-        ],
-        "size": (16, 16),
-        "air": False,
-        "is_building": False,
-    },
-    "MachineGunVehicle": {
-        "cost": 600,
-        "hp": 200,
-        "speed": 0.8,
-        "attack_range": 120,
-        "sight_range": 200,
-        "weapons": [
-            {
-                "name": "MG",
-                "damage": 25,
-                "fire_rate": 0.3,
-                "projectile_speed": 10,
-                "projectile_length": 6,
-                "projectile_width": 3,
-                "cooldown": 50,
-            }
-        ],
-        "size": (35, 25),
-        "air": False,
-        "is_building": False,
-    },
-    "RocketArtillery": {
-        "cost": 800,
-        "hp": 150,
-        "speed": 0.5,
-        "attack_range": 150,
-        "sight_range": 175,
-        "weapons": [
-            {
-                "name": "Rockets",
-                "damage": 200,
-                "fire_rate": 0.1,
-                "projectile_speed": 10,
-                "projectile_length": 15,
-                "projectile_width": 8,
-                "cooldown": 150,
-            }
-        ],
-        "size": (40, 25),
-        "air": False,
-        "is_building": False,
-    },
-    "AttackHelicopter": {
-        "cost": 1200,
-        "hp": 200,
-        "speed": 0.9,
-        "attack_range": 100,
-        "sight_range": 175,
-        "weapons": [
-            {
-                "name": "Missiles",
-                "damage": 30,
-                "fire_rate": 0.375,
-                "projectile_speed": 10,
-                "projectile_length": 10,
-                "projectile_width": 4,
-                "cooldown": 40,
-            }
-        ],
-        "size": (25, 15),
-        "air": True,
-        "fly_height": 10,
-        "is_building": False,
-    },
-    "Headquarters": {
-        "cost": 1000,
-        "starting_credits": 7500,
-        "hp": 500,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "size": (40, 40),
-        "air": False,
-        "is_building": True,
-    },
-    "Barracks": {
-        "cost": 300,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "producible": ["Infantry", "Grenadier"],
-        "production_time": 60,
-        "gate_width": 16,
-        "half_door_offset": 12,
-        "door_color": (60, 60, 60),
-        "size": (32, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "WarFactory": {
-        "cost": 500,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "producible": ["Tank", "MachineGunVehicle", "RocketArtillery"],
-        "production_time": 60,
-        "gate_width": 16,
-        "half_door_offset": 12,
-        "door_color": (60, 60, 60),
-        "size": (40, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "Hangar": {
-        "cost": 600,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "producible": ["AttackHelicopter"],
-        "production_time": 90,
-        "gate_width": 8,
-        "half_door_offset": 8,
-        "door_color": (80, 80, 80),
-        "size": (36, 28),
-        "air": False,
-        "is_building": True,
-    },
-    "PowerPlant": {
-        "cost": 300,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "size": (32, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "OilDerrick": {
-        "cost": 300,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 100,
-        "income_interval": 300,
-        "size": (24, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "Refinery": {
-        "cost": 2000,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 125,
-        "income_interval": 300,
-        "size": (48, 32),
-        "air": False,
-        "is_building": True,
-    },
-    "ShaleFracker": {
-        "cost": 800,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 165,
-        "income_interval": 300,
-        "size": (28, 28),
-        "air": False,
-        "is_building": True,
-    },
-    "BlackMarket": {
-        "cost": 1500,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 0,
-        "sight_range": 200,
-        "weapons": [],
-        "income": 200,
-        "income_interval": 300,
-        "size": (36, 24),
-        "air": False,
-        "is_building": True,
-    },
-    "Turret": {
-        "cost": 400,
-        "hp": 200,
-        "speed": 0,
-        "attack_range": 300,
-        "sight_range": 200,
-        "weapons": [
-            {
-                "name": "TurretGun",
-                "damage": 20,
-                "fire_rate": 0.67,
-                "projectile_speed": 5,
-                "projectile_length": 10,
-                "projectile_width": 4,
-                "cooldown": 30,
-            }
-        ],
-        "size": (24, 24),
-        "air": False,
-        "is_building": True,
-    },
-}
 
 PROJECTILE_LIFETIME = 5.0
 PARTICLES_PER_EXPLOSION = 20
@@ -476,14 +122,14 @@ def create_tank_surfaces(team: Team):
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_tank(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+def draw_tank(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
     """
     Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
     Handles selection circle and health bar.
 
     :param self: The Tank instance.
     :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
+    :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
@@ -512,7 +158,13 @@ def draw_tank(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None
     surface.blit(rotated_barrel, barrel_rect.topleft)
     if self.selected:
         radius = 15 * zoom + 3
-        pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
+        pg.draw.circle(
+            surface,
+            (255, 255, 0),
+            (int(screen_pos[0]), int(screen_pos[1])),
+            int(radius),
+            int(2 * zoom),
+        )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
         particle.draw(surface, camera)
@@ -544,13 +196,13 @@ def create_machinegunvehicle_surfaces(team: Team):
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
     """
     Custom draw for MachineGunVehicle, similar to Tank.
 
     :param self: The MachineGunVehicle instance.
     :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
+    :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for MachineGunVehicle, similar to Tank.
@@ -578,7 +230,13 @@ def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera, mouse_pos:
     surface.blit(rotated_barrel, barrel_rect.topleft)
     if self.selected:
         radius = 17.5 * zoom + 3
-        pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
+        pg.draw.circle(
+            surface,
+            (255, 255, 0),
+            (int(screen_pos[0]), int(screen_pos[1])),
+            int(radius),
+            int(2 * zoom),
+        )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
         particle.draw(surface, camera)
@@ -608,13 +266,13 @@ def create_rocketartillery_surfaces(team: Team):
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_rocketartillery(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+def draw_rocketartillery(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
     """
     Custom draw for RocketArtillery, analogous to previous vehicle draws.
 
     :param self: The RocketArtillery instance.
     :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
+    :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for RocketArtillery, analogous to previous vehicle draws.
@@ -642,7 +300,13 @@ def draw_rocketartillery(self, surface: pg.Surface, camera: Camera, mouse_pos: t
     surface.blit(rotated_barrel, barrel_rect.topleft)
     if self.selected:
         radius = 20 * zoom + 3
-        pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
+        pg.draw.circle(
+            surface,
+            (255, 255, 0),
+            (int(screen_pos[0]), int(screen_pos[1])),
+            int(radius),
+            int(2 * zoom),
+        )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
         particle.draw(surface, camera)
@@ -674,13 +338,13 @@ def create_attackhelicopter_surfaces(team: Team):
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
     """
     Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
 
     :param self: The AttackHelicopter instance.
     :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
+    :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
@@ -708,12 +372,20 @@ def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera, mouse_pos: 
     surface.blit(rotated_barrel, barrel_rect.topleft)
     rotor_size = int(20 * zoom)
     pg.draw.circle(
-        surface, self.team_color, (int(fly_screen_pos[0]), int(fly_screen_pos[1])), rotor_size // 2, int(2 * zoom)
+        surface,
+        self.team_color,
+        (int(fly_screen_pos[0]), int(fly_screen_pos[1])),
+        rotor_size // 2,
+        int(2 * zoom),
     )  # Rotor blades
     if self.selected:
         radius = 12.5 * zoom + 3
         pg.draw.circle(
-            surface, (255, 255, 0), (int(fly_screen_pos[0]), int(fly_screen_pos[1])), int(radius), int(2 * zoom)
+            surface,
+            (255, 255, 0),
+            (int(fly_screen_pos[0]), int(fly_screen_pos[1])),
+            int(radius),
+            int(2 * zoom),
         )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
@@ -737,12 +409,22 @@ def create_headquarters_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (100, 100, 100),
-        (int(5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(35 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(40 * scale_factor),
+            int(35 * scale_factor),
+        ),
     )  # Main structure
     pg.draw.rect(
         image,
         team_color,
-        (int(5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(10 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(40 * scale_factor),
+            int(10 * scale_factor),
+        ),
     )  # Roof
     for i in range(3):
         win_x = int(7.5 * scale_factor + i * 7.5 * scale_factor)
@@ -763,7 +445,12 @@ def create_headquarters_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (50, 50, 50),
-        (int(20 * scale_factor), int(40 * scale_factor), int(10 * scale_factor), int(10 * scale_factor)),
+        (
+            int(20 * scale_factor),
+            int(40 * scale_factor),
+            int(10 * scale_factor),
+            int(10 * scale_factor),
+        ),
     )  # Door
     pg.draw.line(
         image,
@@ -785,7 +472,12 @@ def create_headquarters_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.arc(
         image,
         (40, 40, 40),
-        (int(20 * scale_factor), int(20 * scale_factor), int(10 * scale_factor), int(10 * scale_factor)),
+        (
+            int(20 * scale_factor),
+            int(20 * scale_factor),
+            int(10 * scale_factor),
+            int(10 * scale_factor),
+        ),
         0,
         math.pi,
         int(1 * scale_factor),
@@ -793,12 +485,22 @@ def create_headquarters_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (60, 60, 60),
-        (int(10 * scale_factor), int(42.5 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(10 * scale_factor),
+            int(42.5 * scale_factor),
+            int(5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Left door panel
     pg.draw.rect(
         image,
         (60, 60, 60),
-        (int(35 * scale_factor), int(42.5 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(35 * scale_factor),
+            int(42.5 * scale_factor),
+            int(5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Right door panel
     return image
 
@@ -820,7 +522,12 @@ def create_barracks_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (120, 120, 120),
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(35 * scale_factor), int(30 * scale_factor)),
+        (
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(35 * scale_factor),
+            int(30 * scale_factor),
+        ),
     )  # Walls
     pg.draw.polygon(
         image,
@@ -835,15 +542,24 @@ def create_barracks_image(size: tuple, team: Team) -> pg.Surface:
     for i in range(2):
         win_y = int(10 * scale_factor + i * 6 * scale_factor)
         pg.draw.rect(
-            image, (100, 150, 255), (int(7.5 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
+            image,
+            (100, 150, 255),
+            (int(7.5 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor)),
         )  # Left windows
         pg.draw.rect(
-            image, (100, 150, 255), (int(28.5 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
+            image,
+            (100, 150, 255),
+            (int(28.5 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor)),
         )  # Right windows
     pg.draw.rect(
         image,
         (60, 60, 60),
-        (int(15 * scale_factor), int(32.5 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
+        (
+            int(15 * scale_factor),
+            int(32.5 * scale_factor),
+            int(10 * scale_factor),
+            int(7.5 * scale_factor),
+        ),
     )  # Door
     pg.draw.line(
         image,
@@ -862,15 +578,29 @@ def create_barracks_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (70, 70, 70),
-        (int(35 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor), int(5 * scale_factor)),
+        (
+            int(35 * scale_factor),
+            int(5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(5 * scale_factor),
+        ),
     )  # Chimney
     pg.draw.rect(
         image,
         (50, 50, 50),
-        (int(36 * scale_factor), int(2.5 * scale_factor), int(0.5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(36 * scale_factor),
+            int(2.5 * scale_factor),
+            int(0.5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Chimney smoke
     pg.draw.line(
-        image, team_color, (int(2.5 * scale_factor), int(2.5 * scale_factor)), (0, 0), int(1.5 * scale_factor)
+        image,
+        team_color,
+        (int(2.5 * scale_factor), int(2.5 * scale_factor)),
+        (0, 0),
+        int(1.5 * scale_factor),
     )  # Team accent
     return image
 
@@ -892,35 +622,65 @@ def create_warfactory_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (130, 130, 130),
-        (int(5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(25 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(40 * scale_factor),
+            int(25 * scale_factor),
+        ),
     )  # Main walls
     pg.draw.rect(image, (140, 140, 140), (0, 0, int(50 * scale_factor), int(40 * scale_factor)))  # Foundation
     pg.draw.rect(
-        image, (110, 110, 110), (int(42.5 * scale_factor), 0, int(7.5 * scale_factor), int(15 * scale_factor))
+        image,
+        (110, 110, 110),
+        (int(42.5 * scale_factor), 0, int(7.5 * scale_factor), int(15 * scale_factor)),
     )  # Smokestack base
     pg.draw.rect(
         image,
         (200, 200, 200),
-        (int(43.5 * scale_factor), int(1 * scale_factor), int(5.5 * scale_factor), int(13 * scale_factor)),
+        (
+            int(43.5 * scale_factor),
+            int(1 * scale_factor),
+            int(5.5 * scale_factor),
+            int(13 * scale_factor),
+        ),
     )  # Smokestack
     pg.draw.circle(
-        image, (100, 150, 255), (int(46 * scale_factor), int(9 * scale_factor)), int(1.5 * scale_factor)
+        image,
+        (100, 150, 255),
+        (int(46 * scale_factor), int(9 * scale_factor)),
+        int(1.5 * scale_factor),
     )  # Stack light
     for y in [10, 20]:
         pg.draw.rect(
             image,
             (100, 150, 255),
-            (int(10 * scale_factor), int(y * scale_factor), int(6 * scale_factor), int(4 * scale_factor)),
+            (
+                int(10 * scale_factor),
+                int(y * scale_factor),
+                int(6 * scale_factor),
+                int(4 * scale_factor),
+            ),
         )  # Left windows
         pg.draw.rect(
             image,
             (100, 150, 255),
-            (int(34 * scale_factor), int(y * scale_factor), int(6 * scale_factor), int(4 * scale_factor)),
+            (
+                int(34 * scale_factor),
+                int(y * scale_factor),
+                int(6 * scale_factor),
+                int(4 * scale_factor),
+            ),
         )  # Right windows
     pg.draw.rect(
         image,
         (70, 70, 70),
-        (int(20 * scale_factor), int(30 * scale_factor), int(10 * scale_factor), int(10 * scale_factor)),
+        (
+            int(20 * scale_factor),
+            int(30 * scale_factor),
+            int(10 * scale_factor),
+            int(10 * scale_factor),
+        ),
     )  # Door
     pg.draw.line(
         image,
@@ -946,7 +706,12 @@ def create_warfactory_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         team_color,
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Team logo
     return image
 
@@ -968,7 +733,12 @@ def create_hangar_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (140, 140, 140),
-        (int(2.5 * scale_factor), int(5 * scale_factor), int(40 * scale_factor), int(25 * scale_factor)),
+        (
+            int(2.5 * scale_factor),
+            int(5 * scale_factor),
+            int(40 * scale_factor),
+            int(25 * scale_factor),
+        ),
     )  # Walls
     pg.draw.polygon(
         image,
@@ -983,7 +753,12 @@ def create_hangar_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (80, 80, 80),
-        (int(20 * scale_factor), int(30 * scale_factor), int(5 * scale_factor), int(5 * scale_factor)),
+        (
+            int(20 * scale_factor),
+            int(30 * scale_factor),
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+        ),
     )  # Door
     pg.draw.line(
         image,
@@ -1002,15 +777,28 @@ def create_hangar_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (110, 110, 110),
-        (int(40 * scale_factor), int(2.5 * scale_factor), int(5 * scale_factor), int(12.5 * scale_factor)),
+        (
+            int(40 * scale_factor),
+            int(2.5 * scale_factor),
+            int(5 * scale_factor),
+            int(12.5 * scale_factor),
+        ),
     )  # Tower
     pg.draw.circle(
-        image, (100, 150, 255), (int(42.5 * scale_factor), int(7.5 * scale_factor)), int(1 * scale_factor)
+        image,
+        (100, 150, 255),
+        (int(42.5 * scale_factor), int(7.5 * scale_factor)),
+        int(1 * scale_factor),
     )  # Tower light
     pg.draw.rect(
         image,
         team_color,
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(40 * scale_factor), int(1.5 * scale_factor)),
+        (
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(40 * scale_factor),
+            int(1.5 * scale_factor),
+        ),
     )  # Team stripe
     return image
 
@@ -1032,48 +820,89 @@ def create_powerplant_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (220, 200, 120),
-        (int(5 * scale_factor), int(5 * scale_factor), int(30 * scale_factor), int(25 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(30 * scale_factor),
+            int(25 * scale_factor),
+        ),
     )  # Main building
     pg.draw.rect(
         image,
         (150, 150, 150),
-        (int(32.5 * scale_factor), int(2.5 * scale_factor), int(5 * scale_factor), int(12.5 * scale_factor)),
+        (
+            int(32.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(5 * scale_factor),
+            int(12.5 * scale_factor),
+        ),
     )  # Left tower
     pg.draw.rect(
         image,
         (150, 150, 150),
-        (int(32.5 * scale_factor), int(20 * scale_factor), int(5 * scale_factor), int(12.5 * scale_factor)),
+        (
+            int(32.5 * scale_factor),
+            int(20 * scale_factor),
+            int(5 * scale_factor),
+            int(12.5 * scale_factor),
+        ),
     )  # Right tower
     pg.draw.rect(
         image,
         (100, 100, 100),
-        (int(33.5 * scale_factor), int(3.5 * scale_factor), int(3 * scale_factor), int(11.5 * scale_factor)),
+        (
+            int(33.5 * scale_factor),
+            int(3.5 * scale_factor),
+            int(3 * scale_factor),
+            int(11.5 * scale_factor),
+        ),
     )  # Left tower vent
     pg.draw.rect(
         image,
         (100, 100, 100),
-        (int(33.5 * scale_factor), int(21 * scale_factor), int(3 * scale_factor), int(11.5 * scale_factor)),
+        (
+            int(33.5 * scale_factor),
+            int(21 * scale_factor),
+            int(3 * scale_factor),
+            int(11.5 * scale_factor),
+        ),
     )  # Right tower vent
     pg.draw.rect(
-        image, (120, 120, 120), (int(34 * scale_factor), 0, int(2 * scale_factor), int(2.5 * scale_factor))
+        image,
+        (120, 120, 120),
+        (int(34 * scale_factor), 0, int(2 * scale_factor), int(2.5 * scale_factor)),
     )  # Left exhaust
     pg.draw.rect(
         image,
         (120, 120, 120),
-        (int(34 * scale_factor), int(17.5 * scale_factor), int(2 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(34 * scale_factor),
+            int(17.5 * scale_factor),
+            int(2 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Right exhaust
     for i in range(2):
         win_y = int(10 * scale_factor + i * 5 * scale_factor)
         pg.draw.rect(
-            image, (255, 255, 150), (int(10 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
+            image,
+            (255, 255, 150),
+            (int(10 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor)),
         )  # Left windows
         pg.draw.rect(
-            image, (255, 255, 150), (int(26 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor))
+            image,
+            (255, 255, 150),
+            (int(26 * scale_factor), win_y, int(4 * scale_factor), int(3 * scale_factor)),
         )  # Right windows
     pg.draw.rect(
         image,
         (120, 120, 120),
-        (int(17.5 * scale_factor), int(30 * scale_factor), int(5 * scale_factor), int(10 * scale_factor)),
+        (
+            int(17.5 * scale_factor),
+            int(30 * scale_factor),
+            int(5 * scale_factor),
+            int(10 * scale_factor),
+        ),
     )  # Door
     pg.draw.line(
         image,
@@ -1110,7 +939,12 @@ def create_oilderrick_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (100, 80, 60),
-        (int(10 * scale_factor), int(10 * scale_factor), int(10 * scale_factor), int(25 * scale_factor)),
+        (
+            int(10 * scale_factor),
+            int(10 * scale_factor),
+            int(10 * scale_factor),
+            int(25 * scale_factor),
+        ),
     )  # Platform
     pg.draw.line(
         image,
@@ -1127,17 +961,30 @@ def create_oilderrick_image(size: tuple, team: Team) -> pg.Surface:
         int(1.5 * scale_factor),
     )  # Derrick beam
     pg.draw.circle(
-        image, (60, 60, 60), (int(22.5 * scale_factor), int(7.5 * scale_factor)), int(2.5 * scale_factor)
+        image,
+        (60, 60, 60),
+        (int(22.5 * scale_factor), int(7.5 * scale_factor)),
+        int(2.5 * scale_factor),
     )  # Derrick top
     pg.draw.rect(
         image,
         (120, 100, 80),
-        (int(5 * scale_factor), int(35 * scale_factor), int(20 * scale_factor), int(5 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(35 * scale_factor),
+            int(20 * scale_factor),
+            int(5 * scale_factor),
+        ),
     )  # Pump base
     pg.draw.rect(
         image,
         team_color,
-        (int(12.5 * scale_factor), int(37.5 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(12.5 * scale_factor),
+            int(37.5 * scale_factor),
+            int(5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Pump head
     pg.draw.line(
         image,
@@ -1156,7 +1003,12 @@ def create_oilderrick_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (70, 50, 30),
-        (int(20 * scale_factor), int(5 * scale_factor), int(5 * scale_factor), int(5 * scale_factor)),
+        (
+            int(20 * scale_factor),
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+        ),
     )  # Engine
     return image
 
@@ -1178,33 +1030,64 @@ def create_refinery_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.ellipse(
         image,
         (120, 80, 40),
-        (int(5 * scale_factor), int(5 * scale_factor), int(25 * scale_factor), int(30 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(25 * scale_factor),
+            int(30 * scale_factor),
+        ),
     )  # Left tank
     pg.draw.ellipse(
         image,
         (120, 80, 40),
-        (int(30 * scale_factor), int(5 * scale_factor), int(25 * scale_factor), int(30 * scale_factor)),
+        (
+            int(30 * scale_factor),
+            int(5 * scale_factor),
+            int(25 * scale_factor),
+            int(30 * scale_factor),
+        ),
     )  # Right tank
     pg.draw.circle(
-        image, (140, 100, 60), (int(17.5 * scale_factor), int(20 * scale_factor)), int(2.5 * scale_factor)
+        image,
+        (140, 100, 60),
+        (int(17.5 * scale_factor), int(20 * scale_factor)),
+        int(2.5 * scale_factor),
     )  # Left valve
     pg.draw.circle(
-        image, (140, 100, 60), (int(42.5 * scale_factor), int(20 * scale_factor)), int(2.5 * scale_factor)
+        image,
+        (140, 100, 60),
+        (int(42.5 * scale_factor), int(20 * scale_factor)),
+        int(2.5 * scale_factor),
     )  # Right valve
     pg.draw.rect(
         image,
         (80, 80, 80),
-        (int(27.5 * scale_factor), int(17.5 * scale_factor), int(5 * scale_factor), int(5 * scale_factor)),
+        (
+            int(27.5 * scale_factor),
+            int(17.5 * scale_factor),
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+        ),
     )  # Pump
     pg.draw.rect(
         image,
         (60, 60, 60),
-        (int(50 * scale_factor), int(10 * scale_factor), int(10 * scale_factor), int(20 * scale_factor)),
+        (
+            int(50 * scale_factor),
+            int(10 * scale_factor),
+            int(10 * scale_factor),
+            int(20 * scale_factor),
+        ),
     )  # Tower base
     pg.draw.rect(
         image,
         (80, 80, 80),
-        (int(51 * scale_factor), int(11 * scale_factor), int(8 * scale_factor), int(18 * scale_factor)),
+        (
+            int(51 * scale_factor),
+            int(11 * scale_factor),
+            int(8 * scale_factor),
+            int(18 * scale_factor),
+        ),
     )  # Tower
     pg.draw.line(
         image,
@@ -1241,12 +1124,22 @@ def create_shalefracker_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (100, 80, 60),
-        (int(5 * scale_factor), int(5 * scale_factor), int(25 * scale_factor), int(25 * scale_factor)),
+        (
+            int(5 * scale_factor),
+            int(5 * scale_factor),
+            int(25 * scale_factor),
+            int(25 * scale_factor),
+        ),
     )  # Rig base
     pg.draw.rect(
         image,
         (120, 100, 80),
-        (int(10 * scale_factor), int(30 * scale_factor), int(15 * scale_factor), int(5 * scale_factor)),
+        (
+            int(10 * scale_factor),
+            int(30 * scale_factor),
+            int(15 * scale_factor),
+            int(5 * scale_factor),
+        ),
     )  # Platform
     pg.draw.line(
         image,
@@ -1281,7 +1174,12 @@ def create_shalefracker_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         team_color,
-        (int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Team logo
     return image
 
@@ -1335,12 +1233,22 @@ def create_blackmarket_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (80, 60, 40),
-        (int(32.5 * scale_factor), int(5 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
+        (
+            int(32.5 * scale_factor),
+            int(5 * scale_factor),
+            int(10 * scale_factor),
+            int(7.5 * scale_factor),
+        ),
     )  # Stall left
     pg.draw.rect(
         image,
         (80, 60, 40),
-        (int(32.5 * scale_factor), int(15 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
+        (
+            int(32.5 * scale_factor),
+            int(15 * scale_factor),
+            int(10 * scale_factor),
+            int(7.5 * scale_factor),
+        ),
     )  # Stall right
     pg.draw.line(
         image,
@@ -1359,7 +1267,12 @@ def create_blackmarket_image(size: tuple, team: Team) -> pg.Surface:
     pg.draw.rect(
         image,
         (70, 70, 70),
-        (int(10 * scale_factor), int(22.5 * scale_factor), int(10 * scale_factor), int(7.5 * scale_factor)),
+        (
+            int(10 * scale_factor),
+            int(22.5 * scale_factor),
+            int(10 * scale_factor),
+            int(7.5 * scale_factor),
+        ),
     )  # Counter
     pg.draw.rect(image, team_color, (0, 0, int(45 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
     return image
@@ -1379,51 +1292,86 @@ def create_turret_surfaces(team: Team):
     pg.draw.rect(
         body_surf,
         (100, 100, 100),
-        (int(7.5 * scale_factor), int(17.5 * scale_factor), int(15 * scale_factor), int(12.5 * scale_factor)),
+        (
+            int(7.5 * scale_factor),
+            int(17.5 * scale_factor),
+            int(15 * scale_factor),
+            int(12.5 * scale_factor),
+        ),
     )  # Base
     pg.draw.rect(
         body_surf,
         (80, 80, 80),
-        (int(8.5 * scale_factor), int(18.5 * scale_factor), int(13 * scale_factor), int(10.5 * scale_factor)),
+        (
+            int(8.5 * scale_factor),
+            int(18.5 * scale_factor),
+            int(13 * scale_factor),
+            int(10.5 * scale_factor),
+        ),
     )  # Pedestal
     pg.draw.circle(
-        body_surf, (60, 60, 60), (int(10 * scale_factor), int(27.5 * scale_factor)), int(1 * scale_factor)
+        body_surf,
+        (60, 60, 60),
+        (int(10 * scale_factor), int(27.5 * scale_factor)),
+        int(1 * scale_factor),
     )  # Left foot
     pg.draw.circle(
-        body_surf, (60, 60, 60), (int(20 * scale_factor), int(27.5 * scale_factor)), int(1 * scale_factor)
+        body_surf,
+        (60, 60, 60),
+        (int(20 * scale_factor), int(27.5 * scale_factor)),
+        int(1 * scale_factor),
     )  # Right foot
     pg.draw.rect(
         body_surf,
         (120, 120, 120),
-        (int(12.5 * scale_factor), int(25 * scale_factor), int(5 * scale_factor), int(2.5 * scale_factor)),
+        (
+            int(12.5 * scale_factor),
+            int(25 * scale_factor),
+            int(5 * scale_factor),
+            int(2.5 * scale_factor),
+        ),
     )  # Foot detail
     turret_surf = pg.Surface((int(10 * scale_factor), int(10 * scale_factor)), pg.SRCALPHA)
     pg.draw.circle(
-        turret_surf, team_color, (int(5 * scale_factor), int(5 * scale_factor)), int(5 * scale_factor)
+        turret_surf,
+        team_color,
+        (int(5 * scale_factor), int(5 * scale_factor)),
+        int(5 * scale_factor),
     )  # Turret outer
     pg.draw.circle(
-        turret_surf, (120, 120, 120), (int(5 * scale_factor), int(5 * scale_factor)), int(4 * scale_factor)
+        turret_surf,
+        (120, 120, 120),
+        (int(5 * scale_factor), int(5 * scale_factor)),
+        int(4 * scale_factor),
     )  # Inner ring
     pg.draw.circle(
-        turret_surf, (100, 150, 255), (int(5 * scale_factor), int(6 * scale_factor)), int(1 * scale_factor)
+        turret_surf,
+        (100, 150, 255),
+        (int(5 * scale_factor), int(6 * scale_factor)),
+        int(1 * scale_factor),
     )  # Sight
     barrel_surf = pg.Surface((int(10 * scale_factor), int(2.5 * scale_factor)), pg.SRCALPHA)
     pg.draw.rect(barrel_surf, team_color, (0, 0, int(10 * scale_factor), int(2.5 * scale_factor)))  # Barrel
     pg.draw.rect(
         barrel_surf,
         (90, 90, 90),
-        (int(9 * scale_factor), int(1 * scale_factor), int(1 * scale_factor), int(0.5 * scale_factor)),
+        (
+            int(9 * scale_factor),
+            int(1 * scale_factor),
+            int(1 * scale_factor),
+            int(0.5 * scale_factor),
+        ),
     )  # Muzzle
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_turret(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+def draw_turret(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
     """
     Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
 
     :param self: The Turret instance.
     :param surface: The Pygame surface to draw on.
-    :param camera: The Camera instance for world-to-screen transformation.
+    :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
@@ -1713,165 +1661,6 @@ class SpatialHash:
 
 
 # =============================================================================
-# Group: Camera System
-# =============================================================================
-# Camera class handles viewport transformation, zooming, panning, and clamping to map bounds.
-
-
-class Camera:
-    """
-    Handles viewport transformation, zooming, panning, and clamping to map bounds.
-
-    Manages the visible rectangle in world coordinates.
-    """
-
-    def __init__(self):
-        """
-        Initializes camera with default map and screen dimensions.
-        """
-        # Initializes camera with default map and screen dimensions.
-        self.map_width = MAP_WIDTH
-        self.map_height = MAP_HEIGHT
-        self.width = SCREEN_WIDTH - 200  # Account for UI sidebar
-        self.height = SCREEN_HEIGHT
-        self.zoom = 1.0
-        self.rect = pg.Rect(0, 0, self.width, self.height)
-        self.update_view_size()
-
-    def update_view_size(self):
-        """
-        Updates the view rectangle size based on current zoom.
-        """
-        # Updates the view rectangle size based on current zoom.
-        view_w = self.width / self.zoom
-        view_h = self.height / self.zoom
-        self.rect.size = (view_w, view_h)
-
-    def update_zoom(self, delta, mouse_world_pos=None):
-        """
-        Zooms in/out by 20% steps, clamped between 0.5x and 3x; centers on mouse if provided.
-
-        :param delta: Zoom direction (+1 zoom in, -1 zoom out).
-        :param mouse_world_pos: Optional world position to center zoom on.
-        """
-        # Zooms in/out by 20% steps, clamped between 0.5x and 3x; centers on mouse if provided.
-        old_zoom = self.zoom
-        old_center = self.rect.center
-        if delta > 0:
-            self.zoom = min(self.zoom * 1.2, 3.0)
-        else:
-            self.zoom = max(self.zoom / 1.2, 0.5)
-        if self.zoom != old_zoom:
-            self.update_view_size()
-            if mouse_world_pos:
-                self.rect.center = mouse_world_pos
-            else:
-                self.rect.center = old_center
-            self.clamp()
-
-    def world_to_screen(self, world_pos: tuple) -> tuple[float, float]:
-        """
-        Converts world coordinates to screen-relative coordinates.
-
-        :param world_pos: Tuple (x, y) in world space.
-        :return: Tuple (x, y) in screen space.
-        """
-        # Converts world coordinates to screen-relative coordinates.
-        dx = world_pos[0] - self.rect.x
-        dy = world_pos[1] - self.rect.y
-        return (dx * self.zoom, dy * self.zoom)
-
-    def screen_to_world(self, screen_pos: tuple) -> tuple[float, float]:
-        """
-        Converts screen coordinates to world coordinates.
-
-        :param screen_pos: Tuple (x, y) in screen space.
-        :return: Tuple (x, y) in world space.
-        """
-        # Converts screen coordinates to world coordinates.
-        return (self.rect.x + screen_pos[0] / self.zoom, self.rect.y + screen_pos[1] / self.zoom)
-
-    def get_screen_rect(self, world_rect: pg.Rect) -> pg.Rect:
-        """
-        Transforms a world Rect to screen coordinates.
-
-        :param world_rect: Rect in world space.
-        :return: Transformed Rect in screen space.
-        """
-        # Transforms a world Rect to screen coordinates.
-        screen_left = (world_rect.left - self.rect.x) * self.zoom
-        screen_top = (world_rect.top - self.rect.y) * self.zoom
-        screen_w = world_rect.width * self.zoom
-        screen_h = world_rect.height * self.zoom
-        return pg.Rect(screen_left, screen_top, screen_w, screen_h)
-
-    def update(self, selected_units: list, mouse_pos: tuple, interface_rect: pg.Rect, keys=None):
-        """
-        Handles panning via keys, edge-scrolling, and centering on selected units.
-
-        :param selected_units: List of selected units to center camera on.
-        :param mouse_pos: Current mouse position for edge panning.
-        :param interface_rect: Rect of UI interface to ignore panning in.
-        :param keys: Pygame key states (default: get_pressed()).
-        """
-        # Handles panning via keys, edge-scrolling, and centering on selected units.
-        if keys is None:
-            keys = pg.key.get_pressed()
-
-        pressed_pan = keys[pg.K_w] or keys[pg.K_a] or keys[pg.K_s] or keys[pg.K_d]
-
-        mx, my = mouse_pos
-
-        if mx < PAN_EDGE and self.rect.left > 0:
-            self.rect.x -= PAN_SPEED
-        if mx > SCREEN_WIDTH - PAN_EDGE and self.rect.right < self.map_width:
-            self.rect.x += PAN_SPEED
-        if my < PAN_EDGE and self.rect.top > 0:
-            self.rect.y -= PAN_SPEED
-        if my > SCREEN_HEIGHT - PAN_EDGE and self.rect.bottom < self.map_height:
-            self.rect.y += PAN_SPEED
-
-        if keys[pg.K_w] and self.rect.top > 0:
-            self.rect.y -= PAN_SPEED
-        if keys[pg.K_s] and self.rect.bottom < self.map_height:
-            self.rect.y += PAN_SPEED
-        if keys[pg.K_a] and self.rect.left > 0:
-            self.rect.x -= PAN_SPEED
-        if keys[pg.K_d] and self.rect.right < self.map_width:
-            self.rect.x += PAN_SPEED
-
-        if interface_rect.collidepoint(mx, my):
-            self.clamp()
-            return
-
-        if selected_units and not pressed_pan:
-            avg_x = sum(u.position[0] for u in selected_units) / len(selected_units)
-            avg_y = sum(u.position[1] for u in selected_units) / len(selected_units)
-            self.rect.centerx = avg_x
-            self.rect.centery = avg_y
-
-        self.clamp()
-
-    def clamp(self):
-        """
-        Ensures camera view stays within map bounds.
-        """
-        # Ensures camera view stays within map bounds.
-        self.rect.x = max(0, min(self.rect.x, self.map_width - self.rect.width))
-        self.rect.y = max(0, min(self.rect.y, self.map_height - self.rect.height))
-
-    def apply(self, rect: pg.Rect) -> pg.Rect:
-        """
-        Moves a rect relative to camera offset (used internally if needed).
-
-        :param rect: Input Rect.
-        :return: Offset Rect.
-        """
-        # Moves a rect relative to camera offset (used internally if needed).
-        return rect.move(-self.rect.x, -self.rect.y)
-
-
-# =============================================================================
 # Group: Fog of War
 # =============================================================================
 # FogOfWar manages explored/visible tiles on a grid, revealing areas based on unit sight ranges.
@@ -1943,7 +1732,10 @@ class FogOfWar:
                 self.reveal(building.position, building.sight_range)
         for building in global_buildings:
             if building.health > 0:
-                tx, ty = int(building.position[0] // self.tile_size), int(building.position[1] // self.tile_size)
+                tx, ty = (
+                    int(building.position[0] // self.tile_size),
+                    int(building.position[1] // self.tile_size),
+                )
                 if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
                     building.is_seen = building.is_seen or self.visible[tx][ty]
 
@@ -1973,12 +1765,12 @@ class FogOfWar:
             return self.explored[tx][ty]
         return False
 
-    def draw(self, surface: pg.Surface, camera: Camera):
+    def draw(self, surface: pg.Surface, camera: Camera2d):
         """
         Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
 
         :param surface: Surface to draw fog on.
-        :param camera: Camera for viewport culling.
+        :param camera: Camera2d for viewport culling.
         """
         # Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
         start_tx = max(0, int(camera.rect.x // self.tile_size))
@@ -2055,19 +1847,22 @@ class Particle(pg.sprite.Sprite):
         if self.age >= self.lifetime:
             self.kill()
 
-    def draw(self, surface: pg.Surface, camera: Camera):
+    def draw(self, surface: pg.Surface, camera: Camera2d):
         """
         Draws scaled and positioned particle if on-screen.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         """
         # Draws scaled and positioned particle if on-screen.
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
         screen_pos = camera.world_to_screen(self.position)
-        scaled_size = (int(self.image.get_width() * camera.zoom), int(self.image.get_height() * camera.zoom))
+        scaled_size = (
+            int(self.image.get_width() * camera.zoom),
+            int(self.image.get_height() * camera.zoom),
+        )
         if scaled_size[0] > 0 and scaled_size[1] > 0:
             scaled_image = pg.transform.smoothscale(self.image, scaled_size)
             offset_x = scaled_size[0] / 2
@@ -2186,12 +1981,12 @@ class Projectile(pg.sprite.Sprite):
         if self.age >= self.lifetime:
             self.kill()
 
-    def draw(self, surface: pg.Surface, camera: Camera):
+    def draw(self, surface: pg.Surface, camera: Camera2d):
         """
         Draws trail segments with fading intensity, then the main projectile.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         """
         # Draws trail segments with fading intensity, then the main projectile.
         screen_rect = camera.get_screen_rect(self.rect)
@@ -2298,12 +2093,12 @@ class GameObject(pg.sprite.Sprite, ABC):
         dy = other_pos[1] - self.position.y
         return (dx, dy)
 
-    def draw(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
         """
         Base draw: scales image, handles rotation if needed, selection circle, health bar, particles.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         :param mouse_pos: Optional for hover.
         """
         # Base draw: scales image, handles rotation if needed, selection circle, health bar, particles.
@@ -2321,7 +2116,13 @@ class GameObject(pg.sprite.Sprite, ABC):
             surface.blit(scaled_image, blit_pos)
         if self.selected:
             radius = max(self.rect.width, self.rect.height) / 2 * zoom + 3
-            pg.draw.circle(surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom))
+            pg.draw.circle(
+                surface,
+                (255, 255, 0),
+                (int(screen_pos[0]), int(screen_pos[1])),
+                int(radius),
+                int(2 * zoom),
+            )
 
         for particle in self.plasma_burn_particles:
             particle.draw(surface, camera)
@@ -2331,7 +2132,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         Draws health bar above entity if under attack, hovered, or building with damage.
 
         :param screen: Surface to draw on.
-        :param camera: Camera for positioning.
+        :param camera: Camera2d for positioning.
         :param mouse_pos: Mouse position for hover detection.
         """
         # Draws health bar above entity if under attack, hovered, or building with damage.
@@ -2514,12 +2315,12 @@ class Unit(GameObject):
             self.image.fill(self.team_color)
         self.rect = self.image.get_rect(center=self.position)
 
-    def _draw_gate(self, surface: pg.Surface, camera: Camera):
+    def _draw_gate(self, surface: pg.Surface, camera: Camera2d):
         """
         Draws animated opening gates for production buildings.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         """
         # Draws animated opening gates for production buildings.
         door_width = self.stats.get("gate_width", 20)
@@ -2681,12 +2482,12 @@ class Unit(GameObject):
 
         self.plasma_burn_particles = [p for p in self.plasma_burn_particles if p.alive()]
 
-    def draw(self, surface: pg.Surface, camera: Camera, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: tuple = None):
         """
         Overridden draw for units: handles air height, rotation, rally point, gate animation.
 
         :param surface: Surface to draw on.
-        :param camera: Camera for transformation.
+        :param camera: Camera2d for transformation.
         :param mouse_pos: Mouse position for hover.
         """
         # Overridden draw for units: handles air height, rotation, rally point, gate animation.
@@ -2718,7 +2519,11 @@ class Unit(GameObject):
             else:
                 radius = max(self.rect.width, self.rect.height) / 2 * zoom + 3
                 pg.draw.circle(
-                    surface, (255, 255, 0), (int(screen_pos[0]), int(screen_pos[1])), int(radius), int(2 * zoom)
+                    surface,
+                    (255, 255, 0),
+                    (int(screen_pos[0]), int(screen_pos[1])),
+                    int(radius),
+                    int(2 * zoom),
                 )
         if hasattr(self, "rally_point") and self.selected:
             rally_screen = camera.world_to_screen(self.rally_point)
@@ -3214,7 +3019,9 @@ class AI:
             )
             if not unit_target:
                 unit_target = min(
-                    (u for u in enemy_units if u.health > 0), key=lambda u: u.distance_to(from_pos), default=None
+                    (u for u in enemy_units if u.health > 0),
+                    key=lambda u: u.distance_to(from_pos),
+                    default=None,
                 )
         else:
             unit_target = None
@@ -3287,7 +3094,13 @@ class AI:
                 snapped_center = snap_to_grid((center_x, center_y))
                 position = snapped_center
                 if is_valid_building_position(
-                    position, self.hq.team, building_cls, list(all_buildings), map_width, map_height, margin=60
+                    position,
+                    self.hq.team,
+                    building_cls,
+                    list(all_buildings),
+                    map_width,
+                    map_height,
+                    margin=60,
                 ):
                     return position
                 attempts += 1
@@ -3317,11 +3130,13 @@ class AI:
                 if len(barracks.production_queue) < 5:
                     if self.threat_level > 0.5:
                         unit_type = random.choices(
-                            list(self.production_priorities.keys()), weights=[0.7, 0.2, 0.1, 0, 0, 0]
+                            list(self.production_priorities.keys()),
+                            weights=[0.7, 0.2, 0.1, 0, 0, 0],
                         )[0]
                     else:
                         unit_type = random.choices(
-                            list(self.production_priorities.keys()), weights=list(self.production_priorities.values())
+                            list(self.production_priorities.keys()),
+                            weights=list(self.production_priorities.values()),
                         )[0]
 
                     cost = UNIT_CLASSES[unit_type]["cost"]
@@ -3541,7 +3356,12 @@ class AI:
                     elif rand < 0.7:
                         cls = random.choice([OilDerrick, Refinery, ShaleFracker, BlackMarket])
                     else:
-                        all_possible = [PowerPlant, Turret] + [OilDerrick, Refinery, ShaleFracker, BlackMarket]
+                        all_possible = [PowerPlant, Turret] + [
+                            OilDerrick,
+                            Refinery,
+                            ShaleFracker,
+                            BlackMarket,
+                        ]
                         cls = random.choice(all_possible)
 
             cost = UNIT_CLASSES[cls.__name__]["cost"]
@@ -3792,7 +3612,9 @@ class ProductionInterface:
                     )
                     bar_width = 100 * progress
                     pg.draw.rect(
-                        self.surface, self.ACTION_ALLOWED_COLOR, (self.MARGIN_X + 10, queue_y + 20, bar_width, 5)
+                        self.surface,
+                        self.ACTION_ALLOWED_COLOR,
+                        (self.MARGIN_X + 10, queue_y + 20, bar_width, 5),
                     )
                     pg.draw.rect(self.surface, self.LINE_COLOR, (self.MARGIN_X + 10, queue_y + 20, 100, 5), 1)
                 queue_y += 25
@@ -3850,7 +3672,7 @@ class ProductionInterface:
 
 def draw_mini_map(
     screen: pg.Surface,
-    camera: Camera,
+    camera: Camera2d,
     fog_of_war: FogOfWar,
     map_width: int,
     map_height: int,
@@ -3863,7 +3685,7 @@ def draw_mini_map(
     Renders scaled top-down map with terrain variation, entities, camera view outline.
 
     :param screen: Main screen.
-    :param camera: Camera.
+    :param camera: Camera2d.
     :param fog_of_war: FogOfWar instance.
     :param map_width: Map width.
     :param map_height: Map height.
@@ -3875,7 +3697,10 @@ def draw_mini_map(
     """
     # Renders scaled top-down map with terrain variation, entities, camera view outline.
     mini_map_rect = pg.Rect(
-        SCREEN_WIDTH - MINI_MAP_WIDTH, SCREEN_HEIGHT - MINI_MAP_HEIGHT, MINI_MAP_WIDTH, MINI_MAP_HEIGHT
+        SCREEN_WIDTH - MINI_MAP_WIDTH,
+        SCREEN_HEIGHT - MINI_MAP_HEIGHT,
+        MINI_MAP_WIDTH,
+        MINI_MAP_HEIGHT,
     )
     mini_map = pg.Surface((MINI_MAP_WIDTH, MINI_MAP_HEIGHT))
     mini_map.fill((0, 0, 0))
@@ -3935,7 +3760,10 @@ def draw_mini_map(
             pg.draw.circle(mini_map, color, (x, y), 2)
 
     cam_rect = pg.Rect(
-        camera.rect.x * scale_x, camera.rect.y * scale_y, camera.rect.width * scale_x, camera.rect.height * scale_y
+        camera.rect.x * scale_x,
+        camera.rect.y * scale_y,
+        camera.rect.width * scale_x,
+        camera.rect.height * scale_y,
     )
     pg.draw.rect(mini_map, (255, 255, 255), cam_rect, 1)
 
@@ -4328,19 +4156,43 @@ class SkirmishSetup:
         self.map_choice = None
 
         self.mode_1v1 = MenuButton(
-            SCREEN_WIDTH // 2 - 300, 150, 80, 50, "1v1", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+            SCREEN_WIDTH // 2 - 300,
+            150,
+            80,
+            50,
+            "1v1",
+            pg.Color(50, 100, 150),
+            pg.Color(100, 150, 200),
         )
         self.mode_2v2 = MenuButton(
-            SCREEN_WIDTH // 2 - 200, 150, 80, 50, "2v2", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+            SCREEN_WIDTH // 2 - 200,
+            150,
+            80,
+            50,
+            "2v2",
+            pg.Color(50, 100, 150),
+            pg.Color(100, 150, 200),
         )
         self.mode_3v3 = MenuButton(
-            SCREEN_WIDTH // 2 - 100, 150, 80, 50, "3v3", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+            SCREEN_WIDTH // 2 - 100,
+            150,
+            80,
+            50,
+            "3v3",
+            pg.Color(50, 100, 150),
+            pg.Color(100, 150, 200),
         )
         self.mode_4v4 = MenuButton(
             SCREEN_WIDTH // 2, 150, 80, 50, "4v4", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
         )
         self.mode_4ffa = MenuButton(
-            SCREEN_WIDTH // 2 + 100, 150, 80, 50, "4FFA", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+            SCREEN_WIDTH // 2 + 100,
+            150,
+            80,
+            50,
+            "4FFA",
+            pg.Color(50, 100, 150),
+            pg.Color(100, 150, 200),
         )
 
         self.size_tiny = MenuButton(200, 220, 120, 50, "Tiny", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
@@ -4611,18 +4463,37 @@ class VictoryScreen:
             # Horizontal lines
             for i in range(self.num_rows + 1):
                 y = self.table_y + i * self.row_height
-                pg.draw.line(surface, self.line_color, (self.table_x, y), (self.table_x + self.table_width, y), 2)
+                pg.draw.line(
+                    surface,
+                    self.line_color,
+                    (self.table_x, y),
+                    (self.table_x + self.table_width, y),
+                    2,
+                )
 
             # Vertical lines
             x_pos = self.table_x
             for width in self.col_widths:
                 pg.draw.line(
-                    surface, self.line_color, (x_pos, self.table_y), (x_pos, self.table_y + self.table_height), 2
+                    surface,
+                    self.line_color,
+                    (x_pos, self.table_y),
+                    (x_pos, self.table_y + self.table_height),
+                    2,
                 )
                 x_pos += width
 
             # Header row
-            headers = ["Player", "Produced", "Killed", "Casualties", "Built", "Raized", "Raized by", "Economy"]
+            headers = [
+                "Player",
+                "Produced",
+                "Killed",
+                "Casualties",
+                "Built",
+                "Raized",
+                "Raized by",
+                "Economy",
+            ]
             x_pos = self.table_x
             for i, header in enumerate(headers):
                 text_surf = self.font_medium.render(header, True, pg.Color("white"))
@@ -4630,7 +4501,11 @@ class VictoryScreen:
                     center=(x_pos + self.col_widths[i] // 2, self.table_y + self.row_height // 2)
                 )
                 # Background for header
-                pg.draw.rect(surface, self.header_color, (x_pos, self.table_y, self.col_widths[i], self.row_height))
+                pg.draw.rect(
+                    surface,
+                    self.header_color,
+                    (x_pos, self.table_y, self.col_widths[i], self.row_height),
+                )
                 surface.blit(text_surf, text_rect)
                 x_pos += self.col_widths[i]
 
@@ -4835,9 +4710,7 @@ class GameManager:
             ai = AI(hqs[team], GameConsole(), build_dir=build_dir, allies=alliances[team])
             ais.append(ai)
 
-        camera = Camera()
-        camera.map_width = map_width
-        camera.map_height = map_height
+        camera = Camera2d(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
         if spectate:
             camera.rect.center = (map_width / 2, map_height / 2)
 
@@ -5037,7 +4910,9 @@ class GameManager:
                             else:
                                 # Normal move
                                 formation_positions = calculate_formation_positions(
-                                    center=world_pos, target=world_pos, num_units=len(g["selected_units"])
+                                    center=world_pos,
+                                    target=world_pos,
+                                    num_units=len(g["selected_units"]),
                                 )
                                 for unit, pos in zip(g["selected_units"], formation_positions):
                                     unit.move_target = pos
@@ -5209,7 +5084,11 @@ class GameManager:
                     self.state = GameState.VICTORY if is_player_victory else GameState.DEFEAT
 
                 self.victory_screen = VictoryScreen(
-                    self.font_large, self.font_medium, is_player_victory, all_stats, g.get("player_team")
+                    self.font_large,
+                    self.font_medium,
+                    is_player_victory,
+                    all_stats,
+                    g.get("player_team"),
                 )
 
             self.screen.fill(pg.Color("black"))
@@ -5222,7 +5101,10 @@ class GameManager:
             start_tx = max(0, int(g["camera"].rect.x // TILE_SIZE))
             start_ty = max(0, int(g["camera"].rect.y // TILE_SIZE))
             end_tx = min(g["map_width"] // TILE_SIZE, start_tx + int(g["camera"].rect.width // TILE_SIZE + 2))
-            end_ty = min(g["map_height"] // TILE_SIZE, start_ty + int(g["camera"].rect.height // TILE_SIZE + 2))
+            end_ty = min(
+                g["map_height"] // TILE_SIZE,
+                start_ty + int(g["camera"].rect.height // TILE_SIZE + 2),
+            )
             for tx in range(start_tx, end_tx):
                 wx = tx * TILE_SIZE
                 sx = (wx - g["camera"].rect.x) * zoom
@@ -5304,7 +5186,9 @@ class GameManager:
 
             if g["interface"] and not g.get("spectator", False):
                 g["interface"].draw(
-                    self.screen, [b for b in g["global_buildings"] if b.team == g["player_team"]], g["global_buildings"]
+                    self.screen,
+                    [b for b in g["global_buildings"] if b.team == g["player_team"]],
+                    g["global_buildings"],
                 )
 
             if not g.get("spectator", False) and g["selecting"] and g["select_rect"]:
