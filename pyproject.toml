@@ -15,7 +15,15 @@ dev = [
 ]
 
 [tool.ruff]
+line-length = 120  # for both linter and formatter
 
 [tool.ruff.lint]
+future-annotations = true
 select = [
+    "F401", # unused import
+    "I", # isort
+    "UP", # pyupgrade
+]
+extend-safe-fixes = [
+    "TC",
 ]

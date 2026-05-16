@@ -19,5 +19,3 @@ UI & Controls: Minimap, production sidebar, selection boxes, rally points, and h
 Effects: Explosions, plasma burns, trailing projectiles, and unit/building sprites drawn with Pygame primitives.
 
 Performance: Spatial hashing for efficient queries, multithreaded unit updates, and cleanup for dead entities.
-
-
