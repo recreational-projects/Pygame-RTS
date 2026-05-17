@@ -45,3 +45,6 @@ extend-safe-fixes = [
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument
 ]
+"modules/screens.py" = [
+    "ANN401", # any-type
+]
