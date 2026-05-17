@@ -134,7 +134,7 @@ def draw_tank(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | No
         )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
+        particle.draw_2d(surface, camera)
 
 
 def create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
@@ -204,7 +204,7 @@ def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera2d, mouse_po
         )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
+        particle.draw_2d(surface, camera)
 
 
 def create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
@@ -272,7 +272,7 @@ def draw_rocketartillery(self, surface: pg.Surface, camera: Camera2d, mouse_pos:
         )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
+        particle.draw_2d(surface, camera)
 
 
 def create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
@@ -350,7 +350,7 @@ def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera2d, mouse_pos
         )
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
+        particle.draw_2d(surface, camera)
 
 
 def create_headquarters_image(size: Point, team: Team) -> pg.Surface:
@@ -1351,7 +1351,7 @@ def draw_turret(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | 
         pg.draw.rect(surface, (255, 255, 0), screen_rect, int(3 * zoom))
     self.draw_health_bar(surface, camera, mouse_pos)
     for particle in self.plasma_burn_particles:
-        particle.draw(surface, camera)
+        particle.draw_2d(surface, camera)
 
 
 # Drawing recipe dictionary for simple rotated units

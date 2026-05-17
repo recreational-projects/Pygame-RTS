@@ -3,8 +3,6 @@ from __future__ import annotations
 import heapq
 import math
 import random
-from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -29,6 +27,7 @@ from modules.data_iso import (
 )
 from modules.fog_of_war import FogOfWarIso
 from modules.game_console import GameConsole
+from modules.game_object_iso import GameObject
 from modules.game_state import GameState
 from modules.geometry import (
     absolute_world_to_iso,
@@ -37,17 +36,14 @@ from modules.geometry import (
     get_starting_positions,
     snap_to_grid,
 )
+from modules.particles import create_explosion_iso
+from modules.projectile_iso import Projectile
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_color, team_to_name
 
 if TYPE_CHECKING:
     from pygame.typing import Point
-
-PROJECTILE_LIFETIME = 1.0
-PARTICLES_PER_EXPLOSION = 3
-PLASMA_BURN_PARTICLES = 0
-PLASMA_BURN_DURATION = 1.0
 
 
 def heuristic(a: Point, b: Point) -> float:
@@ -371,133 +367,6 @@ def find_free_spawn_position(
     return (max(0, min(target_pos[0], map_width)), max(0, min(target_pos[1], map_height)))
 
 
-class Particle(pg.sprite.Sprite):
-    def __init__(self, pos: Point, vx: float, vy: float, size: int, color: pg.Color, lifetime: int) -> None:
-        super().__init__()
-        self.position = Vector2(pos)
-        self.vx = vx
-        self.vy = vy
-        self.size = size
-        self.color = color
-        self.lifetime = lifetime * 10
-        self.age = 0
-        self.image = pg.Surface((size, size), pg.SRCALPHA)
-        pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
-        self.rect = self.image.get_rect(center=self.position)
-
-    def update(self) -> None:
-        self.position.x += self.vx
-        self.position.y += self.vy
-        self.age += 1
-        alpha = int(255 * (1 - self.age / self.lifetime))
-        self.image.set_alpha(alpha)
-        self.rect.center = self.position
-        if self.age >= self.lifetime:
-            self.kill()
-
-    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
-        screen_rect = camera.get_screen_rect(self.rect)
-        if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
-            return
-        screen_pos = camera.world_to_iso(self.position, camera.zoom)
-        scaled_size = (
-            int(self.image.get_width() * camera.zoom),
-            int(self.image.get_height() * camera.zoom),
-        )
-        if scaled_size[0] > 0 and scaled_size[1] > 0:
-            scaled_image = pg.transform.smoothscale(self.image, scaled_size)
-            offset_x = scaled_size[0] / 2
-            offset_y = scaled_size[1] / 2
-            blit_pos = (screen_pos[0] - offset_x, screen_pos[1] - offset_y)
-            surface.blit(scaled_image, blit_pos)
-
-
-class PlasmaBurnParticle(Particle):
-    def __init__(self, pos: Point, entity, color: pg.Color, lifetime: int) -> None:
-        super().__init__(pos, 0, 0, 4, color, lifetime)
-        self.entity = entity
-        self.offset = Vector2(random.uniform(-20, 20), random.uniform(-10, 10))
-        self.initial_lifetime = lifetime * 30
-
-    def update(self) -> None:
-        body_angle = getattr(self.entity, "body_angle", 0)
-        rotated_offset = self.offset.rotate_rad(-body_angle)
-        self.position = self.entity.position + rotated_offset
-        self.age += 1
-        alpha = int(255 * (1 - self.age / self.initial_lifetime))
-        self.image.set_alpha(alpha)
-        self.rect.center = self.position
-        if self.age >= self.initial_lifetime:
-            self.kill()
-
-
-def create_explosion(
-    position: Point, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION
-) -> None:
-    color = team_to_color[team]
-    for _ in range(count):
-        vx = random.uniform(-3, 3)
-        vy = random.uniform(-3, 3)
-        size = random.randint(1, 2)
-        lifetime = random.randint(1, 3)
-        particles.add(Particle(position, vx, vy, size, color, lifetime))
-
-
-class Projectile(pg.sprite.Sprite):
-    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]) -> None:
-        super().__init__()
-        self.position = Vector2(pos)
-        self.direction = direction.normalize() if direction.length() > 0 else Vector2(1, 0)
-        self.damage = damage
-        self.team = team
-        self.speed = weapon["projectile_speed"]
-        self.lifetime = PROJECTILE_LIFETIME * 30
-        self.age = 0
-        self.length = weapon["projectile_length"]
-        self.width = weapon["projectile_width"]
-        self.angle = math.atan2(self.direction.y, self.direction.x)
-        self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
-        color = team_to_color[team]
-        for i in range(self.length):
-            alpha = int(255 * (i / self.length))
-            pg.draw.line(self.image, (color.r, color.g, color.b, alpha), (i, 0), (i, self.width), 1)
-        self.rect = self.image.get_rect(center=self.position)
-        self.trail = deque(maxlen=5)
-
-    def update(self) -> None:
-        self.trail.append(self.position.copy())
-        self.position += self.direction * self.speed
-        self.age += 1
-        self.rect.center = self.position
-        if self.age >= self.lifetime:
-            self.kill()
-
-    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
-        screen_rect = camera.get_screen_rect(self.rect)
-        if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
-            return
-        screen_pos = camera.world_to_iso(self.position, camera.zoom)
-        if len(self.trail) > 1:
-            trail_positions = [camera.world_to_iso(pos, camera.zoom) for pos in self.trail]
-            num_segments = len(trail_positions) - 1
-            for i in range(num_segments):
-                p1 = trail_positions[i]
-                p2 = trail_positions[i + 1]
-                age_factor = i / max(1, num_segments - 1)
-                c = pg.Color(team_to_color[self.team])
-                intensity = 0.3 + 0.7 * age_factor
-                trail_color = (int(c.r * intensity), int(c.g * intensity), int(c.b * intensity))
-                trail_width = max(1, int(self.width * camera.zoom * (0.2 + 0.3 * age_factor)))
-                pg.draw.line(surface, trail_color, p1, p2, trail_width)
-        scaled_length = int(self.length * camera.zoom)
-        scaled_width = int(self.width * camera.zoom)
-        if scaled_length > 0 and scaled_width > 0:
-            scaled_image = pg.transform.smoothscale(self.image, (scaled_length, scaled_width))
-            rotated_image = pg.transform.rotate(scaled_image, -math.degrees(self.angle))
-            rot_rect = rotated_image.get_rect(center=screen_pos)
-            surface.blit(rotated_image, rot_rect.topleft)
-
-
 def check_collision(entity, projectile):
     proj_rect = pg.Rect(
         projectile.position.x - projectile.length / 2,
@@ -510,68 +379,6 @@ def check_collision(entity, projectile):
         return dist < (entity.radius + max(projectile.length, projectile.width) / 2)
     else:
         return entity.rect.colliderect(proj_rect)
-
-
-class GameObject(pg.sprite.Sprite, ABC):
-    def __init__(self, position: Point, team: Team) -> None:
-        super().__init__()
-        self.position = Vector2(position)
-        self.team = team
-        self.health = 100
-        self.max_health = 100
-        self.under_attack = False
-        self.under_attack_timer = 0
-        self.selected = False
-        self.is_seen = False
-        self.body_angle = 0
-        self.plasma_burn_particles: list[PlasmaBurnParticle] = []
-        self.map_width = MAP_WIDTH
-        self.map_height = MAP_HEIGHT
-        self.image = pg.Surface((32, 32))
-        self.rect = self.image.get_rect(center=position)
-
-    def distance_to(self, other_pos: Point) -> float:
-        return self.position.distance_to(other_pos)
-
-    def draw_health_bar(self, screen: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
-        hovered = False
-        if mouse_pos is not None:
-            screen_rect = camera.get_screen_rect(self.rect)
-            if screen_rect.collidepoint(mouse_pos):
-                hovered = True
-        show = True
-        if self.is_building:
-            if self.health >= self.max_health:
-                show = False
-        else:
-            if not (self.under_attack or hovered):
-                show = False
-        if not show:
-            return
-        screen_pos = camera.world_to_iso(self.position, camera.zoom)
-        health_ratio = self.health / self.max_health
-        color = (0, 255, 0) if health_ratio > 0.5 else (255, 0, 0)
-        bar_width = 25
-        bar_height = 4
-        bar_x = screen_pos[0] - bar_width / 2
-        bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
-        pg.draw.rect(screen, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
-        pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
-        pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
-
-    def take_damage(self, damage: int, particles: pg.sprite.Group) -> bool:
-        self.health -= damage
-        self.under_attack = True
-        self.under_attack_timer = 120
-        if self.health < self.max_health * 0.7 and random.random() < 0.3:
-            color = team_to_color[self.team]
-            for _ in range(PLASMA_BURN_PARTICLES):
-                self.plasma_burn_particles.append(PlasmaBurnParticle(self.position, self, color, PLASMA_BURN_DURATION))
-        return self.health <= 0
-
-    @abstractmethod
-    def update(self) -> None:
-        pass
 
 
 class Unit(GameObject):
@@ -683,7 +490,7 @@ class Unit(GameObject):
             pg.draw.polygon(surface, (255, 255, 0), base_points, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
     def draw_humanoid(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
@@ -974,7 +781,7 @@ class Unit(GameObject):
             surface.blit(select_surf, (int(base_screen[0] - select_r), int(base_screen[1] - select_r)))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
     def draw_rotated_box(
         self,
@@ -998,7 +805,7 @@ class Unit(GameObject):
 
         def rotate_rel(
             points: list[tuple[float, float, float]] | list[tuple[float, float, int]], cos: float, sin: float
-        ):
+        ) -> list[tuple]:
             return [(x * cos - y * sin, x * sin + y * cos, z) for x, y, z in points]
 
         rel_bottom = [
@@ -1155,7 +962,7 @@ class Unit(GameObject):
             pg.draw.line(surface, outline_color, p_b4, p_b1, int(1 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:
         closest = closest_point_on_rect(target_building.rect, self.position)
@@ -1298,13 +1105,13 @@ class Unit(GameObject):
                     self.move_target = None
             if self.attack_target and self.attack_target.health > 0:
                 if self.attack_target.is_building:
-                    closest = self._closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest = closest_point_on_rect(self.attack_target.rect, self.position)
                     dir_to_closest = Vector2(closest) - self.position
                     dist = dir_to_closest.length()
                 else:
                     dist = self.distance_to(self.attack_target.position)
                 if self.attack_target.is_building:
-                    closest_enemy = self._closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest_enemy = closest_point_on_rect(self.attack_target.rect, self.position)
                     dir_to_enemy = Vector2(closest_enemy) - self.position
                 else:
                     dir_to_enemy = Vector2(self.attack_target.position) - self.position
@@ -1401,9 +1208,9 @@ class Unit(GameObject):
             return
         direction = vec.normalize()
         proj = Projectile(self.position, direction, weapon["damage"], self.team, weapon)
-        projectiles.add(proj)
+        projectiles.add(proj)  # FIXME: crash here: AttributeError: 'NoneType' object has no attribute 'add'
         self.last_shot_time = weapon["cooldown"]
-        create_explosion(self.position, pg.sprite.Group(), self.team, 3)
+        create_explosion_iso(self.position, pg.sprite.Group(), self.team, 3)
         if hasattr(self, "sound") and self.sound:
             self.sound.play()
 
@@ -1569,7 +1376,7 @@ class PowerPlant(Unit):
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
 
 class Refinery(Unit):
@@ -1653,7 +1460,7 @@ class Refinery(Unit):
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
 
 class Turret(Unit):
@@ -1747,7 +1554,7 @@ class Turret(Unit):
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
 
 class Barracks(Unit):
@@ -1860,7 +1667,7 @@ class Barracks(Unit):
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
 
 class WarFactory(Unit):
@@ -1970,7 +1777,7 @@ class WarFactory(Unit):
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
 
 class Hangar(Unit):
@@ -2088,7 +1895,7 @@ class Hangar(Unit):
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_iso(surface, camera)
 
 
 class AI:
@@ -2152,7 +1959,7 @@ class AI:
         self.unit_counts = {unit: 0 for unit in base_priorities.keys()}
 
     def _send_attack_group(
-        self, friendly_units, enemy_buildings, enemy_units, num_to_send: int, map_width, map_height
+        self, friendly_units, enemy_buildings, enemy_units, num_to_send: int, map_width: int, map_height: int
     ) -> None:
         if num_to_send <= 0:
             return
@@ -2188,7 +1995,7 @@ class AI:
         for unit, pos in zip(idle_units, positions):
             unit.move_target = pos
 
-    def update_rally_points(self, friendly_buildings, enemy_pos, map_width, map_height) -> None:
+    def update_rally_points(self, friendly_buildings, enemy_pos, map_width: int, map_height: int) -> None:
         if not enemy_pos:
             return
         dir_vec = Vector2(enemy_pos) - self.hq.position
@@ -2383,8 +2190,8 @@ class AI:
         | type[Turret]
         | type[WarFactory],
         all_buildings,
-        map_width,
-        map_height,
+        map_width: int,
+        map_height: int,
         prefer_near_hq=True,
     ) -> tuple[float, float] | None:
         default_area = 2560 * 1440
@@ -2504,7 +2311,7 @@ class AI:
                     hangar.production_queue.append({"unit_type": "AttackHelicopter", "repeat": False})
                     self.hq.credits -= UNIT_CLASSES["AttackHelicopter"]["cost"]
 
-    def build_defenses(self, all_buildings, map_width, map_height) -> None:
+    def build_defenses(self, all_buildings, map_width: int, map_height: int) -> None:
         if (
             self.threat_level > 0.2
             and self.turret_count < self.defense_target
@@ -2520,8 +2327,8 @@ class AI:
         enemy_hq,
         enemy_buildings=None,
         enemy_units=None,
-        map_width=MAP_WIDTH,
-        map_height=MAP_HEIGHT,
+        map_width: int = MAP_WIDTH,
+        map_height: int = MAP_HEIGHT,
     ) -> None:
         if not enemy_hq and not enemy_buildings and not enemy_units:
             return
@@ -3166,7 +2973,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         for e in enemy_units + enemy_buildings:
             if check_collision(e, projectile):
                 if e.take_damage(projectile.damage, particles):
-                    create_explosion(e.position, particles, e.team)
+                    create_explosion_iso(e.position, particles, e.team)
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:
@@ -3754,7 +3561,7 @@ class GameManager:
                     is_victory=False,
                     all_stats=all_stats,
                     player_team=g["player_team"],
-                    screen_size=screen.size,
+                    screen_size=self.screen.size,
                 )
             elif len(alive_hqs) <= 1:
                 if len(alive_hqs) == 0:
@@ -3774,7 +3581,7 @@ class GameManager:
                     is_victory=is_player_victory,
                     all_stats=all_stats,
                     player_team=g.get("player_team"),
-                    screen_size=screen.size,
+                    screen_size=self.screen.size,
                 )
             self.screen.fill(pg.Color("black"))
             map_color = g["map_color"]
@@ -3848,7 +3655,8 @@ class GameManager:
             for projectile in g["projectiles"]:
                 projectile.draw(self.screen, g["camera"])
             for particle in g["particles"]:
-                particle.draw(self.screen, g["camera"])
+                particle.draw_iso(self.screen, g["camera"])
+
             if g["interface"] and not g.get("spectator", False):
                 g["interface"].draw(
                     self.screen,
@@ -3898,7 +3706,7 @@ class GameManager:
                     if result == "menu":
                         self.state = GameState.MENU
                         self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large, font_medium=self.font_medium, screen_size=screen.size
+                            font_large=self.font_large, font_medium=self.font_medium, screen_size=self.screen.size
                         )
 
                     elif result and result[0] == "start_game":
@@ -3919,20 +3727,27 @@ class GameManager:
                     if result == "menu":
                         self.state = GameState.MENU
                         self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large, font_medium=self.font_medium, screen_size=screen.size
+                            font_large=self.font_large, font_medium=self.font_medium, screen_size=self.screen.size
                         )
                 pg.display.flip()
                 self.clock.tick(60)
         pg.quit()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    # Entry point: initializes Pygame, creates manager, runs game.
     pg.init()
     pg.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
     screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pg.display.set_caption("Paper Tigers")
     clock = pg.time.Clock()
+
     font_large = pg.font.SysFont(None, 72)
     font_medium = pg.font.SysFont(None, 28)
+
     manager = GameManager(screen, clock, font_large, font_medium)
     manager.run()
+
+
+if __name__ == "__main__":
+    main()

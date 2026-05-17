@@ -24,6 +24,10 @@ PAN_SPEED = 10
 """Control edge-scrolling camera panning."""
 STARTING_POSITIONS_EDGE_OFFSET = 50
 
+PLASMA_BURN_PARTICLE_COUNT: int = 10
+PLASMA_BURN_DURATION: int = 2
+PROJECTILE_LIFETIME = 5.0
+
 
 # Dictionary of maps with dimensions and base colors for procedural terrain generation.
 # UNIT_CLASSES defines stats for all unit and building types: cost, health, speed, weapons, etc.
