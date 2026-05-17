@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import field
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import pygame as pg
-from pygame.typing import Point
 
 from modules.camera.camera import Camera
 from modules.constants_iso import (
@@ -12,6 +13,9 @@ from modules.constants_iso import (
     SCREEN_WIDTH,
     TILE_SIZE,
 )
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
 
 class CameraIso(Camera):

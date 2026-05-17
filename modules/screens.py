@@ -1,10 +1,16 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import pygame as pg
-from pygame.typing import ColorLike, IntPoint
 
 from modules.data_2d import MAPS
-from modules.team import Team, team_to_color, team_to_name
+from modules.team import team_to_color, team_to_name
+
+if TYPE_CHECKING:
+    from pygame.typing import ColorLike, IntPoint
+
+    from modules.team import Team
 
 
 def _get_team_enum(name: str) -> Team | None:

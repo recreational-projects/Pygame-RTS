@@ -7,11 +7,10 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import InitVar, dataclass
 from dataclasses import field as dataclass_field
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
-from pygame.typing import Point
 
 from modules.camera.camera_2d import Camera2d
 from modules.constants_2d import (
@@ -33,6 +32,9 @@ from modules.geometry import calculate_formation_positions_2d, get_starting_posi
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_color, team_to_name
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
 # Group: Game Data & Config
 # =============================================================================

@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import math
 import random
+from typing import TYPE_CHECKING
 
 from pygame.math import Vector2
-from pygame.typing import Point
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
 
 def snap_to_grid(*, pos: Point, grid_size: int) -> tuple[float, float]:

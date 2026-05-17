@@ -7,11 +7,10 @@ from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import InitVar, dataclass
 from dataclasses import field as dataclass_field
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
-from pygame.typing import Point
 
 from modules.camera.camera_iso import CameraIso
 from modules.constants_iso import (
@@ -37,6 +36,9 @@ from modules.geometry import (
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_color, team_to_name
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
 PROJECTILE_LIFETIME = 1.0
 PARTICLES_PER_EXPLOSION = 3

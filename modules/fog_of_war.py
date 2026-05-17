@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import math
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 import pygame as pg
-from pygame.typing import IntPoint, Point
 
-from modules.camera.camera_2d import Camera2d
-from modules.camera.camera_iso import CameraIso
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from pygame.typing import IntPoint, Point
+
+    from modules.camera.camera_2d import Camera2d
+    from modules.camera.camera_iso import CameraIso
 
 
 class FogOfWar2d:
@@ -46,11 +52,11 @@ class FogOfWar2d:
         num_tiles_y = len(self.visible[0])
         self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
         for unit in ally_units:
-            self.reveal(unit.position, unit.sight_range)
+            self._reveal(unit.position, unit.sight_range)
 
         for building in ally_buildings:
             if building.health > 0:
-                self.reveal(building.position, building.sight_range)
+                self._reveal(building.position, building.sight_range)
 
         for building in global_buildings:
             if building.health > 0:
@@ -61,7 +67,7 @@ class FogOfWar2d:
                 if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
                     building.is_seen = building.is_seen or self.visible[tx][ty]
 
-    def reveal(self, center: IntPoint, radius: int) -> None:
+    def _reveal(self, center: IntPoint, radius: int) -> None:
         """Reveals tiles within radius of center as both explored and visible.
 
         :param center: Center position (x, y) to reveal around.
@@ -159,11 +165,11 @@ class FogOfWarIso:
         num_tiles_y = len(self.visible[0])
         self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
         for unit in ally_units:
-            self.reveal(unit.position, unit.sight_range)
+            self._reveal(unit.position, unit.sight_range)
 
         for building in ally_buildings:
             if building.health > 0:
-                self.reveal(building.position, building.sight_range)
+                self._reveal(building.position, building.sight_range)
 
         for building in global_buildings:
             if building.health > 0:
@@ -174,7 +180,7 @@ class FogOfWarIso:
                 if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
                     building.is_seen = building.is_seen or self.visible[tx][ty]
 
-    def reveal(self, center: Point, radius: int) -> None:
+    def _reveal(self, center: Point, radius: int) -> None:
         cx, cy = center
         tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
         radius_tiles = radius // self.tile_size

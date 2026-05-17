@@ -1,10 +1,14 @@
-from typing import override
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, override
 
 import pygame as pg
-from pygame.typing import Point
 
 from modules.camera.camera import Camera
 from modules.constants_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
 
 class Camera2d(Camera):

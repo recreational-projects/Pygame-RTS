@@ -1,13 +1,20 @@
 """Modular drawing functions for units and buildings."""
 
+from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING
 
 import pygame as pg
 from pygame.math import Vector2
-from pygame.typing import Point
 
-from modules.camera.camera_2d import Camera2d
-from modules.team import Team, team_to_color
+from modules.team import team_to_color
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
+
+    from modules.camera.camera_2d import Camera2d
+    from modules.team import Team
 
 
 def create_infantry_image(size: Point, team: Team) -> pg.Surface:

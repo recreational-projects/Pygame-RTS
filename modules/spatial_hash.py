@@ -1,7 +1,12 @@
 """Implements a simple grid-based spatial index for efficient nearby object queries."""
 
-from pygame.math import Vector2
-from pygame.typing import IntPoint
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pygame.math import Vector2
+    from pygame.typing import IntPoint
 
 
 class SpatialHash2d:

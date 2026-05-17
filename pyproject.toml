@@ -25,6 +25,7 @@ select = [
     "E", # pycodestyle
     "F",
     "I", # isort
+    "TC", # flake8-type-checking
     "UP", # pyupgrade
 ]
 ignore = [

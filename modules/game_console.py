@@ -1,4 +1,9 @@
-import pygame as pg
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pygame as pg
 
 
 class GameConsole:

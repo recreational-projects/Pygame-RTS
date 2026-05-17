@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pygame as pg
-from pygame.typing import Point
+
+if TYPE_CHECKING:
+    from pygame.typing import Point
 
 
 @dataclass(kw_only=True)
