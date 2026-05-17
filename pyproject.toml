@@ -42,6 +42,9 @@ extend-safe-fixes = [
     "E501", # line-too-long
     "F841",
 ]
+"modules/draw_2d.py" = [
+    "ANN001", # missing-type-function-argument
+]
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument
 ]

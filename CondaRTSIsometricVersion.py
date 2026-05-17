@@ -27,6 +27,12 @@ from modules.constants_iso import (
 from modules.data_iso import MAPS, UNIT_CLASSES
 from modules.game_console import GameConsole
 from modules.game_state import GameState
+from modules.geometry import (
+    absolute_world_to_iso,
+    calculate_formation_positions_iso,
+    get_starting_positions_iso,
+    snap_to_grid,
+)
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.team import Team, team_to_color, team_to_name
 
@@ -301,10 +307,6 @@ def generate_terrain_features(map_name: str, map_width: int, map_height: int) ->
     return features
 
 
-def snap_to_grid(pos: Point, grid_size: int = TILE_SIZE) -> tuple[float, float]:
-    return (round(pos[0] / grid_size) * grid_size, round(pos[1] / grid_size) * grid_size)
-
-
 def is_valid_building_position(
     position: Point,
     team: Team,
@@ -361,64 +363,6 @@ def find_free_spawn_position(
     return (max(0, min(target_pos[0], map_width)), max(0, min(target_pos[1], map_height)))
 
 
-def calculate_formation_positions(
-    center: Point,
-    target: Point,
-    num_units: int,
-    formation_type: str = "line",
-    spacing: float = 40.0,
-) -> list[tuple[float, float]]:
-    if num_units == 0:
-        return []
-    positions = []
-    if formation_type == "line":
-        cols = max(1, int(math.sqrt(num_units)))
-        rows = (num_units + cols - 1) // cols
-        for i in range(num_units):
-            row, col = i // cols, i % cols
-            x = center[0] + (col - cols / 2) * spacing
-            y = center[1] + (row - rows / 2) * spacing
-            x += random.uniform(-spacing * 0.1, spacing * 0.1)
-            y += random.uniform(-spacing * 0.1, spacing * 0.1)
-            positions.append((x, y))
-    elif formation_type == "v":
-        apex = Vector2(target)
-        base = Vector2(center)
-        dir_to_target = (apex - base).normalize() if (apex - base).length() > 0 else Vector2(1, 0)
-        perp = dir_to_target.rotate_rad(math.pi / 2)
-        half = (num_units - 1) / 2
-        for i in range(num_units):
-            offset = (i - half) * spacing * 0.5
-            depth = spacing * (i / num_units) * 0.7
-            pos = base + perp * offset + dir_to_target * depth
-            pos += Vector2(random.uniform(-5, 5), random.uniform(-5, 5))
-            positions.append((pos.x, pos.y))
-    return positions
-
-
-def get_starting_positions(
-    map_width: int, map_height: int, num_players: int
-) -> list[tuple[float, int] | tuple[int, float] | tuple[int, int]]:
-    edge_dist = 250
-    half_w = map_width / 2
-    half_h = map_height / 2
-    base_positions = [
-        (half_w, edge_dist),
-        (map_width - edge_dist, edge_dist),
-        (map_width - edge_dist, half_h),
-        (map_width - edge_dist, map_height - edge_dist),
-        (half_w, map_height - edge_dist),
-        (edge_dist, map_height - edge_dist),
-        (edge_dist, half_h),
-        (edge_dist, edge_dist),
-    ]
-    step = max(1, 8 // num_players)
-    selected_positions = base_positions[::step][:num_players]
-    while len(selected_positions) < num_players:
-        selected_positions.append(base_positions[len(selected_positions) % 8])
-    return selected_positions
-
-
 class SpatialHash:
     def __init__(self, cell_size: int = 250) -> None:
         self.cell_size = cell_size
@@ -451,13 +395,6 @@ class SpatialHash:
                     if dx * dx + dy * dy <= r2:
                         nearby.append(o)
         return nearby
-
-
-def absolute_world_to_iso(world_pos: Point, zoom: float) -> tuple[float, float]:
-    dx, dy = world_pos
-    iso_x = (dx - dy) * (zoom / 2)
-    iso_y = (dx + dy) * (zoom / 2)
-    return (iso_x, iso_y)
 
 
 class FogOfWar:
@@ -2343,7 +2280,7 @@ class AI:
         avg_pos = total_pos / num_to_send
         formation_type = "v" if self.personality in ["aggressive", "rusher"] else "line"
         spacing = 40 * self.formation_spacing_mult
-        positions = calculate_formation_positions(avg_pos, target_center, num_to_send, formation_type, spacing)
+        positions = calculate_formation_positions_iso(avg_pos, target_center, num_to_send, formation_type, spacing)
         positions = [(max(0, min(p[0], map_width)), max(0, min(p[1], map_height))) for p in positions]
         attackers = friendly_units[:num_to_send]
         for unit, pos in zip(attackers, positions):
@@ -2357,7 +2294,9 @@ class AI:
         if len(idle_units) < 2:
             return
         spacing = 30 * self.formation_spacing_mult
-        positions = calculate_formation_positions(focal_point, focal_point, len(idle_units), formation_type, spacing)
+        positions = calculate_formation_positions_iso(
+            focal_point, focal_point, len(idle_units), formation_type, spacing
+        )
         for unit, pos in zip(idle_units, positions):
             unit.move_target = pos
 
@@ -2373,7 +2312,7 @@ class AI:
         target.x = max(0, min(target.x, map_width))
         target.y = max(0, min(target.y, map_height))
         formation_type = "line" if self.personality == "defensive" else "v"
-        positions = calculate_formation_positions(target, target, len(friendly_buildings), formation_type)
+        positions = calculate_formation_positions_iso(target, target, len(friendly_buildings), formation_type)
         for i, b in enumerate([b for b in friendly_buildings if hasattr(b, "rally_point")]):
             if i < len(positions):
                 b.rally_point = Vector2(positions[i])
@@ -2594,7 +2533,7 @@ class AI:
                 center_y = hq_pos.y + dist * math.sin(angle)
                 center_x = max(half_w, min(map_width - half_w, center_x))
                 center_y = max(half_h, min(map_height - half_h, center_y))
-                snapped_center = snap_to_grid((center_x, center_y))
+                snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
                 position = snapped_center
                 if is_valid_building_position(
                     position,
@@ -2740,7 +2679,7 @@ class AI:
             scout_tx = max(0, min(scout_target[0] + random.uniform(-200, 200), map_width))
             scout_ty = max(0, min(scout_target[1] + random.uniform(-200, 200), map_height))
             idle_units = [u for u in friendly_units if u.health > 0 and u.move_target is None][:8]
-            positions = calculate_formation_positions((scout_tx, scout_ty), scout_target, len(idle_units), "line")
+            positions = calculate_formation_positions_iso((scout_tx, scout_ty), scout_target, len(idle_units), "line")
             for scout, pos in zip(idle_units, positions):
                 scout.move_target = pos
             self.scout_timer = random.randint(0, scout_interval // 2)
@@ -2777,7 +2716,7 @@ class AI:
                 else:
                     patrol_tx = random.uniform(0, map_width)
                     patrol_ty = random.uniform(0, map_height)
-                positions = calculate_formation_positions(
+                positions = calculate_formation_positions_iso(
                     (patrol_tx, patrol_ty), (patrol_tx, patrol_ty), num_patrol, "line"
                 )
                 for unit, pos in zip(idle_in_base[:num_patrol], positions):
@@ -3461,7 +3400,7 @@ class GameManager:
             enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
             num_players = 4
         teams_list = player_side + enemy_side
-        positions = get_starting_positions(map_width, map_height, num_players)
+        positions = get_starting_positions_iso(map_width, map_height, num_players)
         for i, team in enumerate(teams_list):
             pos = positions[i]
             hq = Headquarters(pos, team)
@@ -3646,7 +3585,7 @@ class GameManager:
                                         g["interface"].update_producer(g["player_hq"])
                             continue
                         if g["interface"].placing_cls is not None and not g["interface_rect"].collidepoint(mouse_pos):
-                            snapped = snap_to_grid(world_pos)
+                            snapped = snap_to_grid(pos=world_pos, grid_size=TILE_SIZE)
                             buildings_list = list(g["global_buildings"])
                             unit_type = g["interface"].placing_cls.__name__
                             cost = UNIT_CLASSES[unit_type]["cost"]
@@ -3732,7 +3671,7 @@ class GameManager:
                                         unit.move_target = clicked_enemy.position
                                         unit.path = []
                             else:
-                                formation_positions = calculate_formation_positions(
+                                formation_positions = calculate_formation_positions_iso(
                                     center=world_pos,
                                     target=world_pos,
                                     num_units=len(g["selected_units"]),
@@ -3979,7 +3918,7 @@ class GameManager:
                 if g["interface"].placing_cls is not None:
                     mouse_pos = pg.mouse.get_pos()
                     ghost_pos = g["camera"].screen_to_world(mouse_pos)
-                    snapped = snap_to_grid(ghost_pos)
+                    snapped = snap_to_grid(pos=ghost_pos, grid_size=TILE_SIZE)
                     buildings_list = list(g["global_buildings"])
                     unit_type = g["interface"].placing_cls.__name__
                     valid = is_valid_building_position(
