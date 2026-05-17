@@ -49,6 +49,9 @@ extend-safe-fixes = [
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument
 ]
+"modules/particles.py" = [
+    "ANN001", # missing-type-function-argument: entity (prob GameObject but that needs extraction)
+]
 "modules/screens.py" = [
     "ANN401", # any-type
 ]

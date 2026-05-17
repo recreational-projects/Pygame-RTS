@@ -37,6 +37,7 @@ from modules.geometry import (
     get_starting_positions,
     snap_to_grid,
 )
+from modules.particles import PlasmaBurnParticle, create_explosion_2d
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_color, team_to_name
@@ -49,9 +50,8 @@ if TYPE_CHECKING:
 # PROJECTILE_LIFETIME, PARTICLES_PER_EXPLOSION, etc., are global effects constants.
 
 PROJECTILE_LIFETIME = 5.0
-PARTICLES_PER_EXPLOSION = 20
-PLASMA_BURN_PARTICLES = 10
-PLASMA_BURN_DURATION = 2.0
+PLASMA_BURN_PARTICLES: int = 10
+PLASMA_BURN_DURATION: int = 2
 
 
 # =============================================================================
@@ -138,136 +138,6 @@ def find_free_spawn_position(
         if not overlaps_building and not overlaps_unit:
             return (pos_x, pos_y)
     return target_pos
-
-
-# =============================================================================
-# Group: Particle Effects
-# =============================================================================
-# Particle class for explosions and burns; PlasmaBurnParticle attaches to entities.
-
-
-class Particle(pg.sprite.Sprite):
-    """
-    Base particle: circular sprite with velocity, fading alpha over lifetime.
-
-    Used for explosion effects.
-    """
-
-    def __init__(self, pos: Point, vx: float, vy: float, size: int, color: pg.Color, lifetime: int) -> None:
-        """
-        :param pos: Initial position.
-        :param vx: Initial x velocity.
-        :param vy: Initial y velocity.
-        :param size: Particle size in pixels.
-        :param color: Pygame Color for the particle.
-        :param lifetime: Lifetime in frames (scaled by 10).
-        """
-        # Base particle: circular sprite with velocity, fading alpha over lifetime.
-        super().__init__()
-        self.position = Vector2(pos)
-        self.vx = vx
-        self.vy = vy
-        self.size = size
-        self.color = color
-        self.lifetime = lifetime * 10
-        self.age = 0
-        self.image = pg.Surface((size, size), pg.SRCALPHA)
-        pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
-        self.rect = self.image.get_rect(center=self.position)
-
-    def update(self) -> None:
-        """
-        Updates position, age, and alpha; kills when lifetime exceeded.
-        """
-        # Updates position, age, and alpha; kills when lifetime exceeded.
-        self.position.x += self.vx
-        self.position.y += self.vy
-        self.age += 1
-        alpha = int(255 * (1 - self.age / self.lifetime))
-        self.image.set_alpha(alpha)
-        self.rect.center = self.position
-        if self.age >= self.lifetime:
-            self.kill()
-
-    def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
-        """
-        Draws scaled and positioned particle if on-screen.
-
-        :param surface: Surface to draw on.
-        :param camera: Camera2d for transformation.
-        """
-        # Draws scaled and positioned particle if on-screen.
-        screen_rect = camera.get_screen_rect(self.rect)
-        if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
-            return
-        screen_pos = camera.world_to_screen(self.position)
-        scaled_size = (
-            int(self.image.get_width() * camera.zoom),
-            int(self.image.get_height() * camera.zoom),
-        )
-        if scaled_size[0] > 0 and scaled_size[1] > 0:
-            scaled_image = pg.transform.smoothscale(self.image, scaled_size)
-            offset_x = scaled_size[0] / 2
-            offset_y = scaled_size[1] / 2
-            blit_pos = (screen_pos[0] - offset_x, screen_pos[1] - offset_y)
-            surface.blit(scaled_image, blit_pos)
-
-
-class PlasmaBurnParticle(Particle):
-    """
-    Attached particle that follows an entity, offset and rotated with it.
-
-    Used for damage burn effects on entities.
-    """
-
-    def __init__(self, pos: Point, entity, color: pg.Color, lifetime: int) -> None:
-        """
-        :param pos: Initial position (unused, as it follows entity).
-        :param entity: Entity to attach to.
-        :param color: Pygame Color for the particle.
-        :param lifetime: Lifetime in seconds (scaled by 30).
-        """
-        # Attached particle that follows an entity, offset and rotated with it.
-        super().__init__(pos, 0, 0, 4, color, lifetime)
-        self.entity = entity
-        self.offset = Vector2(random.uniform(-20, 20), random.uniform(-10, 10))
-        self.initial_lifetime = lifetime * 30
-
-    def update(self) -> None:
-        """
-        Updates position relative to entity, fades over time.
-        """
-        # Updates position relative to entity, fades over time.
-        body_angle = getattr(self.entity, "body_angle", 0)
-        rotated_offset = self.offset.rotate_rad(-body_angle)
-        self.position = self.entity.position + rotated_offset
-        self.age += 1
-        alpha = int(255 * (1 - self.age / self.initial_lifetime))
-        self.image.set_alpha(alpha)
-        self.rect.center = self.position
-        if self.age >= self.initial_lifetime:
-            self.kill()
-
-
-def create_explosion(
-    position: Point, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION
-) -> None:
-    """
-    Spawns a burst of particles at position with team color.
-
-    :param position: Explosion center (x, y).
-    :param particles: Particle group to add to.
-    :param team: Team for particle color.
-    :param count: Number of particles (default: PARTICLES_PER_EXPLOSION).
-    """
-    # Spawns a burst of particles at position with team color.
-    color = team_to_color[team]
-    for _ in range(count):
-        vx = random.uniform(-3, 3)
-        vy = random.uniform(-3, 3)
-        size = random.randint(2, 4)
-        lifetime = random.randint(3, 7)
-        particles.add(Particle(position, vx, vy, size, color, lifetime))
 
 
 # =============================================================================
@@ -469,7 +339,7 @@ class GameObject(pg.sprite.Sprite, ABC):
             )
 
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_2d(surface, camera)
 
     def draw_health_bar(self, screen: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
         """
@@ -865,7 +735,7 @@ class Unit(GameObject):
             self._draw_gate(surface, camera)
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
-            particle.draw(surface, camera)
+            particle.draw_2d(surface, camera)
 
     def get_attack_range(self) -> float:
         """
@@ -921,7 +791,7 @@ class Unit(GameObject):
         projectiles.add(proj)
         self.last_shot_time = weapon["cooldown"]
         self.turret_angle = math.atan2(direction.y, direction.x)
-        create_explosion(self.position, pg.sprite.Group(), self.team, 3)
+        create_explosion_2d(self.position, pg.sprite.Group(), self.team, 3)
 
 
 # =============================================================================
@@ -1342,8 +1212,8 @@ class AI:
         | type[Turret]
         | type[WarFactory],
         all_buildings,
-        map_width,
-        map_height,
+        map_width: int,
+        map_height: int,
         prefer_near_hq=True,
     ) -> tuple[float, float] | None:
         """
@@ -2234,7 +2104,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         for e in enemy_units + enemy_buildings:
             if check_collision(e, projectile):
                 if e.take_damage(projectile.damage, particles):
-                    create_explosion(e.position, particles, e.team)
+                    create_explosion_2d(e.position, particles, e.team)
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:
@@ -2949,7 +2819,7 @@ class GameManager:
                 projectile.draw(self.screen, g["camera"])
 
             for particle in g["particles"]:
-                particle.draw(self.screen, g["camera"])
+                particle.draw_2d(self.screen, g["camera"])
 
             if g["interface"] and not g.get("spectator", False):
                 g["interface"].draw(

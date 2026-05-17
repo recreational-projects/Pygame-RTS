@@ -32,10 +32,10 @@ class Camera2d(Camera):
         :return: Transformed Rect in screen space.
         """
         # Transforms a world Rect to screen coordinates.
-        screen_left = (world_rect.left - self.rect.x) * self.zoom
-        screen_top = (world_rect.top - self.rect.y) * self.zoom
-        screen_w = world_rect.width * self.zoom
-        screen_h = world_rect.height * self.zoom
+        screen_left = int((world_rect.left - self.rect.x) * self.zoom)
+        screen_top = int((world_rect.top - self.rect.y) * self.zoom)
+        screen_w = int(world_rect.width * self.zoom)
+        screen_h = int(world_rect.height * self.zoom)
         return pg.Rect(screen_left, screen_top, screen_w, screen_h)
 
     def update_zoom(self, delta: float, mouse_world_pos: Point | None = None) -> None:
