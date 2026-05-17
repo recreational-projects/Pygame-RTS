@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
-from pygame.typing import IntPoint, Point
+from pygame.typing import Point
 
 from modules.camera.camera_iso import CameraIso
 from modules.constants_iso import (
@@ -25,6 +25,7 @@ from modules.constants_iso import (
     TILE_SIZE,
 )
 from modules.data_iso import MAPS, UNIT_CLASSES
+from modules.fog_of_war import FogOfWarIso
 from modules.game_console import GameConsole
 from modules.game_state import GameState
 from modules.geometry import (
@@ -34,6 +35,7 @@ from modules.geometry import (
     snap_to_grid,
 )
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
+from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_color, team_to_name
 
 PROJECTILE_LIFETIME = 1.0
@@ -361,123 +363,6 @@ def find_free_spawn_position(
         if not overlaps_building and not overlaps_unit:
             return (pos_x, pos_y)
     return (max(0, min(target_pos[0], map_width)), max(0, min(target_pos[1], map_height)))
-
-
-class SpatialHash:
-    def __init__(self, cell_size: int = 250) -> None:
-        self.cell_size = cell_size
-        self.grid: dict[IntPoint, list] = {}
-
-    def get_key(self, pos: Vector2) -> tuple[int, int]:
-        return (int(pos.x // self.cell_size), int(pos.y // self.cell_size))
-
-    def add(self, obj: GameObject) -> None:
-        key = self.get_key(obj.position)
-        if key not in self.grid:
-            self.grid[key] = []
-        self.grid[key].append(obj)
-
-    def query(self, pos: Vector2, radius: float) -> list:
-        cx = int(pos.x // self.cell_size)
-        cy = int(pos.y // self.cell_size)
-        keys = set()
-        r = int(radius / self.cell_size) + 1
-        for dx in range(-r, r + 1):
-            for dy in range(-r, r + 1):
-                keys.add((cx + dx, cy + dy))
-        nearby = []
-        r2 = radius * radius
-        for k in keys:
-            if k in self.grid:
-                for o in self.grid[k]:
-                    dx = o.position.x - pos.x
-                    dy = o.position.y - pos.y
-                    if dx * dx + dy * dy <= r2:
-                        nearby.append(o)
-        return nearby
-
-
-class FogOfWar:
-    def __init__(self, map_width: int, map_height: int, tile_size: int = TILE_SIZE, spectator: bool = False) -> None:
-        self.tile_size = tile_size
-        num_tiles_x = map_width // tile_size
-        num_tiles_y = map_height // tile_size
-        self.explored = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        if spectator:
-            self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-            self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-
-    def reveal(self, center: Point, radius: int) -> None:
-        cx, cy = center
-        tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
-        radius_tiles = radius // self.tile_size
-        for ty in range(max(0, tile_y - radius_tiles), min(len(self.explored[0]), tile_y + radius_tiles + 1)):
-            for tx in range(max(0, tile_x - radius_tiles), min(len(self.explored), tile_x + radius_tiles + 1)):
-                tile_center_x = tx * self.tile_size + self.tile_size // 2
-                tile_center_y = ty * self.tile_size + self.tile_size // 2
-                if math.sqrt((cx - tile_center_x) ** 2 + (cy - tile_center_y) ** 2) <= radius:
-                    self.explored[tx][ty] = True
-                    self.visible[tx][ty] = True
-
-    def update_visibility(self, ally_units, ally_buildings, global_buildings) -> None:
-        if not ally_units and not ally_buildings:
-            return
-        num_tiles_x = len(self.visible)
-        num_tiles_y = len(self.visible[0])
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        for unit in ally_units:
-            self.reveal(unit.position, unit.sight_range)
-        for building in ally_buildings:
-            if building.health > 0:
-                self.reveal(building.position, building.sight_range)
-        for building in global_buildings:
-            if building.health > 0:
-                tx, ty = (
-                    int(building.position[0] // self.tile_size),
-                    int(building.position[1] // self.tile_size),
-                )
-                if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
-                    building.is_seen = building.is_seen or self.visible[tx][ty]
-
-    def is_visible(self, pos: Point) -> bool:
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.visible) and 0 <= ty < len(self.visible[0]):
-            return self.visible[tx][ty]
-        return False
-
-    def is_explored(self, pos: Point) -> bool:
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.explored) and 0 <= ty < len(self.explored[0]):
-            return self.explored[tx][ty]
-        return False
-
-    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
-        min_wx, max_wx, min_wy, max_wy = camera.get_render_bounds(self.tile_size)
-        start_tx = max(0, int(min_wx // self.tile_size))
-        start_ty = max(0, int(min_wy // self.tile_size))
-        end_tx = min(len(self.visible), int(max_wx // self.tile_size) + 2)
-        end_ty = min(len(self.visible[0]), int(max_wy // self.tile_size) + 2)
-        zoom = camera.zoom
-        fog_overlay = pg.Surface((int(camera.width), int(camera.height)), pg.SRCALPHA)
-        fog_overlay.fill((0, 0, 0, 0))
-        for tx in range(start_tx, end_tx):
-            wx = tx * self.tile_size
-            for ty in range(start_ty, end_ty):
-                wy = ty * self.tile_size
-                if not self.visible[tx][ty]:
-                    alpha = 255 if not self.explored[tx][ty] else 100
-                    color = (0, 0, 0, alpha)
-                    c1 = (wx, wy)
-                    c2 = (wx + self.tile_size, wy)
-                    c3 = (wx + self.tile_size, wy + self.tile_size)
-                    c4 = (wx, wy + self.tile_size)
-                    iso1 = camera.world_to_iso(c1, zoom)
-                    iso2 = camera.world_to_iso(c2, zoom)
-                    iso3 = camera.world_to_iso(c3, zoom)
-                    iso4 = camera.world_to_iso(c4, zoom)
-                    pg.draw.polygon(fog_overlay, color, [iso1, iso2, iso3, iso4])
-        surface.blit(fog_overlay, (0, 0))
 
 
 class Particle(pg.sprite.Sprite):
@@ -3036,7 +2921,7 @@ def get_iso_bounds(map_w: int, map_h: int, zoom: float = 1.0) -> tuple[float, fl
 def draw_mini_map(
     screen: pg.Surface,
     camera: CameraIso,
-    fog_of_war: FogOfWar,
+    fog_of_war: FogOfWarIso,
     map_width: int,
     map_height: int,
     map_color: tuple,
@@ -3157,7 +3042,7 @@ def draw_fitness_panel(screen: pg.Surface, g) -> None:
         y_offset += 25
 
 
-def handle_unit_collisions(all_units: list, unit_hash: SpatialHash) -> None:
+def handle_unit_collisions(all_units: list, unit_hash: SpatialHashIso) -> None:
     for i, unit in enumerate(all_units):
         if unit.health <= 0 or unit.air:
             continue
@@ -3183,7 +3068,7 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHash) -> None:
                         other.position.y += direction_y * push
 
 
-def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash) -> None:
+def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHashIso) -> None:
     for unit in [u for u in all_units if u.health > 0 and not u.air]:
         nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
         for building in [b for b in nearby_builds if b.health > 0]:
@@ -3208,8 +3093,8 @@ def handle_attacks(
     all_buildings: list,
     projectiles,
     particles,
-    unit_hash: SpatialHash,
-    building_hash: SpatialHash,
+    unit_hash: SpatialHashIso,
+    building_hash: SpatialHashIso,
     alliances: dict[Team, set[Team]],
 ) -> None:
     unit_allies = alliances[team]
@@ -3499,7 +3384,9 @@ class GameManager:
             "alliances": alliances,
             "interface": interface,
             "console": GameConsole(),
-            "fog_of_war": FogOfWar(map_width, map_height, spectator=spectate),
+            "fog_of_war": FogOfWarIso(
+                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectate
+            ),
             "camera": camera,
             "map_color": color,
             "map_width": map_width,
@@ -3750,10 +3637,10 @@ class GameManager:
                 )
             g["projectiles"].update()
             g["particles"].update()
-            unit_hash = SpatialHash(250)
+            unit_hash = SpatialHashIso(250)
             for u in unit_list:
                 unit_hash.add(u)
-            building_hash = SpatialHash(250)
+            building_hash = SpatialHashIso(250)
             for b in building_list:
                 building_hash.add(b)
             handle_unit_collisions(unit_list, unit_hash)

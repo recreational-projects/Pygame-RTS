@@ -51,3 +51,6 @@ extend-safe-fixes = [
 "modules/screens.py" = [
     "ANN401", # any-type
 ]
+"modules/spatial_hash.py" = [
+    "ANN001", # missing-type-function-argument
+]

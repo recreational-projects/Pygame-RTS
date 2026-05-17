@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
-from pygame.typing import IntPoint, Point
+from pygame.typing import Point
 
 from modules.camera.camera_2d import Camera2d
 from modules.constants_2d import (
@@ -26,10 +26,12 @@ from modules.constants_2d import (
 )
 from modules.data_2d import MAPS, UNIT_CLASSES
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
+from modules.fog_of_war import FogOfWar2d
 from modules.game_console import GameConsole
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
+from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_color, team_to_name
 
 # Group: Game Data & Config
@@ -126,213 +128,6 @@ def find_free_spawn_position(
         if not overlaps_building and not overlaps_unit:
             return (pos_x, pos_y)
     return target_pos
-
-
-# =============================================================================
-# Group: Spatial Query System
-# =============================================================================
-# SpatialHash implements a simple grid-based spatial index for efficient nearby object queries.
-
-
-class SpatialHash:
-    """
-    Simple grid-based spatial index for efficient nearby object queries.
-
-    Uses a dictionary of grid cells to bucket objects by position.
-    """
-
-    def __init__(self, cell_size: int = 200) -> None:
-        """
-        Initializes the hash with a grid cell size for bucketing objects.
-
-        :param cell_size: Size of each grid cell (default: 200).
-        """
-        # Initializes the hash with a grid cell size for bucketing objects.
-        self.cell_size = cell_size
-        self.grid: dict[IntPoint, list] = {}
-
-    def get_key(self, pos: Vector2) -> tuple[int, int]:
-        """
-        Computes the grid cell key for a position.
-
-        :param pos: Vector2 position.
-        :return: Tuple (cell_x, cell_y) key.
-        """
-        # Computes the grid cell key for a position.
-        return (int(pos.x // self.cell_size), int(pos.y // self.cell_size))
-
-    def add(self, obj: GameObject) -> None:
-        """
-        Adds an object to its corresponding grid cell.
-
-        :param obj: Object with a 'position' attribute (Vector2).
-        """
-        # Adds an object to its corresponding grid cell.
-        key = self.get_key(obj.position)
-        if key not in self.grid:
-            self.grid[key] = []
-        self.grid[key].append(obj)
-
-    def query(self, pos: Vector2, radius: float) -> list:
-        """
-        Returns all objects within radius of pos, checking neighboring cells.
-
-        :param pos: Query position (Vector2).
-        :param radius: Search radius.
-        :return: List of nearby objects.
-        """
-        # Returns all objects within radius of pos, checking neighboring cells.
-        cx = int(pos.x // self.cell_size)
-        cy = int(pos.y // self.cell_size)
-        keys = set()
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                keys.add((cx + dx, cy + dy))
-        nearby = []
-        for k in keys:
-            if k in self.grid:
-                for o in self.grid[k]:
-                    if o.distance_to(pos) <= radius:
-                        nearby.append(o)
-        return nearby
-
-
-# =============================================================================
-# Group: Fog of War
-# =============================================================================
-# FogOfWar manages explored/visible tiles on a grid, revealing areas based on unit sight ranges.
-
-
-class FogOfWar:
-    """
-    Manages explored/visible tiles on a grid, revealing areas based on unit sight ranges.
-
-    Uses 2D boolean grids for explored and currently visible tiles.
-    """
-
-    def __init__(self, map_width: int, map_height: int, tile_size: int = TILE_SIZE, spectator: bool = False) -> None:
-        """
-        Initializes 2D grids for explored and visible tiles.
-
-        :param map_width: Map width in pixels.
-        :param map_height: Map height in pixels.
-        :param tile_size: Size of each fog tile (default: TILE_SIZE).
-        :param spectator: If True, reveals entire map.
-        """
-        # Initializes 2D grids for explored and visible tiles.
-        self.tile_size = tile_size
-        num_tiles_x = map_width // tile_size
-        num_tiles_y = map_height // tile_size
-        self.explored = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        if spectator:
-            self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-            self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-
-    def reveal(self, center: IntPoint, radius: int) -> None:
-        """
-        Reveals tiles within radius of center as both explored and visible.
-
-        :param center: Center position (x, y) to reveal around.
-        :param radius: Reveal radius in pixels.
-        """
-        # Reveals tiles within radius of center as both explored and visible.
-        cx, cy = center
-        tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
-        radius_tiles = radius // self.tile_size
-        for ty in range(max(0, tile_y - radius_tiles), min(len(self.explored[0]), tile_y + radius_tiles + 1)):
-            for tx in range(max(0, tile_x - radius_tiles), min(len(self.explored), tile_x + radius_tiles + 1)):
-                tile_center_x = tx * self.tile_size + self.tile_size // 2
-                tile_center_y = ty * self.tile_size + self.tile_size // 2
-                if math.sqrt((cx - tile_center_x) ** 2 + (cy - tile_center_y) ** 2) <= radius:
-                    self.explored[tx][ty] = True
-                    self.visible[tx][ty] = True
-
-    def update_visibility(self, ally_units, ally_buildings, global_buildings) -> None:
-        """
-        Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
-
-        :param ally_units: List of ally units for sight revelation.
-        :param ally_buildings: List of ally buildings for sight revelation.
-        :param global_buildings: All buildings to update 'is_seen' flag.
-        """
-        # Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
-        if not ally_units and not ally_buildings:
-            return
-        num_tiles_x = len(self.visible)
-        num_tiles_y = len(self.visible[0])
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        for unit in ally_units:
-            self.reveal(unit.position, unit.sight_range)
-        for building in ally_buildings:
-            if building.health > 0:
-                self.reveal(building.position, building.sight_range)
-        for building in global_buildings:
-            if building.health > 0:
-                tx, ty = (
-                    int(building.position[0] // self.tile_size),
-                    int(building.position[1] // self.tile_size),
-                )
-                if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
-                    building.is_seen = building.is_seen or self.visible[tx][ty]
-
-    def is_visible(self, pos: Point) -> bool:
-        """
-        Checks if a position's tile is currently visible.
-
-        :param pos: Position (x, y) to check.
-        :return: True if visible.
-        """
-        # Checks if a position's tile is currently visible.
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.visible) and 0 <= ty < len(self.visible[0]):
-            return self.visible[tx][ty]
-        return False
-
-    def is_explored(self, pos: Point) -> bool:
-        """
-        Checks if a position's tile has been explored (visible in the past).
-
-        :param pos: Position (x, y) to check.
-        :return: True if explored.
-        """
-        # Checks if a position's tile has been explored (visible in the past).
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.explored) and 0 <= ty < len(self.explored[0]):
-            return self.explored[tx][ty]
-        return False
-
-    def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
-        """
-        Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
-
-        :param surface: Surface to draw fog on.
-        :param camera: Camera2d for viewport culling.
-        """
-        # Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
-        start_tx = max(0, int(camera.rect.x // self.tile_size))
-        start_ty = max(0, int(camera.rect.y // self.tile_size))
-        end_tx = min(len(self.visible), start_tx + int(camera.rect.width // self.tile_size) + 2)
-        end_ty = min(len(self.visible[0]), start_ty + int(camera.rect.height // self.tile_size) + 2)
-        zoom = camera.zoom
-        tile_sw = self.tile_size * zoom
-        tile_sh = self.tile_size * zoom
-        fog_overlay = pg.Surface((int(camera.width), int(camera.height)), pg.SRCALPHA)
-        fog_overlay.fill((0, 0, 0, 0))
-        for tx in range(start_tx, end_tx):
-            wx = tx * self.tile_size
-            sx = (wx - camera.rect.x) * zoom
-            if sx < -tile_sw or sx > camera.width:
-                continue
-            for ty in range(start_ty, end_ty):
-                wy = ty * self.tile_size
-                sy = (wy - camera.rect.y) * zoom
-                if sy < -tile_sh or sy > camera.height:
-                    continue
-                if not self.visible[tx][ty]:
-                    alpha = 255 if not self.explored[tx][ty] else 100
-                    pg.draw.rect(fog_overlay, (0, 0, 0, alpha), (sx, sy, tile_sw, tile_sh))
-        surface.blit(fog_overlay, (0, 0))
 
 
 # =============================================================================
@@ -2186,7 +1981,7 @@ class ProductionInterface:
 def draw_mini_map(
     screen: pg.Surface,
     camera: Camera2d,
-    fog_of_war: FogOfWar,
+    fog_of_war: FogOfWar2d,
     map_width: int,
     map_height: int,
     map_color: tuple,
@@ -2284,12 +2079,12 @@ def draw_mini_map(
     return mini_map_rect
 
 
-def handle_unit_collisions(all_units: list, unit_hash: SpatialHash) -> None:
+def handle_unit_collisions(all_units: list, unit_hash: SpatialHash2d) -> None:
     """
     Resolves overlaps between ground units using simple repulsion.
 
     :param all_units: List of all units.
-    :param unit_hash: SpatialHash for nearby queries.
+    :param unit_hash: SpatialHash2d for nearby queries.
     """
     # Resolves overlaps between ground units using simple repulsion.
     for i, unit in enumerate(all_units):
@@ -2317,13 +2112,13 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHash) -> None:
                         other.position.y += direction_y * push
 
 
-def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash) -> None:
+def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash2d) -> None:
     """
     Pushes units away from building overlaps.
 
     :param all_units: List of units.
     :param all_buildings: List of buildings.
-    :param building_hash: SpatialHash for buildings.
+    :param building_hash: SpatialHash2d for buildings.
     """
     # Pushes units away from building overlaps.
     for unit in [u for u in all_units if u.health > 0 and not u.air]:
@@ -2350,8 +2145,8 @@ def handle_attacks(
     all_buildings: list,
     projectiles,
     particles,
-    unit_hash: SpatialHash,
-    building_hash: SpatialHash,
+    unit_hash: SpatialHash2d,
+    building_hash: SpatialHash2d,
     alliances: dict[Team, set[Team]],
 ) -> None:
     """
@@ -2721,7 +2516,9 @@ class GameManager:
             "alliances": alliances,
             "interface": interface,
             "console": GameConsole(),
-            "fog_of_war": FogOfWar(map_width, map_height, spectator=spectate),
+            "fog_of_war": FogOfWar2d(
+                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectate
+            ),
             "camera": camera,
             "map_color": color,
             "map_width": map_width,
@@ -2986,11 +2783,11 @@ class GameManager:
             g["projectiles"].update()
             g["particles"].update()
 
-            unit_hash = SpatialHash(200)
+            unit_hash = SpatialHash2d(200)
             for u in unit_list:
                 unit_hash.add(u)
 
-            building_hash = SpatialHash(200)
+            building_hash = SpatialHash2d(200)
             for b in building_list:
                 building_hash.add(b)
 
