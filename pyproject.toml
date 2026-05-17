@@ -20,8 +20,7 @@ line-length = 120  # for both linter and formatter
 [tool.ruff.lint]
 future-annotations = true
 select = [
-    "ANN201", # missing-return...public-function
-    "ANN202", #...private-function
+    "ANN",
     "D212", # multi-line-summary-first-line
     "E", # pycodestyle
     "F",
@@ -36,10 +35,13 @@ extend-safe-fixes = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"CondaRTS*" = [
+"CondaRTS*.py" = [
     "ANN",
     "D",
     "E",
     "E501", # line-too-long
     "F841",
+]
+"modules/camera/*.py" = [
+    "ANN001", # missing-type-function-argument
 ]

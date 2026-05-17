@@ -1,6 +1,7 @@
 from typing import override
 
 import pygame as pg
+from pygame.typing import Point
 
 from modules.camera.camera import Camera
 from modules.constants_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
@@ -10,7 +11,7 @@ class Camera2d(Camera):
     """Camera for 2d game."""
 
     @override
-    def screen_to_world(self, screen_pos: tuple) -> tuple[float, float]:
+    def screen_to_world(self, screen_pos: Point) -> tuple[float, float]:
         """Converts screen coordinates to world coordinates.
 
         :param screen_pos: Tuple (x, y) in screen space.
@@ -33,7 +34,7 @@ class Camera2d(Camera):
         screen_h = world_rect.height * self.zoom
         return pg.Rect(screen_left, screen_top, screen_w, screen_h)
 
-    def update_zoom(self, delta, mouse_world_pos=None) -> None:
+    def update_zoom(self, delta: float, mouse_world_pos: Point | None = None) -> None:
         """Zooms in/out by 20% steps, clamped between 0.5x and 3x; centers on mouse if provided.
 
         :param delta: Zoom direction (+1 zoom in, -1 zoom out).
@@ -63,7 +64,7 @@ class Camera2d(Camera):
         view_h = self.height / self.zoom
         self.rect.size = (view_w, view_h)
 
-    def world_to_screen(self, world_pos: tuple) -> tuple[float, float]:
+    def world_to_screen(self, world_pos: Point) -> tuple[float, float]:
         """Converts world coordinates to screen-relative coordinates.
 
         :param world_pos: Tuple (x, y) in world space.
@@ -75,7 +76,7 @@ class Camera2d(Camera):
         return dx * self.zoom, dy * self.zoom
 
     @override
-    def update(self, selected_units: list, mouse_pos: tuple, interface_rect: pg.Rect, keys=None) -> None:
+    def update(self, selected_units: list, mouse_pos: Point, interface_rect: pg.Rect, keys=None) -> None:
         """Handles panning via keys, edge-scrolling, and centering on selected units.
 
         :param selected_units: List of selected units to center camera on.

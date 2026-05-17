@@ -2,6 +2,7 @@ from dataclasses import field
 from typing import override
 
 import pygame as pg
+from pygame.typing import Point
 
 from modules.camera.camera import Camera
 from modules.constants_iso import (
@@ -35,15 +36,15 @@ class CameraIso(Camera):
         ys = [p[1] for p in iso_corners]
         return pg.Rect(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
 
-    def world_to_iso(self, world_pos: tuple, zoom: float) -> tuple[float, float]:
+    def world_to_iso(self, world_pos: Point, zoom: float) -> tuple[float, float]:
         dx = world_pos[0] - self.rect.x
         dy = world_pos[1] - self.rect.y
         iso_x = (dx - dy) * (zoom / 2)
         iso_y = (dx + dy) * (zoom / 4)
-        return (iso_x, iso_y)
+        return iso_x, iso_y
 
     @override
-    def update(self, selected_units: list, mouse_pos: tuple, interface_rect: pg.Rect, keys=None) -> None:
+    def update(self, selected_units: list, mouse_pos: Point, interface_rect: pg.Rect, keys=None) -> None:
         if keys is None:
             keys = pg.key.get_pressed()
 
@@ -94,14 +95,14 @@ class CameraIso(Camera):
 
         self.clamp()
 
-    def snap_to_point(self, world_point: tuple[float, float]) -> None:
+    def snap_to_point(self, world_point: Point) -> None:
         sc_x, sc_y = self.width / 2, self.height / 2
         dx_sc = (sc_x + 2 * sc_y) / self.zoom
         dy_sc = (2 * sc_y - sc_x) / self.zoom
         self.rect.x = world_point[0] - dx_sc
         self.rect.y = world_point[1] - dy_sc
 
-    def update_zoom(self, delta, mouse_screen_pos=None) -> None:
+    def update_zoom(self, delta: float, mouse_screen_pos: Point | None = None) -> None:
         if mouse_screen_pos is None:
             mouse_screen_pos = (self.width / 2, self.height / 2)
 
@@ -147,7 +148,7 @@ class CameraIso(Camera):
         return min_wx, max_wx, min_wy, max_wy
 
     @override
-    def screen_to_world(self, screen_pos: tuple) -> tuple[float, float]:
+    def screen_to_world(self, screen_pos: Point) -> tuple[float, float]:
         iso_x, iso_y = screen_pos
         dx = (iso_x + 2 * iso_y) / self.zoom
         dy = (2 * iso_y - iso_x) / self.zoom

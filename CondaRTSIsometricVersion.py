@@ -11,6 +11,7 @@ from typing import Any, ClassVar
 
 import pygame as pg
 from pygame.math import Vector2
+from pygame.typing import IntPoint, Point
 
 from modules.camera.camera_iso import CameraIso
 from modules.constants_iso import (
@@ -33,7 +34,7 @@ PLASMA_BURN_PARTICLES = 0
 PLASMA_BURN_DURATION = 1.0
 
 
-def heuristic(a: tuple, b: tuple) -> float:
+def heuristic(a: Point, b: Point) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
 
@@ -79,7 +80,7 @@ def astar(
 
 
 class TerrainFeature:
-    def __init__(self, position: tuple, feature_type: str):
+    def __init__(self, position: Point, feature_type: str) -> None:
         self.position = Vector2(position)
         self.feature_type = feature_type
         self.rect = pg.Rect(position[0] - 20, position[1] - 20, 40, 40)
@@ -114,7 +115,7 @@ class TerrainFeature:
                     }
                 )
 
-    def draw(self, surface: pg.Surface, camera: CameraIso):
+    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
         screen_pos = camera.world_to_iso(self.position, camera.zoom)
         zoom = camera.zoom
         if self.feature_type == "tree":
@@ -274,7 +275,7 @@ def generate_terrain_features(map_name: str, map_width: int, map_height: int) ->
     num_twigs = int(num_tiles * twig_density)
     num_pebbles = int(num_tiles * pebble_density)
 
-    def add_feature(ftype, count, cluster=False):
+    def add_feature(ftype: str, count: int, cluster=False) -> None:
         for _ in range(count):
             attempts = 0
             while attempts < 10:
@@ -298,12 +299,12 @@ def generate_terrain_features(map_name: str, map_width: int, map_height: int) ->
     return features
 
 
-def snap_to_grid(pos: tuple[float, float], grid_size: int = TILE_SIZE) -> tuple[float, float]:
+def snap_to_grid(pos: Point, grid_size: int = TILE_SIZE) -> tuple[float, float]:
     return (round(pos[0] / grid_size) * grid_size, round(pos[1] / grid_size) * grid_size)
 
 
 def is_valid_building_position(
-    position: tuple[float, float],
+    position: Point,
     team: Team,
     new_building_cls: type,
     buildings: list,
@@ -337,8 +338,8 @@ def is_valid_building_position(
 
 
 def find_free_spawn_position(
-    building_pos: tuple,
-    target_pos: tuple,
+    building_pos: Point,
+    target_pos: Point,
     global_buildings,
     global_units,
     unit_size=(40, 40),
@@ -359,8 +360,8 @@ def find_free_spawn_position(
 
 
 def calculate_formation_positions(
-    center: tuple[float, float],
-    target: tuple[float, float],
+    center: Point,
+    target: Point,
     num_units: int,
     formation_type: str = "line",
     spacing: float = 40.0,
@@ -393,7 +394,9 @@ def calculate_formation_positions(
     return positions
 
 
-def get_starting_positions(map_width: int, map_height: int, num_players: int):
+def get_starting_positions(
+    map_width: int, map_height: int, num_players: int
+) -> list[tuple[float, int] | tuple[int, float] | tuple[int, int]]:
     edge_dist = 250
     half_w = map_width / 2
     half_h = map_height / 2
@@ -415,14 +418,14 @@ def get_starting_positions(map_width: int, map_height: int, num_players: int):
 
 
 class SpatialHash:
-    def __init__(self, cell_size: int = 250):
+    def __init__(self, cell_size: int = 250) -> None:
         self.cell_size = cell_size
-        self.grid: dict[tuple[int, int], list] = {}
+        self.grid: dict[IntPoint, list] = {}
 
     def get_key(self, pos: Vector2) -> tuple[int, int]:
         return (int(pos.x // self.cell_size), int(pos.y // self.cell_size))
 
-    def add(self, obj):
+    def add(self, obj: GameObject) -> None:
         key = self.get_key(obj.position)
         if key not in self.grid:
             self.grid[key] = []
@@ -448,7 +451,7 @@ class SpatialHash:
         return nearby
 
 
-def absolute_world_to_iso(world_pos: tuple, zoom: float) -> tuple[float, float]:
+def absolute_world_to_iso(world_pos: Point, zoom: float) -> tuple[float, float]:
     dx, dy = world_pos
     iso_x = (dx - dy) * (zoom / 2)
     iso_y = (dx + dy) * (zoom / 2)
@@ -456,7 +459,7 @@ def absolute_world_to_iso(world_pos: tuple, zoom: float) -> tuple[float, float]:
 
 
 class FogOfWar:
-    def __init__(self, map_width: int, map_height: int, tile_size: int = TILE_SIZE, spectator: bool = False):
+    def __init__(self, map_width: int, map_height: int, tile_size: int = TILE_SIZE, spectator: bool = False) -> None:
         self.tile_size = tile_size
         num_tiles_x = map_width // tile_size
         num_tiles_y = map_height // tile_size
@@ -466,7 +469,7 @@ class FogOfWar:
             self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
             self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
 
-    def reveal(self, center: tuple, radius: int):
+    def reveal(self, center: Point, radius: int) -> None:
         cx, cy = center
         tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
         radius_tiles = radius // self.tile_size
@@ -478,7 +481,7 @@ class FogOfWar:
                     self.explored[tx][ty] = True
                     self.visible[tx][ty] = True
 
-    def update_visibility(self, ally_units, ally_buildings, global_buildings):
+    def update_visibility(self, ally_units, ally_buildings, global_buildings) -> None:
         if not ally_units and not ally_buildings:
             return
         num_tiles_x = len(self.visible)
@@ -498,19 +501,19 @@ class FogOfWar:
                 if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
                     building.is_seen = building.is_seen or self.visible[tx][ty]
 
-    def is_visible(self, pos: tuple) -> bool:
+    def is_visible(self, pos: Point) -> bool:
         tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
         if 0 <= tx < len(self.visible) and 0 <= ty < len(self.visible[0]):
             return self.visible[tx][ty]
         return False
 
-    def is_explored(self, pos: tuple) -> bool:
+    def is_explored(self, pos: Point) -> bool:
         tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
         if 0 <= tx < len(self.explored) and 0 <= ty < len(self.explored[0]):
             return self.explored[tx][ty]
         return False
 
-    def draw(self, surface: pg.Surface, camera: CameraIso):
+    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
         min_wx, max_wx, min_wy, max_wy = camera.get_render_bounds(self.tile_size)
         start_tx = max(0, int(min_wx // self.tile_size))
         start_ty = max(0, int(min_wy // self.tile_size))
@@ -539,7 +542,7 @@ class FogOfWar:
 
 
 class Particle(pg.sprite.Sprite):
-    def __init__(self, pos: tuple, vx: float, vy: float, size: int, color: pg.Color, lifetime: int):
+    def __init__(self, pos: Point, vx: float, vy: float, size: int, color: pg.Color, lifetime: int) -> None:
         super().__init__()
         self.position = Vector2(pos)
         self.vx = vx
@@ -552,7 +555,7 @@ class Particle(pg.sprite.Sprite):
         pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
         self.rect = self.image.get_rect(center=self.position)
 
-    def update(self):
+    def update(self) -> None:
         self.position.x += self.vx
         self.position.y += self.vy
         self.age += 1
@@ -562,7 +565,7 @@ class Particle(pg.sprite.Sprite):
         if self.age >= self.lifetime:
             self.kill()
 
-    def draw(self, surface: pg.Surface, camera: CameraIso):
+    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
@@ -580,13 +583,13 @@ class Particle(pg.sprite.Sprite):
 
 
 class PlasmaBurnParticle(Particle):
-    def __init__(self, pos: tuple, entity, color: pg.Color, lifetime: int):
+    def __init__(self, pos: Point, entity, color: pg.Color, lifetime: int) -> None:
         super().__init__(pos, 0, 0, 4, color, lifetime)
         self.entity = entity
         self.offset = Vector2(random.uniform(-20, 20), random.uniform(-10, 10))
         self.initial_lifetime = lifetime * 30
 
-    def update(self):
+    def update(self) -> None:
         body_angle = getattr(self.entity, "body_angle", 0)
         rotated_offset = self.offset.rotate_rad(-body_angle)
         self.position = self.entity.position + rotated_offset
@@ -598,7 +601,9 @@ class PlasmaBurnParticle(Particle):
             self.kill()
 
 
-def create_explosion(position: tuple, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION):
+def create_explosion(
+    position: Point, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION
+) -> None:
     color = team_to_color[team]
     for _ in range(count):
         vx = random.uniform(-3, 3)
@@ -609,7 +614,7 @@ def create_explosion(position: tuple, particles: pg.sprite.Group, team: Team, co
 
 
 class Projectile(pg.sprite.Sprite):
-    def __init__(self, pos: tuple, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]):
+    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]) -> None:
         super().__init__()
         self.position = Vector2(pos)
         self.direction = direction.normalize() if direction.length() > 0 else Vector2(1, 0)
@@ -629,7 +634,7 @@ class Projectile(pg.sprite.Sprite):
         self.rect = self.image.get_rect(center=self.position)
         self.trail = deque(maxlen=5)
 
-    def update(self):
+    def update(self) -> None:
         self.trail.append(self.position.copy())
         self.position += self.direction * self.speed
         self.age += 1
@@ -637,7 +642,7 @@ class Projectile(pg.sprite.Sprite):
         if self.age >= self.lifetime:
             self.kill()
 
-    def draw(self, surface: pg.Surface, camera: CameraIso):
+    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
@@ -678,7 +683,7 @@ def check_collision(entity, projectile):
 
 
 class GameObject(pg.sprite.Sprite, ABC):
-    def __init__(self, position: tuple, team: Team):
+    def __init__(self, position: Point, team: Team) -> None:
         super().__init__()
         self.position = Vector2(position)
         self.team = team
@@ -695,10 +700,10 @@ class GameObject(pg.sprite.Sprite, ABC):
         self.image = pg.Surface((32, 32))
         self.rect = self.image.get_rect(center=position)
 
-    def distance_to(self, other_pos: tuple) -> float:
+    def distance_to(self, other_pos: Point) -> float:
         return self.position.distance_to(other_pos)
 
-    def draw_health_bar(self, screen, camera, mouse_pos: tuple = None):
+    def draw_health_bar(self, screen: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         hovered = False
         if mouse_pos is not None:
             screen_rect = camera.get_screen_rect(self.rect)
@@ -724,7 +729,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
         pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
 
-    def take_damage(self, damage: int, particles: pg.sprite.Group):
+    def take_damage(self, damage: int, particles: pg.sprite.Group) -> bool:
         self.health -= damage
         self.under_attack = True
         self.under_attack_timer = 120
@@ -735,12 +740,12 @@ class GameObject(pg.sprite.Sprite, ABC):
         return self.health <= 0
 
     @abstractmethod
-    def update(self):
+    def update(self) -> None:
         pass
 
 
 class Unit(GameObject):
-    def __init__(self, position: tuple, team: Team, unit_type: str, hq=None):
+    def __init__(self, position: Point, team: Team, unit_type: str, hq=None) -> None:
         super().__init__(position, team)
         self.team_color = team_to_color[team]
         self.hq = hq
@@ -794,7 +799,7 @@ class Unit(GameObject):
             except:
                 self.sound = None
 
-    def draw_static(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw_static(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -850,7 +855,7 @@ class Unit(GameObject):
         for particle in self.plasma_burn_particles:
             particle.draw(surface, camera)
 
-    def draw_humanoid(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw_humanoid(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -1150,18 +1155,20 @@ class Unit(GameObject):
         h: float,
         angle: float,
         base_z: float,
-        team_color,
-        side_color,
-        roof_color,
+        team_color: pg.Color | tuple[int, ...],
+        side_color: tuple[int, ...],
+        roof_color: pg.Color | tuple[int, ...],
         outline_color: pg.Color,
         zoom: float,
         is_turret: bool = False,
-        p_bottom: list = None,
-    ):
+        p_bottom: list | None = None,
+    ) -> None:
         cos = math.cos(angle)
         sin = math.sin(angle)
 
-        def rotate_rel(points, cos, sin):
+        def rotate_rel(
+            points: list[tuple[float, float, float]] | list[tuple[float, float, int]], cos: float, sin: float
+        ):
             return [(x * cos - y * sin, x * sin + y * cos, z) for x, y, z in points]
 
         rel_bottom = [
@@ -1219,7 +1226,7 @@ class Unit(GameObject):
             else:
                 pg.draw.line(surface, outline_color, all_points[edge[0]], all_points[edge[1]], line_width)
 
-    def draw_vehicle(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw_vehicle(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -1320,7 +1327,7 @@ class Unit(GameObject):
         for particle in self.plasma_burn_particles:
             particle.draw(surface, camera)
 
-    def _closest_point_on_rect(self, rect: pg.Rect, pos: tuple) -> tuple[float, float]:
+    def _closest_point_on_rect(self, rect: pg.Rect, pos: Point) -> tuple[float, float]:
         return (max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom)))
 
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:
@@ -1347,14 +1354,14 @@ class Unit(GameObject):
         target_pos.y = max(0, min(target_pos.y, self.map_height))
         return target_pos
 
-    def _setup_drawing(self, unit_type: str):
+    def _setup_drawing(self, unit_type: str) -> None:
         self.height = self.stats.get("height", 0)
         if unit_type in ["Infantry", "Grenadier", "RocketSoldier", "Marksman"]:
             self.draw = self.draw_humanoid
         else:
             self.draw = self.draw_static if not self.is_vehicle else self.draw_vehicle
 
-    def _update_production(self, friendly_units, all_units):
+    def _update_production(self, friendly_units, all_units) -> None:
         if self.production_queue:
             current_unit_count = len(friendly_units)
             if current_unit_count < 100:
@@ -1391,7 +1398,7 @@ class Unit(GameObject):
         projectiles=None,
         enemy_units=None,
         enemy_buildings=None,
-    ):
+    ) -> None:
         self.under_attack_timer = max(0, self.under_attack_timer - 1)
         self.under_attack = self.under_attack_timer > 0
         if self.last_shot_time > 0:
@@ -1543,7 +1550,7 @@ class Unit(GameObject):
     def get_attack_range(self) -> float:
         return self.attack_range
 
-    def shoot(self, target, projectiles: pg.sprite.Group):
+    def shoot(self, target, projectiles: pg.sprite.Group) -> None:
         if not self.weapons or self.last_shot_time > 0:
             return
         weapon = self.weapons[0]
@@ -1575,57 +1582,57 @@ class Unit(GameObject):
 
 
 class Infantry(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Infantry", hq=hq)
 
 
 class Marksman(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Marksman", hq=hq)
 
 
 class RocketSoldier(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "RocketSoldier", hq=hq)
 
 
 class Tank(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Tank", hq=hq)
 
 
 class HeavyTank(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "HeavyTank", hq=hq)
 
 
 class TankDestroyer(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "TankDestroyer", hq=hq)
 
 
 class Grenadier(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Grenadier", hq=hq)
 
 
 class MachineGunVehicle(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "MachineGunVehicle", hq=hq)
 
 
 class RocketArtillery(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "RocketArtillery", hq=hq)
 
 
 class AttackHelicopter(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "AttackHelicopter", hq=hq)
 
 
 class Headquarters(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Headquarters", hq=hq)
         self.credits = self.stats["starting_credits"]
         self.power_output = 100
@@ -1647,7 +1654,7 @@ class Headquarters(Unit):
             "credits_earned": 0,
         }
 
-    def place_building(self, position: tuple, unit_cls: type, all_buildings):
+    def place_building(self, position: Point, unit_cls: type, all_buildings) -> None:
         all_buildings_list = list(all_buildings)
         if is_valid_building_position(position, self.team, unit_cls, all_buildings_list):
             unit_type = unit_cls.__name__
@@ -1663,10 +1670,10 @@ class Headquarters(Unit):
 
 
 class PowerPlant(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "PowerPlant", hq=hq)
 
-    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -1739,11 +1746,11 @@ class PowerPlant(Unit):
 
 
 class Refinery(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Refinery", hq=hq)
         self.radius = 60
 
-    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -1823,10 +1830,10 @@ class Refinery(Unit):
 
 
 class Turret(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Turret", hq=hq)
 
-    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -1917,11 +1924,11 @@ class Turret(Unit):
 
 
 class Barracks(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Barracks", hq=hq)
         self.parent_hq = None
 
-    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -2030,11 +2037,11 @@ class Barracks(Unit):
 
 
 class WarFactory(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "WarFactory", hq=hq)
         self.parent_hq = None
 
-    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -2140,11 +2147,11 @@ class WarFactory(Unit):
 
 
 class Hangar(Unit):
-    def __init__(self, position: tuple, team: Team, hq=None):
+    def __init__(self, position: Point, team: Team, hq=None) -> None:
         super().__init__(position, team, "Hangar", hq=hq)
         self.parent_hq = None
 
-    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: tuple = None):
+    def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
         zoom = camera.zoom
@@ -2258,21 +2265,21 @@ class Hangar(Unit):
 
 
 class GameConsole:
-    def __init__(self):
+    def __init__(self) -> None:
         self.messages = []
 
-    def log(self, message: str):
+    def log(self, message: str) -> None:
         self.messages.append(message)
 
-    def handle_event(self, event):
+    def handle_event(self, event) -> None:
         pass
 
-    def draw(self, surface: pg.Surface):
+    def draw(self, surface: pg.Surface) -> None:
         pass
 
 
 class AI:
-    def __init__(self, hq, console, build_dir=math.pi, allies: set[Team] = frozenset()):
+    def __init__(self, hq, console, build_dir: float = math.pi, allies: frozenset[Team] = frozenset()) -> None:
         self.hq = hq
         self.console = console
         self.allies = allies
@@ -2331,7 +2338,9 @@ class AI:
         )
         self.unit_counts = {unit: 0 for unit in base_priorities.keys()}
 
-    def _send_attack_group(self, friendly_units, enemy_buildings, enemy_units, num_to_send, map_width, map_height):
+    def _send_attack_group(
+        self, friendly_units, enemy_buildings, enemy_units, num_to_send: int, map_width, map_height
+    ) -> None:
         if num_to_send <= 0:
             return
         primary_target = self._get_nearest_enemy_target(
@@ -2353,7 +2362,9 @@ class AI:
             unit.attack_target = primary_target
             unit.move_target = pos
 
-    def regroup_idle_units(self, friendly_units, focal_point: tuple, num_to_group: int, formation_type: str = "line"):
+    def regroup_idle_units(
+        self, friendly_units, focal_point: Point, num_to_group: int, formation_type: str = "line"
+    ) -> None:
         idle_units = [u for u in friendly_units if u.health > 0 and u.move_target is None][:num_to_group]
         if len(idle_units) < 2:
             return
@@ -2362,7 +2373,7 @@ class AI:
         for unit, pos in zip(idle_units, positions):
             unit.move_target = pos
 
-    def update_rally_points(self, friendly_buildings, enemy_pos, map_width, map_height):
+    def update_rally_points(self, friendly_buildings, enemy_pos, map_width, map_height) -> None:
         if not enemy_pos:
             return
         dir_vec = Vector2(enemy_pos) - self.hq.position
@@ -2383,7 +2394,7 @@ class AI:
             b.rally_point.x = max(0, min(b.rally_point.x, map_width))
             b.rally_point.y = max(0, min(b.rally_point.y, map_height))
 
-    def assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings):
+    def assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings) -> None:
         self.military_strength = len([u for u in friendly_units if u.health > 0])
         self.enemy_strength = len([u for u in enemy_units if u.health > 0])
         hq_pos = self.hq.position
@@ -2546,7 +2557,19 @@ class AI:
             return unit_target
         return None
 
-    def find_build_position(self, building_cls, all_buildings, map_width, map_height, prefer_near_hq=True):
+    def find_build_position(
+        self,
+        building_cls: type[Barracks]
+        | type[Hangar]
+        | type[PowerPlant]
+        | type[Refinery]
+        | type[Turret]
+        | type[WarFactory],
+        all_buildings,
+        map_width,
+        map_height,
+        prefer_near_hq=True,
+    ) -> tuple[float, float] | None:
         default_area = 2560 * 1440
         map_area = map_width * map_height
         scale = math.sqrt(map_area / default_area)
@@ -2602,7 +2625,7 @@ class AI:
                 break
         return None
 
-    def queue_unit_production(self, barracks_list, war_factory_list, hangar_list, friendly_units):
+    def queue_unit_production(self, barracks_list, war_factory_list, hangar_list, friendly_units) -> None:
         num_units = len([u for u in friendly_units if u.health > 0])
         target_units = min(
             200,
@@ -2664,7 +2687,7 @@ class AI:
                     hangar.production_queue.append({"unit_type": "AttackHelicopter", "repeat": False})
                     self.hq.credits -= UNIT_CLASSES["AttackHelicopter"]["cost"]
 
-    def build_defenses(self, all_buildings, map_width, map_height):
+    def build_defenses(self, all_buildings, map_width, map_height) -> None:
         if (
             self.threat_level > 0.2
             and self.turret_count < self.defense_target
@@ -2682,7 +2705,7 @@ class AI:
         enemy_units=None,
         map_width=MAP_WIDTH,
         map_height=MAP_HEIGHT,
-    ):
+    ) -> None:
         if not enemy_hq and not enemy_buildings and not enemy_units:
             return
         self.defense_timer += 1
@@ -2780,9 +2803,9 @@ class AI:
         enemy_units,
         enemy_buildings,
         all_buildings,
-        map_width=MAP_WIDTH,
-        map_height=MAP_HEIGHT,
-    ):
+        map_width: int = MAP_WIDTH,
+        map_height: int = MAP_HEIGHT,
+    ) -> None:
         self.assess_situation(friendly_units, friendly_buildings, enemy_units, enemy_buildings)
         self.action_timer += 1
         effective_timer = (self.action_timer + self.timer_offset) * self.interval_multiplier
@@ -2914,7 +2937,7 @@ class ProductionInterface:
         }
     )
 
-    def __post_init__(self, all_buildings):
+    def __post_init__(self, all_buildings) -> None:
         self.placing_cls = None
         self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT - CONSOLE_HEIGHT))
         self.producer = self.hq
@@ -2939,7 +2962,7 @@ class ProductionInterface:
         }
         self.update_producer(self.hq)
 
-    def _create_top_buttons(self):
+    def _create_top_buttons(self) -> None:
         self.top_rects.clear()
         start_x = self.MARGIN_X
         for i, label in enumerate(["Repair", "Sell", "Map"]):
@@ -2947,7 +2970,7 @@ class ProductionInterface:
             rect = pg.Rect(x, self.TOP_BUTTONS_POS_Y, self.TOP_BUTTON_WIDTH, self.TOP_BUTTON_HEIGHT)
             self.top_rects[label] = rect
 
-    def update_producer(self, selected_building):
+    def update_producer(self, selected_building: Headquarters) -> None:
         if isinstance(selected_building, (Barracks, WarFactory, Hangar)):
             self.producer = selected_building
             if isinstance(selected_building, Barracks):
@@ -2978,7 +3001,7 @@ class ProductionInterface:
             rect = pg.Rect(self.MARGIN_X, y + i * self.ITEM_HEIGHT, self._BUTTON_WIDTH, self.ITEM_BUTTON_HEIGHT)
             self.item_rects[item] = rect
 
-    def draw(self, surface_: pg.Surface, own_buildings, all_buildings):
+    def draw(self, surface_: pg.Surface, own_buildings, all_buildings) -> None:
         self.surface.fill(self.FILL_COLOR)
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
         self.surface.blit(
@@ -3093,7 +3116,7 @@ def draw_mini_map(
     buildings,
     all_units,
     player_allies: set[Team],
-):
+) -> pg.Rect:
     mini_map_rect = pg.Rect(
         SCREEN_WIDTH - MINI_MAP_WIDTH,
         SCREEN_HEIGHT - MINI_MAP_HEIGHT,
@@ -3173,7 +3196,7 @@ def draw_mini_map(
     return mini_map_rect
 
 
-def draw_fitness_panel(screen: pg.Surface, g):
+def draw_fitness_panel(screen: pg.Surface, g) -> None:
     panel_x = 10
     panel_y = 10
     panel_width = 180
@@ -3207,7 +3230,7 @@ def draw_fitness_panel(screen: pg.Surface, g):
         y_offset += 25
 
 
-def handle_unit_collisions(all_units: list, unit_hash: SpatialHash):
+def handle_unit_collisions(all_units: list, unit_hash: SpatialHash) -> None:
     for i, unit in enumerate(all_units):
         if unit.health <= 0 or unit.air:
             continue
@@ -3233,7 +3256,7 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHash):
                         other.position.y += direction_y * push
 
 
-def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash):
+def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHash) -> None:
     for unit in [u for u in all_units if u.health > 0 and not u.air]:
         nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
         for building in [b for b in nearby_builds if b.health > 0]:
@@ -3261,7 +3284,7 @@ def handle_attacks(
     unit_hash: SpatialHash,
     building_hash: SpatialHash,
     alliances: dict[Team, set[Team]],
-):
+) -> None:
     unit_allies = alliances[team]
     armed_entities = [u for u in all_units if u.team == team and u.weapons and u.health > 0]
     armed_entities += [b for b in all_buildings if b.team == team and b.weapons and b.health > 0]
@@ -3324,7 +3347,7 @@ def handle_attacks(
                     entity.move_target = closest_target.position
 
 
-def handle_projectiles(projectiles, all_units, all_buildings, particles, g):
+def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> None:
     for projectile in list(projectiles):
         proj_allies = g["alliances"][projectile.team]
         enemy_units = [u for u in all_units if u.team not in proj_allies and u.health > 0]
@@ -3356,7 +3379,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g):
             projectile.kill()
 
 
-def cleanup_dead_entities(g):
+def cleanup_dead_entities(g) -> None:
     for group_name in ["global_units"]:
         group = g[group_name]
         dead = [obj for obj in group if hasattr(obj, "health") and obj.health <= 0]
@@ -3389,28 +3412,28 @@ def cleanup_dead_entities(g):
 
 
 class MenuButton:
-    def __init__(self, x, y, width, height, text, color, hover_color):
+    def __init__(self, x, y, width, height, text, color, hover_color) -> None:
         self.rect = pg.Rect(x, y, width, height)
         self.text = text
         self.color = color
         self.hover_color = hover_color
         self.current_color = color
 
-    def update(self, mouse_pos):
+    def update(self, mouse_pos) -> None:
         self.current_color = self.hover_color if self.rect.collidepoint(mouse_pos) else self.color
 
-    def draw(self, surface, font):
+    def draw(self, surface, font) -> None:
         pg.draw.rect(surface, self.current_color, self.rect, border_radius=10)
         text_surf = font.render(self.text, True, pg.Color("white"))
         text_rect = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, text_rect)
 
-    def is_clicked(self, mouse_pos):
+    def is_clicked(self, mouse_pos) -> bool:
         return self.rect.collidepoint(mouse_pos)
 
 
 class MainMenu:
-    def __init__(self, font_large, font_medium):
+    def __init__(self, font_large, font_medium) -> None:
         self.font_large = font_large
         self.font_medium = font_medium
         self.skirmish_btn = MenuButton(
@@ -3432,7 +3455,7 @@ class MainMenu:
             pg.Color(200, 100, 100),
         )
 
-    def handle_event(self, event):
+    def handle_event(self, event: pg.Event) -> str | None:
         if event.type == pg.MOUSEBUTTONDOWN:
             if self.skirmish_btn.is_clicked(event.pos):
                 return "skirmish_setup"
@@ -3440,11 +3463,11 @@ class MainMenu:
                 return "quit"
         return None
 
-    def update(self, mouse_pos):
+    def update(self, mouse_pos: tuple[int, int]) -> None:
         self.skirmish_btn.update(mouse_pos)
         self.quit_btn.update(mouse_pos)
 
-    def draw(self, surface):
+    def draw(self, surface) -> None:
         surface.fill(pg.Color(40, 40, 40))
         title = self.font_large.render("RTS GAME", True, pg.Color(0, 255, 200))
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 100))
@@ -3454,7 +3477,7 @@ class MainMenu:
 
 
 class SkirmishSetup:
-    def __init__(self, font_large, font_medium):
+    def __init__(self, font_large, font_medium) -> None:
         self.font_large = font_large
         self.font_medium = font_medium
         self.game_mode = None
@@ -3534,7 +3557,7 @@ class SkirmishSetup:
             20, SCREEN_HEIGHT - 70, 120, 50, "Back", pg.Color(150, 100, 50), pg.Color(200, 150, 100)
         )
 
-    def handle_event(self, event):
+    def handle_event(self, event: pg.Event):
         if event.type == pg.MOUSEBUTTONDOWN:
             if self.mode_1v1.is_clicked(event.pos):
                 self.game_mode = "1v1"
@@ -3567,7 +3590,7 @@ class SkirmishSetup:
                 return "menu"
         return None
 
-    def update(self, mouse_pos):
+    def update(self, mouse_pos: tuple[int, int]) -> None:
         self.mode_1v1.update(mouse_pos)
         self.mode_2v2.update(mouse_pos)
         self.mode_3v3.update(mouse_pos)
@@ -3584,7 +3607,7 @@ class SkirmishSetup:
         self.spectate_btn.update(mouse_pos)
         self.back_btn.update(mouse_pos)
 
-    def draw(self, surface):
+    def draw(self, surface) -> None:
         surface.fill(pg.Color(40, 40, 40))
         title = self.font_large.render("Skirmish Setup", True, pg.Color(0, 255, 200))
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 40))
@@ -3622,7 +3645,7 @@ class SkirmishSetup:
 
 
 class VictoryScreen:
-    def __init__(self, font_large, font_medium, is_victory: bool | None, all_stats: dict, player_team=None):
+    def __init__(self, font_large, font_medium, is_victory: bool | None, all_stats: dict, player_team=None) -> None:
         self.font_large = font_large
         self.font_medium = font_medium
         self.is_victory = is_victory
@@ -3649,22 +3672,22 @@ class VictoryScreen:
         self.row_color_even = pg.Color(40, 40, 40)
         self.row_color_odd = pg.Color(60, 60, 60)
 
-    def get_team_enum(self, name):
+    def get_team_enum(self, name) -> Team | None:
         for t, n in team_to_name.items():
             if n == name:
                 return t
         return None
 
-    def handle_event(self, event):
+    def handle_event(self, event) -> str | None:
         if event.type == pg.MOUSEBUTTONDOWN:
             if self.continue_btn.is_clicked(event.pos):
                 return "menu"
         return None
 
-    def update(self, mouse_pos):
+    def update(self, mouse_pos) -> None:
         self.continue_btn.update(mouse_pos)
 
-    def draw(self, surface):
+    def draw(self, surface) -> None:
         surface.fill(pg.Color(20, 20, 20))
         if self.is_victory is None:
             title_text = "MATCH ENDED"
@@ -3761,7 +3784,7 @@ class VictoryScreen:
 
 
 class GameManager:
-    def __init__(self, screen, clock, font_large, font_medium):
+    def __init__(self, screen, clock, font_large, font_medium) -> None:
         self.screen = screen
         self.clock = clock
         self.font_large = font_large
@@ -3773,7 +3796,7 @@ class GameManager:
         self.game_data = None
         self.running = True
 
-    def initialize_game(self, game_mode, size_name, map_name, spectate=False):
+    def initialize_game(self, game_mode, size_name, map_name, spectate: bool = False) -> None:
         map_data = MAPS[map_name]
         base_width = map_data["width"]
         base_height = map_data["height"]
@@ -3943,7 +3966,7 @@ class GameManager:
             "num_ty": num_ty,
         }
 
-    def run_game(self):
+    def run_game(self) -> None:
         g = self.game_data
         while self.running and self.state == GameState.PLAYING:
             keys = pg.key.get_pressed()
@@ -4395,7 +4418,7 @@ class GameManager:
             pg.display.flip()
             self.clock.tick(60)
 
-    def run(self):
+    def run(self) -> None:
         while self.running:
             if self.state == GameState.MENU:
                 self.main_menu.update(pg.mouse.get_pos())
