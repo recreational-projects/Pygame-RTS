@@ -5,7 +5,7 @@ import random
 from abc import ABC, abstractmethod
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import InitVar, dataclass
+from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -13,18 +13,20 @@ import pygame as pg
 from pygame.math import Vector2
 
 from modules.camera.camera_2d import Camera2d
-from modules.constants_2d import (
+from modules.data import UNIT_BUTTON_LABELS, Palette
+from modules.data_2d import (
     CONSOLE_HEIGHT,
     MAP_HEIGHT,
     MAP_WIDTH,
+    MAPS,
     MINI_MAP_HEIGHT,
     MINI_MAP_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
+    UNIT_CLASSES,
 )
-from modules.data_2d import MAPS, UNIT_CLASSES
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
 from modules.fog_of_war import FogOfWar2d
 from modules.game_console import GameConsole
@@ -1712,6 +1714,34 @@ class ProductionInterface:
     Manages the right-hand UI panel for building/production.
     """
 
+    _BUILDING_PRODUCIBLE_ITEMS: ClassVar = {
+        Barracks: ["Infantry", "Grenadier"],
+        WarFactory: ["Tank", "MachineGunVehicle", "RocketArtillery"],
+        Hangar: ["AttackHelicopter"],
+        Headquarters: [
+            "Barracks",
+            "WarFactory",
+            "Hangar",
+            "PowerPlant",
+            "Turret",
+            "OilDerrick",
+            "Refinery",
+            "ShaleFracker",
+            "BlackMarket",
+        ],
+    }  # Don't move to data for now as it contains class references
+    _STR_TO_BUILDING_CLASS: ClassVar = {
+        "Barracks": Barracks,
+        "WarFactory": WarFactory,
+        "Hangar": Hangar,
+        "PowerPlant": PowerPlant,
+        "Turret": Turret,
+        "OilDerrick": OilDerrick,
+        "Refinery": Refinery,
+        "ShaleFracker": ShaleFracker,
+        "BlackMarket": BlackMarket,
+    }  # Don't move to data for now as it contains class references
+
     WIDTH: ClassVar = 200
     MARGIN_X: ClassVar = 20
     CREDITS_POS_Y: ClassVar = 10
@@ -1734,70 +1764,36 @@ class ProductionInterface:
     ACTION_ALLOWED_COLOR: ClassVar = pg.Color(0, 200, 0)
     ACTION_BLOCKED_COLOR: ClassVar = pg.Color(200, 0, 0)
     MAX_PRODUCTION_QUEUE_LENGTH: ClassVar = 5
-    PLACEMENT_VALID_COLOR = (0, 255, 0)
-    PLACEMENT_INVALID_COLOR = (255, 0, 0)
 
     _BUTTON_WIDTH = WIDTH - 2 * MARGIN_X
 
     hq: Headquarters
+    all_buildings = None
+    font: pg.Font = None
+
     surface: pg.Surface = dataclass_field(init=False)
     top_rects: dict = dataclass_field(init=False, default_factory=dict)
     item_rects: dict = dataclass_field(init=False, default_factory=dict)
-    placing_cls: type | None = None
-    production_timer: float | None = dataclass_field(init=False, default=None)
-    all_buildings: InitVar = None
-    font: pg.Font = None
-    producer: Any = None
+    placing_cls: type | None = dataclass_field(init=False, default=None)
+    producer: Barracks | WarFactory | Hangar | Headquarters = dataclass_field(init=False)
+    """Current (selected) producing building. Defaults to HQ."""
     producible_items: list = dataclass_field(default_factory=list)
-    str_to_building_class: dict = dataclass_field(
-        default_factory=lambda: {
-            "Barracks": Barracks,
-            "WarFactory": WarFactory,
-            "Hangar": Hangar,
-            "PowerPlant": PowerPlant,
-            "Turret": Turret,
-            "OilDerrick": OilDerrick,
-            "Refinery": Refinery,
-            "ShaleFracker": ShaleFracker,
-            "BlackMarket": BlackMarket,
-        }
-    )
+    """Currently producible items based on `producer` class."""
+    production_timer: float | None = dataclass_field(init=False, default=None)
 
-    def __post_init__(self, all_buildings) -> None:
+    def __post_init__(self) -> None:
         """
         Post-init: creates surface, top buttons, labels, defaults to HQ producer.
-
-        :param all_buildings: Global buildings group.
         """
-        # Post-init: creates surface, top buttons, labels, defaults to HQ producer.
-        self.placing_cls = None
         self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT - CONSOLE_HEIGHT))
         self.producer = self.hq
         self._create_top_buttons()
-        self.unit_button_labels = {
-            "Infantry": "Infantry",
-            "Grenadier": "Grenadier",
-            "Tank": "Tank",
-            "MachineGunVehicle": "MG Vehicle",
-            "RocketArtillery": "Rocket Artillery",
-            "AttackHelicopter": "Attack Heli",
-            "Barracks": "Barracks",
-            "WarFactory": "War Factory",
-            "Hangar": "Hangar",
-            "PowerPlant": "Power Plant",
-            "Turret": "Turret",
-            "OilDerrick": "Oil Derrick",
-            "Refinery": "Refinery",
-            "ShaleFracker": "Shale Fracker",
-            "BlackMarket": "Black Market",
-        }
         self.update_producer(self.hq)
 
     def _create_top_buttons(self) -> None:
         """
         Creates rects for Repair/Sell/Map buttons.
         """
-        # Creates rects for Repair/Sell/Map buttons.
         self.top_rects.clear()
         start_x = self.MARGIN_X
         for i, label in enumerate(["Repair", "Sell", "Map"]):
@@ -1805,34 +1801,17 @@ class ProductionInterface:
             rect = pg.Rect(x, self.TOP_BUTTONS_POS_Y, self.TOP_BUTTON_WIDTH, self.TOP_BUTTON_HEIGHT)
             self.top_rects[label] = rect
 
-    def update_producer(self, selected_building: Headquarters) -> None:
+    def update_producer(self, building: GameObject) -> None:
         """
-        Updates producible items based on selected producer (HQ or building).
-
-        :param selected_building: Selected building or HQ.
+        Updates producible items based on `building`.
         """
-        # Updates producible items based on selected producer (HQ or building).
-        if isinstance(selected_building, (Barracks, WarFactory, Hangar)):
-            self.producer = selected_building
-            if isinstance(selected_building, Barracks):
-                self.producible_items = ["Infantry", "Grenadier"]
-            elif isinstance(selected_building, WarFactory):
-                self.producible_items = ["Tank", "MachineGunVehicle", "RocketArtillery"]
-            elif isinstance(selected_building, Hangar):
-                self.producible_items = ["AttackHelicopter"]
+        if isinstance(building, (Barracks, WarFactory, Hangar)):
+            self.producer = building
         else:
             self.producer = self.hq
-            self.producible_items = [
-                "Barracks",
-                "WarFactory",
-                "Hangar",
-                "PowerPlant",
-                "Turret",
-                "OilDerrick",
-                "Refinery",
-                "ShaleFracker",
-                "BlackMarket",
-            ]
+
+        self.producible_items = self._BUILDING_PRODUCIBLE_ITEMS.get(self.producer.__class__, [])
+
         self.item_rects = {}
         y = self.PROD_ITEMS_START_Y
         for i, item in enumerate(self.producible_items):
@@ -1847,7 +1826,6 @@ class ProductionInterface:
         :param own_buildings: Player's buildings.
         :param all_buildings: Global buildings.
         """
-        # Renders sidebar: credits/power, buttons, queue with progress.
         self.surface.fill(self.FILL_COLOR)
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
 
@@ -1876,7 +1854,7 @@ class ProductionInterface:
 
         for item, rect in self.item_rects.items():
             cost = UNIT_CLASSES[item]["cost"]
-            label = self.unit_button_labels[item]
+            label = UNIT_BUTTON_LABELS.get(item, item)
             can_produce = self.hq.credits >= cost
             color = self.ACTION_ALLOWED_COLOR if can_produce else self.ACTION_BLOCKED_COLOR
             pg.draw.rect(self.surface, color, rect, border_radius=self.BUTTON_RADIUS)
@@ -1897,7 +1875,7 @@ class ProductionInterface:
             for i, item in enumerate(self.producer.production_queue):
                 unit_type = item["unit_type"] if "unit_type" in item else item["cls"].__name__
                 repeat_text = " [R]" if item["repeat"] else ""
-                text = f"{self.unit_button_labels.get(unit_type, unit_type)}{repeat_text}"
+                text = f"{UNIT_BUTTON_LABELS.get(unit_type, unit_type)}{repeat_text}"
                 self.surface.blit(
                     self.font.render(text, True, pg.Color("white")),
                     (self.MARGIN_X + 10, queue_y),
@@ -1948,11 +1926,14 @@ class ProductionInterface:
                             if self.hq.credits >= cost:
                                 self.hq.credits -= cost
                                 self.producer.health = self.producer.max_health
+
                 elif label == "Sell":
                     if self.producer != self.hq:
                         return ("sell", self.producer)
+
                 elif label == "Map":
                     pass
+
                 return True
 
         for item, rect in self.item_rects.items():
@@ -1960,13 +1941,15 @@ class ProductionInterface:
                 cost = UNIT_CLASSES[item]["cost"]
                 if self.hq.credits >= cost:
                     if isinstance(self.producer, Headquarters):
-                        self.placing_cls = self.str_to_building_class[item]
+                        self.placing_cls = self._STR_TO_BUILDING_CLASS[item]
                     else:
                         if len(self.producer.production_queue) < self.MAX_PRODUCTION_QUEUE_LENGTH:
                             self.producer.production_queue.append({"unit_type": item, "repeat": False})
                             self.hq.credits -= cost
                         return True
+
                 return False
+
         return False
 
 
@@ -2497,7 +2480,7 @@ class GameManager:
         interface = None
         interface_rect = None
         if not spectate:
-            interface = ProductionInterface(hq=player_hq, all_buildings=global_buildings, font=self.font_medium)
+            interface = ProductionInterface(hq=player_hq, font=self.font_medium)
             interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
         else:
             interface_rect = pg.Rect(0, 0, 0, 0)
@@ -2949,11 +2932,7 @@ class GameManager:
                     half_w, half_h = width / 2, height / 2
                     temp_rect = pg.Rect(snapped[0] - half_w, snapped[1] - half_h, width, height)
                     screen_ghost = g["camera"].get_screen_rect(temp_rect)
-                    color = (
-                        ProductionInterface.PLACEMENT_VALID_COLOR
-                        if valid
-                        else ProductionInterface.PLACEMENT_INVALID_COLOR
-                    )
+                    color = Palette.PLACEMENT_VALID_COLOR if valid else Palette.PLACEMENT_INVALID_COLOR
                     line_width = int(2 * g["camera"].zoom)
                     pg.draw.rect(self.screen, color, screen_ghost, line_width)
 

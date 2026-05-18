@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, override
 import pygame as pg
 
 from modules.camera.camera import Camera
-from modules.constants_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
+from modules.data_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
 
 if TYPE_CHECKING:
     from pygame.typing import Point
