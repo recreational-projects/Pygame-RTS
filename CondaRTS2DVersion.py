@@ -2851,7 +2851,12 @@ class GameManager:
             if g["player_hq"] and g["player_hq"].health <= 0:
                 self.state = GameState.DEFEAT
                 self.victory_screen = VictoryScreen(
-                    self.font_large, self.font_medium, False, all_stats, g["player_team"]
+                    font_large=self.font_large,
+                    font_medium=self.font_medium,
+                    is_victory=False,
+                    all_stats=all_stats,
+                    player_team=g["player_team"],
+                    screen_size=screen.size,
                 )
             elif len(alive_hqs) <= 1:
                 if len(alive_hqs) == 0:
@@ -2866,11 +2871,12 @@ class GameManager:
                     self.state = GameState.VICTORY if is_player_victory else GameState.DEFEAT
 
                 self.victory_screen = VictoryScreen(
-                    self.font_large,
-                    self.font_medium,
-                    is_player_victory,
-                    all_stats,
-                    g.get("player_team"),
+                    font_large=self.font_large,
+                    font_medium=self.font_medium,
+                    is_victory=is_player_victory,
+                    all_stats=all_stats,
+                    player_team=g.get("player_team"),
+                    screen_size=screen.size,
                 )
 
             self.screen.fill(pg.Color("black"))
@@ -3024,7 +3030,11 @@ class GameManager:
                     result = self.skirmish_setup.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.font_large, self.font_medium)
+                        self.skirmish_setup = SkirmishSetup(
+                            font_large=self.font_large,
+                            font_medium=self.font_medium,
+                            screen_size=screen.size,
+                        )
                     elif result and result[0] == "start_game":
                         _, game_mode, size_choice, map_choice, spectate = result
                         self.initialize_game(game_mode, size_choice, map_choice, spectate)
@@ -3046,7 +3056,11 @@ class GameManager:
                     result = self.victory_screen.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.font_large, self.font_medium)
+                        self.skirmish_setup = SkirmishSetup(
+                            font_large=self.font_large,
+                            font_medium=self.font_medium,
+                            screen_size=screen.size,
+                        )
 
                 pg.display.flip()
                 self.clock.tick(60)
