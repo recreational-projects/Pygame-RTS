@@ -20,3 +20,4 @@ PAN_EDGE = 30
 """Control edge-scrolling camera panning."""
 PAN_SPEED = 10
 """Control edge-scrolling camera panning."""
+STARTING_POSITIONS_EDGE_OFFSET = 50
