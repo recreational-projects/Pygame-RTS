@@ -8,7 +8,7 @@ import pygame as pg
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from pygame.typing import IntPoint, Point
+    from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
     from modules.camera.camera_iso import CameraIso
@@ -67,7 +67,7 @@ class FogOfWar2d:
                 if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
                     building.is_seen = building.is_seen or self.visible[tx][ty]
 
-    def _reveal(self, center: IntPoint, radius: int) -> None:
+    def _reveal(self, center: Point, radius: int) -> None:
         """Reveals tiles within radius of center as both explored and visible.
 
         :param center: Center position (x, y) to reveal around.
@@ -118,14 +118,14 @@ class FogOfWar2d:
         :param camera: Camera2d for viewport culling.
         """
         # Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
-        start_tx = max(0, int(camera.rect.x // self.tile_size))
-        start_ty = max(0, int(camera.rect.y // self.tile_size))
-        end_tx = min(len(self.visible), start_tx + int(camera.rect.width // self.tile_size) + 2)
-        end_ty = min(len(self.visible[0]), start_ty + int(camera.rect.height // self.tile_size) + 2)
+        start_tx = max(0, camera.rect.x // self.tile_size)
+        start_ty = max(0, camera.rect.y // self.tile_size)
+        end_tx = min(len(self.visible), start_tx + (camera.rect.width // self.tile_size) + 2)
+        end_ty = min(len(self.visible[0]), start_ty + (camera.rect.height // self.tile_size) + 2)
         zoom = camera.zoom
         tile_sw = self.tile_size * zoom
         tile_sh = self.tile_size * zoom
-        fog_overlay = pg.Surface((int(camera.width), int(camera.height)), pg.SRCALPHA)
+        fog_overlay = pg.Surface((camera.width, camera.height), pg.SRCALPHA)
         fog_overlay.fill((0, 0, 0, 0))
         for tx in range(start_tx, end_tx):
             wx = tx * self.tile_size
@@ -213,7 +213,7 @@ class FogOfWarIso:
         end_tx = min(len(self.visible), int(max_wx // self.tile_size) + 2)
         end_ty = min(len(self.visible[0]), int(max_wy // self.tile_size) + 2)
         zoom = camera.zoom
-        fog_overlay = pg.Surface((int(camera.width), int(camera.height)), pg.SRCALPHA)
+        fog_overlay = pg.Surface((camera.width, camera.height), pg.SRCALPHA)
         fog_overlay.fill((0, 0, 0, 0))
         for tx in range(start_tx, end_tx):
             wx = tx * self.tile_size
