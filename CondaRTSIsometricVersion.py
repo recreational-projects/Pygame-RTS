@@ -3682,7 +3682,7 @@ class GameManager:
                     is_victory=False,
                     all_stats=all_stats,
                     player_team=g["player_team"],
-                    screen_size=screen.size,
+                    screen_size=self.screen.size,
                 )
             elif len(alive_hqs) <= 1:
                 if len(alive_hqs) == 0:
@@ -3702,7 +3702,7 @@ class GameManager:
                     is_victory=is_player_victory,
                     all_stats=all_stats,
                     player_team=g.get("player_team"),
-                    screen_size=screen.size,
+                    screen_size=self.screen.size,
                 )
             self.screen.fill(pg.Color("black"))
             map_color = g["map_color"]
@@ -3827,7 +3827,7 @@ class GameManager:
                     if result == "menu":
                         self.state = GameState.MENU
                         self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large, font_medium=self.font_medium, screen_size=screen.size
+                            font_large=self.font_large, font_medium=self.font_medium, screen_size=self.screen.size
                         )
 
                     elif result and result[0] == "start_game":
@@ -3848,20 +3848,27 @@ class GameManager:
                     if result == "menu":
                         self.state = GameState.MENU
                         self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large, font_medium=self.font_medium, screen_size=screen.size
+                            font_large=self.font_large, font_medium=self.font_medium, screen_size=self.screen.size
                         )
                 pg.display.flip()
                 self.clock.tick(60)
         pg.quit()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    # Entry point: initializes Pygame, creates manager, runs game.
     pg.init()
     pg.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
     screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pg.display.set_caption("Paper Tigers")
     clock = pg.time.Clock()
+
     font_large = pg.font.SysFont(None, 72)
     font_medium = pg.font.SysFont(None, 28)
+
     manager = GameManager(screen, clock, font_large, font_medium)
     manager.run()
+
+
+if __name__ == "__main__":
+    main()
