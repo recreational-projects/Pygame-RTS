@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import pygame as pg
@@ -8,7 +9,7 @@ from modules.data_2d import MAPS
 from modules.team import team_to_color, team_to_name
 
 if TYPE_CHECKING:
-    from pygame.typing import ColorLike, IntPoint
+    from pygame.typing import IntPoint
 
     from modules.team import Team
 
@@ -26,26 +27,21 @@ def _get_team_enum(name: str) -> Team | None:
     return None
 
 
+@dataclass
 class _MenuButton:
-    """Simple clickable button with hover effect."""
+    """Simple clickable button with hover effect.
 
-    def __init__(
-        self, x: int, y: int, width: int, height: int, text: str, color: ColorLike, hover_color: ColorLike
-    ) -> None:
-        """:param x: X position.
-        :param y: Y position.
-        :param width: Button width.
-        :param height: Button height.
-        :param text: Button text.
-        :param color: Normal color.
-        :param hover_color: Hover color.
-        """
-        # Simple clickable button with hover effect.
-        self.rect = pg.Rect(x, y, width, height)
-        self.text = text
-        self.color = color
-        self.hover_color = hover_color
-        self.current_color = color
+    :param rect: Define button dimensions.
+    :param text: Button text.
+    :param color: Normal color.
+    :param hover_color: Hover color.
+    """
+
+    rect: pg.Rect
+    text: str
+    color: pg.Color
+    hover_color: pg.Color
+    current_color: pg.Color = field(init=False)
 
     def update(self, mouse_pos: IntPoint) -> None:
         """Updates button color based on hover.
@@ -74,30 +70,29 @@ class _MenuButton:
         return self.rect.collidepoint(mouse_pos)
 
 
+@dataclass(kw_only=True)
 class MainMenu:
-    """Main menu with Single Player and Quit buttons."""
+    """Main menu with Single Player and Quit buttons.
 
-    def __init__(self, *, font_large: pg.Font, font_medium: pg.Font, screen_size: IntPoint) -> None:
-        """:param font_large: Large font for title.
-        :param font_medium: Medium font for buttons.
-        """
-        # Main menu with Single Player and Quit buttons.
-        self.font_large = font_large
-        self.font_medium = font_medium
+    :param font_large: Large font for title.
+    :param font_medium: Medium font for buttons.
+    """
+
+    screen_size: InitVar[IntPoint]
+
+    font_large: pg.Font
+    font_medium: pg.Font
+
+    def __post_init__(self, screen_size: IntPoint) -> None:
+
         self.skirmish_btn = _MenuButton(
-            screen_size[0] // 2 - 100,
-            screen_size[1] // 2 - 60,
-            200,
-            60,
+            pg.Rect(screen_size[0] // 2 - 100, screen_size[1] // 2 - 60, 200, 60),
             "Single Player",
             pg.Color(50, 150, 50),
             pg.Color(100, 200, 100),
         )
         self.quit_btn = _MenuButton(
-            screen_size[0] // 2 - 100,
-            screen_size[1] // 2 + 40,
-            200,
-            60,
+            pg.Rect(screen_size[0] // 2 - 100, screen_size[1] // 2 + 40, 200, 60),
             "Quit",
             pg.Color(150, 50, 50),
             pg.Color(200, 100, 100),
@@ -112,12 +107,13 @@ class MainMenu:
         if event.type == pg.MOUSEBUTTONDOWN:
             if self.skirmish_btn.is_clicked(event.pos):
                 return "skirmish_setup"
+
             if self.quit_btn.is_clicked(event.pos):
                 return "quit"
 
         return None
 
-    def update(self, mouse_pos: tuple[int, int]) -> None:
+    def update(self, mouse_pos: IntPoint) -> None:
         """Updates button hovers.
 
         :param mouse_pos: Mouse position.
@@ -138,95 +134,91 @@ class MainMenu:
         self.quit_btn.draw(surface, self.font_medium)
 
 
+@dataclass(kw_only=True)
 class SkirmishSetup:
-    """Setup menu for mode, size, map selection."""
+    """Setup menu for mode, size, map selection.
 
-    def __init__(self, *, font_large: pg.Font, font_medium: pg.Font, screen_size: IntPoint) -> None:
-        """:param font_large: Large font.
-        :param font_medium: Medium font.
-        """
-        # Setup menu for mode, size, map selection.
-        self.font_large = font_large
-        self.font_medium = font_medium
-        self.game_mode = None
-        self.size_choice = None
-        self.map_choice = None
+    :param font_large: Large font.
+    :param font_medium: Medium font.
+    """
+
+    screen_size: InitVar[IntPoint]
+
+    font_large: pg.Font
+    font_medium: pg.Font
+    game_mode = None
+    size_choice = None
+    map_choice = None
+    map_buttons: dict = field(default_factory=dict)
+
+    def __post_init__(self, screen_size: IntPoint) -> None:
 
         self.mode_1v1 = _MenuButton(
-            screen_size[0] // 2 - 300,
-            150,
-            80,
-            50,
+            pg.Rect(screen_size[0] // 2 - 300, 150, 80, 50),
             "1v1",
             pg.Color(50, 100, 150),
             pg.Color(100, 150, 200),
         )
         self.mode_2v2 = _MenuButton(
-            screen_size[0] // 2 - 200,
-            150,
-            80,
-            50,
+            pg.Rect(screen_size[0] // 2 - 200, 150, 80, 50),
             "2v2",
             pg.Color(50, 100, 150),
             pg.Color(100, 150, 200),
         )
         self.mode_3v3 = _MenuButton(
-            screen_size[0] // 2 - 100,
-            150,
-            80,
-            50,
+            pg.Rect(screen_size[0] // 2 - 100, 150, 80, 50),
             "3v3",
             pg.Color(50, 100, 150),
             pg.Color(100, 150, 200),
         )
         self.mode_4v4 = _MenuButton(
-            screen_size[0] // 2, 150, 80, 50, "4v4", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+            pg.Rect(screen_size[0] // 2, 150, 80, 50), "4v4", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
         )
         self.mode_4ffa = _MenuButton(
-            screen_size[0] // 2 + 100,
-            150,
-            80,
-            50,
+            pg.Rect(screen_size[0] // 2 + 100, 150, 80, 50),
             "4FFA",
             pg.Color(50, 100, 150),
             pg.Color(100, 150, 200),
         )
 
-        self.size_tiny = _MenuButton(200, 220, 120, 50, "Tiny", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_small = _MenuButton(350, 220, 120, 50, "Small", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_medium = _MenuButton(500, 220, 120, 50, "Medium", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_large = _MenuButton(650, 220, 120, 50, "Large", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
-        self.size_huge = _MenuButton(800, 220, 120, 50, "Huge", pg.Color(50, 100, 150), pg.Color(100, 150, 200))
+        self.size_tiny = _MenuButton(
+            pg.Rect(200, 220, 120, 50), "Tiny", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+        )
+        self.size_small = _MenuButton(
+            pg.Rect(350, 220, 120, 50), "Small", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+        )
+        self.size_medium = _MenuButton(
+            pg.Rect(500, 220, 120, 50), "Medium", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+        )
+        self.size_large = _MenuButton(
+            pg.Rect(650, 220, 120, 50), "Large", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+        )
+        self.size_huge = _MenuButton(
+            pg.Rect(800, 220, 120, 50), "Huge", pg.Color(50, 100, 150), pg.Color(100, 150, 200)
+        )
 
-        self.map_buttons = {}
         map_list = list(MAPS.keys())
         for i, map_name in enumerate(map_list):
             x = 100 + (i % 2) * 300
             y = 350 + (i // 2) * 80
             self.map_buttons[map_name] = _MenuButton(
-                x, y, 200, 60, map_name, pg.Color(100, 100, 100), pg.Color(150, 150, 150)
+                pg.Rect(x, y, 200, 60), map_name, pg.Color(100, 100, 100), pg.Color(150, 150, 150)
             )
 
         self.start_btn = _MenuButton(
-            screen_size[0] // 2 - 80,
-            screen_size[1] - 100,
-            160,
-            50,
+            pg.Rect(screen_size[0] // 2 - 80, screen_size[1] - 100, 160, 50),
             "Start Game",
             pg.Color(50, 150, 50),
             pg.Color(100, 200, 100),
         )
         self.spectate_btn = _MenuButton(
-            screen_size[0] // 2 + 100,
-            screen_size[1] - 100,
-            160,
-            50,
+            pg.Rect(screen_size[0] // 2 + 100, screen_size[1] - 100, 160, 50),
             "Spectate",
             pg.Color(100, 50, 150),
             pg.Color(150, 100, 200),
         )
         self.back_btn = _MenuButton(
-            20, screen_size[1] - 70, 120, 50, "Back", pg.Color(150, 100, 50), pg.Color(200, 150, 100)
+            pg.Rect(20, screen_size[1] - 70, 120, 50), "Back", pg.Color(150, 100, 50), pg.Color(200, 150, 100)
         )
 
     def handle_event(self, event: pg.Event) -> Any:
@@ -344,36 +336,27 @@ class SkirmishSetup:
         self.back_btn.draw(surface, self.font_medium)
 
 
+@dataclass(kw_only=True)
 class VictoryScreen:
-    """Displays win/loss message with continue button."""
+    """Displays win/loss message with continue button.
 
-    def __init__(
-        self,
-        *,
-        font_large: pg.Font,
-        font_medium: pg.Font,
-        is_victory: bool | None,
-        all_stats: dict,
-        screen_size: IntPoint,
-        player_team: Team | None = None,
-    ) -> None:
-        """:param font_large: Large font.
-        :param font_medium: Medium font.
-        :param is_victory: Victory status (True/False/None).
-        :param all_stats: Dict of team stats.
-        :param player_team: Player's team.
-        """
-        # Displays win/loss message with continue button.
-        self.font_large = font_large
-        self.font_medium = font_medium
-        self.is_victory = is_victory
-        self.all_stats = all_stats
-        self.player_team = player_team
+    :param font_large: Large font.
+    :param font_medium: Medium font.
+    :param is_victory: Victory status (True/False/None).
+    :param all_stats: Dict of team stats.
+    :param player_team: Player's team.
+    """
+
+    screen_size: InitVar[IntPoint]
+    font_large: pg.Font
+    font_medium: pg.Font
+    is_victory: bool
+    all_stats: dict
+    player_team: Team | None = None
+
+    def __post_init__(self, screen_size: IntPoint) -> None:
         self.continue_btn = _MenuButton(
-            screen_size[0] // 2 - 100,
-            screen_size[1] // 2 + 300,
-            200,
-            60,
+            pg.Rect(screen_size[0] // 2 - 100, screen_size[1] // 2 + 300, 200, 60),
             "Continue",
             pg.Color(50, 150, 50),
             pg.Color(100, 200, 100),
@@ -387,7 +370,7 @@ class VictoryScreen:
         # Player, Units Created, Units Killed, Units Lost, Buildings Constructed,
         # Buildings Razed, Buildings Lost, Credits Earned
         self.row_height = 30
-        self.num_rows = len(all_stats) + 1  # +1 for header
+        self.num_rows = len(self.all_stats) + 1  # +1 for header
         self.table_height = self.num_rows * self.row_height
         self.line_color = pg.Color(255, 255, 255)
         self.header_color = pg.Color(100, 100, 100)
@@ -526,6 +509,7 @@ class VictoryScreen:
                     )
                     surface.blit(text_surf, text_rect)
                     x_pos += self.col_widths[col_idx]
+
                 x_pos = self.table_x  # Reset for next row
 
         self.continue_btn.draw(surface, self.font_medium)
