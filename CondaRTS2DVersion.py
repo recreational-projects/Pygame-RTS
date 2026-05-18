@@ -21,6 +21,7 @@ from modules.constants_2d import (
     MINI_MAP_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
 )
 from modules.data_2d import MAPS, UNIT_CLASSES
@@ -28,7 +29,12 @@ from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_
 from modules.fog_of_war import FogOfWar2d
 from modules.game_console import GameConsole
 from modules.game_state import GameState
-from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
+from modules.geometry import (
+    calculate_formation_positions_2d,
+    closest_point_on_rect,
+    get_starting_positions,
+    snap_to_grid,
+)
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_color, team_to_name
@@ -581,17 +587,6 @@ class Unit(GameObject):
         # Modular drawing setup
         self._setup_drawing(unit_type)
 
-    def _closest_point_on_rect(self, rect: pg.Rect, pos: Point) -> tuple[float, float]:
-        """
-        Computes the closest point on the rect to the position.
-
-        :param rect: Pygame Rect.
-        :param pos: Position.
-        :return: Closest point on rect.
-        """
-        # Computes the closest point on the rect to the position.
-        return (max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom)))
-
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:
         """
         Computes the position to move to so that the distance to the closest edge of the building is exactly attack_range.
@@ -600,7 +595,7 @@ class Unit(GameObject):
         :return: Chase position or None if already in range.
         """
         # Computes the position to move to so that the distance to the closest edge of the building is exactly attack_range.
-        closest = self._closest_point_on_rect(target_building.rect, self.position)
+        closest = closest_point_on_rect(target_building.rect, self.position)
         dir_to_closest = Vector2(closest) - self.position
         dist_to_closest = dir_to_closest.length()
         if dist_to_closest <= self.attack_range:
@@ -750,13 +745,13 @@ class Unit(GameObject):
         if not self.is_building:
             if self.attack_target and self.attack_target.health > 0:
                 if self.attack_target.is_building:
-                    closest = self._closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest = closest_point_on_rect(self.attack_target.rect, self.position)
                     dir_to_closest = Vector2(closest) - self.position
                     dist = dir_to_closest.length()
                 else:
                     dist = self.distance_to(self.attack_target.position)
                 if self.attack_target.is_building:
-                    closest_enemy = self._closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest_enemy = closest_point_on_rect(self.attack_target.rect, self.position)
                     dir_to_enemy = Vector2(closest_enemy) - self.position
                 else:
                     dir_to_enemy = Vector2(self.attack_target.position) - self.position
@@ -902,7 +897,7 @@ class Unit(GameObject):
             return
         weapon = self.weapons[0]
         if target.is_building:
-            closest = self._closest_point_on_rect(target.rect, self.position)
+            closest = closest_point_on_rect(target.rect, self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
         else:
@@ -1259,7 +1254,8 @@ class AI:
             "AttackHelicopter": heli_prio,
         }
 
-    def _get_nearest_enemy_building(self, enemy_buildings, from_pos):
+    @staticmethod
+    def _get_nearest_enemy_building(enemy_buildings, from_pos):
         """
         Finds nearest enemy building, weighted by strategic value (HQ > factories > resources).
 
@@ -2189,7 +2185,7 @@ def handle_attacks(
         for obj in candidates:
             if hasattr(obj, "team") and obj.team not in unit_allies and hasattr(obj, "health") and obj.health > 0:
                 if obj.is_building:
-                    closest_pt = entity._closest_point_on_rect(obj.rect, entity.position)
+                    closest_pt = closest_point_on_rect(obj.rect, entity.position)
                     dist = Vector2(closest_pt).distance_to(entity.position)
                 else:
                     dist = entity.distance_to(obj.position)
@@ -2217,7 +2213,7 @@ def handle_attacks(
         if closest_target:
             entity.attack_target = closest_target
             if closest_target.is_building:
-                closest_pt = entity._closest_point_on_rect(closest_target.rect, entity.position)
+                closest_pt = closest_point_on_rect(closest_target.rect, entity.position)
                 dir_c = Vector2(closest_pt) - entity.position
                 dist_to_target = dir_c.length()
             else:
@@ -2397,6 +2393,7 @@ class GameManager:
         teams_list = []
         player_side = []
         enemy_side = []
+        num_players = 0
 
         if game_mode == "1v1":
             player_side = [Team.RED]
@@ -2421,7 +2418,10 @@ class GameManager:
 
         teams_list = player_side + enemy_side
         positions = get_starting_positions(
-            map_width=map_width, map_height=map_height, num_players=num_players, edge_dist=50
+            map_width=map_width,
+            map_height=map_height,
+            num_players=num_players,
+            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
         )
 
         for i, team in enumerate(teams_list):

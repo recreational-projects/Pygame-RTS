@@ -21,6 +21,7 @@ from modules.constants_iso import (
     MINI_MAP_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
 )
 from modules.data_iso import MAPS, UNIT_CLASSES
@@ -30,7 +31,8 @@ from modules.game_state import GameState
 from modules.geometry import (
     absolute_world_to_iso,
     calculate_formation_positions_iso,
-    get_starting_positions_iso,
+    closest_point_on_rect,
+    get_starting_positions,
     snap_to_grid,
 )
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
@@ -1153,11 +1155,8 @@ class Unit(GameObject):
         for particle in self.plasma_burn_particles:
             particle.draw(surface, camera)
 
-    def _closest_point_on_rect(self, rect: pg.Rect, pos: Point) -> tuple[float, float]:
-        return (max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom)))
-
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:
-        closest = self._closest_point_on_rect(target_building.rect, self.position)
+        closest = closest_point_on_rect(target_building.rect, self.position)
         dir_to_closest = Vector2(closest) - self.position
         dist_to_closest = dir_to_closest.length()
         if dist_to_closest <= self.attack_range:
@@ -1170,7 +1169,7 @@ class Unit(GameObject):
         max_spread = min(15, self.attack_range * 0.15)
         spread_dist = random.uniform(-max_spread, max_spread)
         target_pos += perp_dir * spread_dist
-        new_closest = self._closest_point_on_rect(target_building.rect, target_pos)
+        new_closest = closest_point_on_rect(target_building.rect, target_pos)
         new_dist = Vector2(new_closest).distance_to(target_pos)
         if new_dist > self.attack_range:
             overage = new_dist - self.attack_range
@@ -1364,7 +1363,7 @@ class Unit(GameObject):
             and self.last_shot_time <= 0
         ):
             if self.attack_target.is_building:
-                closest = self._closest_point_on_rect(self.attack_target.rect, self.position)
+                closest = closest_point_on_rect(self.attack_target.rect, self.position)
                 dist = Vector2(closest).distance_to(self.position)
                 aim_target = self.attack_target
             else:
@@ -1381,7 +1380,7 @@ class Unit(GameObject):
             return
         weapon = self.weapons[0]
         if target.is_building:
-            closest = self._closest_point_on_rect(target.rect, self.position)
+            closest = closest_point_on_rect(target.rect, self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
         else:
@@ -2321,9 +2320,11 @@ class AI:
             "AttackHelicopter": heli_prio,
         }
 
-    def _get_nearest_enemy_building(self, enemy_buildings, from_pos):
+    @staticmethod
+    def _get_nearest_enemy_building(enemy_buildings, from_pos):
         if not enemy_buildings:
             return None
+
         building_weights = {
             Headquarters: 1.0,
             Barracks: 0.8,
@@ -3115,7 +3116,7 @@ def handle_attacks(
         for obj in candidates:
             if hasattr(obj, "team") and obj.team not in unit_allies and hasattr(obj, "health") and obj.health > 0:
                 if obj.is_building:
-                    closest_pt = entity._closest_point_on_rect(obj.rect, entity.position)
+                    closest_pt = closest_point_on_rect(obj.rect, entity.position)
                     dist = Vector2(closest_pt).distance_to(entity.position)
                 else:
                     dist = entity.distance_to(obj.position)
@@ -3142,7 +3143,7 @@ def handle_attacks(
             continue
         entity.attack_target = closest_target
         if closest_target.is_building:
-            closest_pt = entity._closest_point_on_rect(closest_target.rect, entity.position)
+            closest_pt = closest_point_on_rect(closest_target.rect, entity.position)
             dir_vec = Vector2(closest_pt) - entity.position
             dist_to_target = dir_vec.length()
         else:
@@ -3254,6 +3255,7 @@ class GameManager:
         num_tx = map_width // TILE_SIZE
         num_ty = map_height // TILE_SIZE
         ownership = [[None] * num_ty for _ in range(num_tx)]
+
         player_units = pg.sprite.Group()
         ai_units = pg.sprite.Group()
         global_units = pg.sprite.Group()
@@ -3266,6 +3268,8 @@ class GameManager:
         teams_list = []
         player_side = []
         enemy_side = []
+        num_players = 0
+
         if game_mode == "1v1":
             player_side = [Team.RED]
             enemy_side = [Team.GREEN]
@@ -3286,8 +3290,14 @@ class GameManager:
             player_side = [Team.RED]
             enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
             num_players = 4
+
         teams_list = player_side + enemy_side
-        positions = get_starting_positions_iso(map_width, map_height, num_players)
+        positions = get_starting_positions(
+            map_width=map_width,
+            map_height=map_height,
+            num_players=num_players,
+            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
+        )
         for i, team in enumerate(teams_list):
             pos = positions[i]
             hq = Headquarters(pos, team)

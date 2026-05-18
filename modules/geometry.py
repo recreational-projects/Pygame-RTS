@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 from pygame.math import Vector2
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import pygame as pg
     from pygame.typing import Point
 
 
@@ -87,16 +90,13 @@ def calculate_formation_positions_iso(
     return positions
 
 
-def get_starting_positions_iso(map_width: int, map_height: int, num_players: int) -> list[Point]:
-    return get_starting_positions(map_width=map_width, map_height=map_height, num_players=num_players, edge_dist=250)
-
-
-def get_starting_positions(*, map_width: int, map_height: int, num_players: int, edge_dist: int) -> list[Point]:
+def get_starting_positions(*, map_width: int, map_height: int, num_players: int, edge_dist: int) -> Sequence[Point]:
     """Generates balanced starting positions around the map edges for multiple players.
 
     :param map_width: Width of the map.
     :param map_height: Height of the map.
     :param num_players: Number of players.
+    :param edge_dist: Distance from the edge.
     :return: List of starting position tuples.
     """
     # Generates balanced starting positions around the map edges for multiple players.
@@ -128,3 +128,14 @@ def absolute_world_to_iso(world_pos: Point, zoom: float) -> tuple[float, float]:
     iso_x = (dx - dy) * (zoom / 2)
     iso_y = (dx + dy) * (zoom / 2)
     return iso_x, iso_y
+
+
+def closest_point_on_rect(rect: pg.Rect, pos: Point) -> tuple[float, float]:
+    """Computes the closest point on the rect to the position.
+
+    :param rect: Pygame Rect.
+    :param pos: Position.
+    :return: Closest point on rect.
+    """
+    # Computes the closest point on the rect to the position.
+    return max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom))
