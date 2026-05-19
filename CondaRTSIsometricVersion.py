@@ -3,8 +3,6 @@ from __future__ import annotations
 import heapq
 import math
 import random
-from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -29,6 +27,7 @@ from modules.data_iso import (
 )
 from modules.fog_of_war import FogOfWarIso
 from modules.game_console import GameConsole
+from modules.game_object_iso import GameObject
 from modules.game_state import GameState
 from modules.geometry import (
     absolute_world_to_iso,
@@ -37,17 +36,14 @@ from modules.geometry import (
     get_starting_positions,
     snap_to_grid,
 )
-from modules.particles import PlasmaBurnParticle, create_explosion_iso
+from modules.particles import create_explosion_iso
+from modules.projectile_iso import Projectile
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_color, team_to_name
 
 if TYPE_CHECKING:
     from pygame.typing import Point
-
-PROJECTILE_LIFETIME = 1.0
-PLASMA_BURN_PARTICLES: int = 0
-PLASMA_BURN_DURATION: int = 1
 
 
 def heuristic(a: Point, b: Point) -> float:
@@ -371,61 +367,6 @@ def find_free_spawn_position(
     return (max(0, min(target_pos[0], map_width)), max(0, min(target_pos[1], map_height)))
 
 
-class Projectile(pg.sprite.Sprite):
-    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]) -> None:
-        super().__init__()
-        self.position = Vector2(pos)
-        self.direction = direction.normalize() if direction.length() > 0 else Vector2(1, 0)
-        self.damage = damage
-        self.team = team
-        self.speed = weapon["projectile_speed"]
-        self.lifetime = PROJECTILE_LIFETIME * 30
-        self.age = 0
-        self.length = weapon["projectile_length"]
-        self.width = weapon["projectile_width"]
-        self.angle = math.atan2(self.direction.y, self.direction.x)
-        self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
-        color = team_to_color[team]
-        for i in range(self.length):
-            alpha = int(255 * (i / self.length))
-            pg.draw.line(self.image, (color.r, color.g, color.b, alpha), (i, 0), (i, self.width), 1)
-        self.rect = self.image.get_rect(center=self.position)
-        self.trail = deque(maxlen=5)
-
-    def update(self) -> None:
-        self.trail.append(self.position.copy())
-        self.position += self.direction * self.speed
-        self.age += 1
-        self.rect.center = self.position
-        if self.age >= self.lifetime:
-            self.kill()
-
-    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
-        screen_rect = camera.get_screen_rect(self.rect)
-        if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
-            return
-        screen_pos = camera.world_to_iso(self.position, camera.zoom)
-        if len(self.trail) > 1:
-            trail_positions = [camera.world_to_iso(pos, camera.zoom) for pos in self.trail]
-            num_segments = len(trail_positions) - 1
-            for i in range(num_segments):
-                p1 = trail_positions[i]
-                p2 = trail_positions[i + 1]
-                age_factor = i / max(1, num_segments - 1)
-                c = pg.Color(team_to_color[self.team])
-                intensity = 0.3 + 0.7 * age_factor
-                trail_color = (int(c.r * intensity), int(c.g * intensity), int(c.b * intensity))
-                trail_width = max(1, int(self.width * camera.zoom * (0.2 + 0.3 * age_factor)))
-                pg.draw.line(surface, trail_color, p1, p2, trail_width)
-        scaled_length = int(self.length * camera.zoom)
-        scaled_width = int(self.width * camera.zoom)
-        if scaled_length > 0 and scaled_width > 0:
-            scaled_image = pg.transform.smoothscale(self.image, (scaled_length, scaled_width))
-            rotated_image = pg.transform.rotate(scaled_image, -math.degrees(self.angle))
-            rot_rect = rotated_image.get_rect(center=screen_pos)
-            surface.blit(rotated_image, rot_rect.topleft)
-
-
 def check_collision(entity, projectile):
     proj_rect = pg.Rect(
         projectile.position.x - projectile.length / 2,
@@ -438,68 +379,6 @@ def check_collision(entity, projectile):
         return dist < (entity.radius + max(projectile.length, projectile.width) / 2)
     else:
         return entity.rect.colliderect(proj_rect)
-
-
-class GameObject(pg.sprite.Sprite, ABC):
-    def __init__(self, position: Point, team: Team) -> None:
-        super().__init__()
-        self.position = Vector2(position)
-        self.team = team
-        self.health = 100
-        self.max_health = 100
-        self.under_attack = False
-        self.under_attack_timer = 0
-        self.selected = False
-        self.is_seen = False
-        self.body_angle = 0
-        self.plasma_burn_particles: list[PlasmaBurnParticle] = []
-        self.map_width = MAP_WIDTH
-        self.map_height = MAP_HEIGHT
-        self.image = pg.Surface((32, 32))
-        self.rect = self.image.get_rect(center=position)
-
-    def distance_to(self, other_pos: Point) -> float:
-        return self.position.distance_to(other_pos)
-
-    def draw_health_bar(self, screen: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
-        hovered = False
-        if mouse_pos is not None:
-            screen_rect = camera.get_screen_rect(self.rect)
-            if screen_rect.collidepoint(mouse_pos):
-                hovered = True
-        show = True
-        if self.is_building:
-            if self.health >= self.max_health:
-                show = False
-        else:
-            if not (self.under_attack or hovered):
-                show = False
-        if not show:
-            return
-        screen_pos = camera.world_to_iso(self.position, camera.zoom)
-        health_ratio = self.health / self.max_health
-        color = (0, 255, 0) if health_ratio > 0.5 else (255, 0, 0)
-        bar_width = 25
-        bar_height = 4
-        bar_x = screen_pos[0] - bar_width / 2
-        bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
-        pg.draw.rect(screen, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
-        pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
-        pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
-
-    def take_damage(self, damage: int, particles: pg.sprite.Group) -> bool:
-        self.health -= damage
-        self.under_attack = True
-        self.under_attack_timer = 120
-        if self.health < self.max_health * 0.7 and random.random() < 0.3:
-            color = team_to_color[self.team]
-            for _ in range(PLASMA_BURN_PARTICLES):
-                self.plasma_burn_particles.append(PlasmaBurnParticle(self.position, self, color, PLASMA_BURN_DURATION))
-        return self.health <= 0
-
-    @abstractmethod
-    def update(self) -> None:
-        pass
 
 
 class Unit(GameObject):
@@ -1329,7 +1208,7 @@ class Unit(GameObject):
             return
         direction = vec.normalize()
         proj = Projectile(self.position, direction, weapon["damage"], self.team, weapon)
-        projectiles.add(proj)
+        projectiles.add(proj)  # FIXME: crash here: AttributeError: 'NoneType' object has no attribute 'add'
         self.last_shot_time = weapon["cooldown"]
         create_explosion_iso(self.position, pg.sprite.Group(), self.team, 3)
         if hasattr(self, "sound") and self.sound:
