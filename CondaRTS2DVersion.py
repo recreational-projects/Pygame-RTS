@@ -2248,7 +2248,7 @@ class GameManager:
                                 building_to_sell = result[1]
                                 if building_to_sell in g["global_buildings"]:
                                     g["global_buildings"].remove(building_to_sell)
-                                    g["player_hq"].credits += UNIT_CLASSES[building_to_sell.unit_type]["cost"] // 2
+                                    g["player_hq"].credits += building_to_sell.cost // 2
                                     if g["selected_building"] == building_to_sell:
                                         g["selected_building"] = None
                                         g["interface"].update_producer(g["player_hq"])
