@@ -1,0 +1,1 @@
+"""Implements generic game objects."""

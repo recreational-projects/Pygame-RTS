@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     from pygame.math import Vector2
     from pygame.typing import IntPoint
 
-    from modules.game_object_2d import GameObject as GameObject2d
-    from modules.game_object_iso import GameObject as GameObjectIso
+    from modules.game_object.game_object_2d import GameObject2d
+    from modules.game_object.game_object_iso import GameObjectIso
 
 
 class SpatialHash2d:
@@ -25,8 +25,10 @@ class SpatialHash2d:
         """
         # Initializes the hash with a grid cell size for bucketing objects.
         self.cell_size = cell_size
+        # pyrefly: ignore [implicit-any-type-argument]
         self.grid: dict[IntPoint, list] = {}
 
+    # pyrefly: ignore [implicit-any-type-argument]
     def query(self, pos: Vector2, radius: float) -> list:
         """Returns all objects within radius of pos, checking neighboring cells.
 
@@ -76,8 +78,10 @@ class SpatialHash2d:
 class SpatialHashIso:
     def __init__(self, cell_size: int = 250) -> None:
         self.cell_size = cell_size
+        # pyrefly: ignore [implicit-any-type-argument]
         self.grid: dict[IntPoint, list] = {}
 
+    # pyrefly: ignore [implicit-any-type-argument]
     def query(self, pos: Vector2, radius: float) -> list:
         cx = int(pos.x // self.cell_size)
         cy = int(pos.y // self.cell_size)

@@ -90,7 +90,12 @@ def create_tank_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_tank(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_tank(
+    obj,  # pyrefly: ignore [implicit-any-parameter]
+    surface: pg.Surface,
+    camera: Camera2d,
+    mouse_pos: Point | None = None,
+) -> None:
     """Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
     Handles selection circle and health bar.
 
@@ -162,7 +167,12 @@ def create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surfac
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_machinegunvehicle(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_machinegunvehicle(
+    obj,  # pyrefly: ignore [implicit-any-parameter]
+    surface: pg.Surface,
+    camera: Camera2d,
+    mouse_pos: Point | None = None,
+) -> None:
     """Custom draw for MachineGunVehicle, similar to Tank.
 
     :param obj: The MachineGunVehicle instance.
@@ -230,7 +240,12 @@ def create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface,
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_rocketartillery(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_rocketartillery(
+    obj,  # pyrefly: ignore [implicit-any-parameter]
+    surface: pg.Surface,
+    camera: Camera2d,
+    mouse_pos: Point | None = None,
+) -> None:
     """Custom draw for RocketArtillery, analogous to previous vehicle draws.
 
     :param obj: The RocketArtillery instance.
@@ -300,7 +315,12 @@ def create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_attackhelicopter(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_attackhelicopter(
+    obj,  # pyrefly: ignore [implicit-any-parameter]
+    surface: pg.Surface,
+    camera: Camera2d,
+    mouse_pos: Point | None = None,
+) -> None:
     """Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
 
     :param obj: The AttackHelicopter instance.
@@ -1316,7 +1336,12 @@ def create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surfa
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_turret(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_turret(
+    obj,  # pyrefly: ignore [implicit-any-parameter]
+    surface: pg.Surface,
+    camera: Camera2d,
+    mouse_pos: Point | None = None,
+) -> None:
     """Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
 
     :param obj: The Turret instance.

@@ -38,6 +38,7 @@ class FogOfWar2d:
             self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
             self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
 
+    # pyrefly: ignore [implicit-any-type-argument]
     def update_visibility(self, ally_units: Iterable, ally_buildings: Iterable, global_buildings: Iterable) -> None:
         """Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
 
@@ -157,6 +158,7 @@ class FogOfWarIso:
             self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
             self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
 
+    # pyrefly: ignore [implicit-any-type-argument]
     def update_visibility(self, ally_units: Iterable, ally_buildings: Iterable, global_buildings: Iterable) -> None:
         if not ally_units and not ally_buildings:
             return

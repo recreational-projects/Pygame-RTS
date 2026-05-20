@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, override
 
 import pygame as pg
 from pygame.math import Vector2
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_2d import Camera2d
     from modules.camera.camera_iso import CameraIso
-    from modules.game_object_2d import GameObject as GameObject2d
-    from modules.game_object_iso import GameObject as GameObjectIso
+    from modules.game_object.game_object_2d import GameObject2d
+    from modules.game_object.game_object_iso import GameObjectIso
     from modules.team import Team
 
 
@@ -25,7 +25,10 @@ PARTICLES_PER_EXPLOSION_2D = 20
 
 
 def create_explosion_2d(
-    position: Point, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION_2D
+    position: Point,
+    particles: pg.sprite.Group[_Particle],
+    team: Team,
+    count: int = PARTICLES_PER_EXPLOSION_2D,
 ) -> None:
     """Spawns a burst of particles at position with team color.
 
@@ -45,7 +48,10 @@ def create_explosion_2d(
 
 
 def create_explosion_iso(
-    position: Point, particles: pg.sprite.Group, team: Team, count: int = PARTICLES_PER_EXPLOSION_ISO
+    position: Point,
+    particles: pg.sprite.Group[_Particle],
+    team: Team,
+    count: int = PARTICLES_PER_EXPLOSION_ISO,
 ) -> None:
     color = team_to_color[team]
     for _ in range(count):
@@ -79,14 +85,16 @@ class _Particle(pg.sprite.Sprite):
         self.color = color
         self.lifetime = lifetime * 10
         self.age = 0
+        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((size, size), pg.SRCALPHA)
         if self.image is not None:  # TODO: type guard - not sure why this can be None
             pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
+            # pyrefly: ignore [missing-override-decorator]
             self.rect = self.image.get_rect(center=self.position)
 
-    def update(self) -> None:
+    @override
+    def update(self, *args: Any, **kwargs: Any) -> None:
         """Updates position, age, and alpha; kills when lifetime exceeded."""
-        # Updates position, age, and alpha; kills when lifetime exceeded.
         self.position.x += self.vx
         self.position.y += self.vy
         self.age += 1
@@ -106,7 +114,6 @@ class _Particle(pg.sprite.Sprite):
         :param surface: Surface to draw on.
         :param camera: Camera2d for transformation.
         """
-        # Draws scaled and positioned particle if on-screen.
         if self.rect is not None and isinstance(
             self.rect, pg.Rect
         ):  # TODO: type guard - not sure why this can be None | FRect
@@ -161,13 +168,13 @@ class PlasmaBurnParticle(_Particle):
         :param color: Pygame Color for the particle.
         :param lifetime: Lifetime in seconds (scaled by 30).
         """
-        # Attached particle that follows an entity, offset and rotated with it.
         super().__init__(pos, 0, 0, 4, color, lifetime)
         self.entity = entity
         self.offset = Vector2(random.uniform(-20, 20), random.uniform(-10, 10))
         self.initial_lifetime = lifetime * 30
 
-    def update(self) -> None:
+    @override
+    def update(self, *args: Any, **kwargs: Any) -> None:
         """Updates position relative to entity, fades over time."""
         # Updates position relative to entity, fades over time.
         body_angle = getattr(self.entity, "body_angle", 0)

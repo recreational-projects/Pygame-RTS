@@ -8,7 +8,11 @@ from modules.camera.camera import Camera
 from modules.data_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pygame.typing import Point
+
+    from modules.game_object.game_object import _GameObject
 
 
 class Camera2d(Camera):
@@ -61,6 +65,7 @@ class Camera2d(Camera):
 
             self.clamp()
 
+    @override
     def update_view_size(self) -> None:
         """Updates the view rectangle size based on current zoom."""
         # Updates the view rectangle size based on current zoom.
@@ -80,7 +85,13 @@ class Camera2d(Camera):
         return dx * self.zoom, dy * self.zoom
 
     @override
-    def update(self, selected_units: list, mouse_pos: Point, interface_rect: pg.Rect, keys=None) -> None:
+    def update(
+        self,
+        selected_units: Sequence[_GameObject],
+        mouse_pos: Point,
+        interface_rect: pg.Rect,
+        keys=None,  # pyrefly: ignore[implicit-any-parameter]
+    ) -> None:
         """Handles panning via keys, edge-scrolling, and centering on selected units.
 
         :param selected_units: List of selected units to center camera on.
