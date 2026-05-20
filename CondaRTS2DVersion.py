@@ -27,6 +27,7 @@ from modules.data_2d import (
 )
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
 from modules.fog_of_war import FogOfWar2d
+from modules.fonts import FONT_MEDIUM
 from modules.game_console import GameConsole
 from modules.game_object.game_object_2d import GameObject2d
 from modules.game_state import GameState
@@ -1429,8 +1430,6 @@ class ProductionInterface:
 
     hq: Headquarters
     all_buildings = None
-    font: pg.Font = None
-
     surface: pg.Surface = dataclass_field(init=False)
     top_rects: dict = dataclass_field(init=False, default_factory=dict)
     item_rects: dict = dataclass_field(init=False, default_factory=dict)
@@ -1490,13 +1489,13 @@ class ProductionInterface:
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
 
         self.surface.blit(
-            self.font.render(f"Credits: ${self.hq.credits}", True, pg.Color("white")),
+            FONT_MEDIUM.render(f"Credits: ${self.hq.credits}", True, pg.Color("white")),
             (self.MARGIN_X, self.CREDITS_POS_Y),
         )
 
         power_color = pg.Color("green") if self.hq.has_enough_power else pg.Color("red")
         self.surface.blit(
-            self.font.render(
+            FONT_MEDIUM.render(
                 f"Power: {self.hq.power_output}/{self.hq.power_usage}",
                 True,
                 power_color,
@@ -1508,7 +1507,7 @@ class ProductionInterface:
             color = self.INACTIVE_TAB_COLOR
             pg.draw.rect(self.surface, color, rect, border_radius=self.BUTTON_RADIUS)
             pg.draw.rect(self.surface, self.LINE_COLOR, rect, 1)
-            text_surf = self.font.render(label, True, pg.Color("white"))
+            text_surf = FONT_MEDIUM.render(label, True, pg.Color("white"))
             text_rect = text_surf.get_rect(center=rect.center)
             self.surface.blit(text_surf, text_rect)
 
@@ -1518,17 +1517,17 @@ class ProductionInterface:
             can_produce = self.hq.credits >= cost
             color = self.ACTION_ALLOWED_COLOR if can_produce else self.ACTION_BLOCKED_COLOR
             pg.draw.rect(self.surface, color, rect, border_radius=self.BUTTON_RADIUS)
-            label_surf = self.font.render(label, True, pg.Color("white"))
+            label_surf = FONT_MEDIUM.render(label, True, pg.Color("white"))
             label_rect = label_surf.get_rect(x=rect.x + 5, y=rect.y + 5)
             self.surface.blit(label_surf, label_rect)
-            cost_surf = self.font.render(f"({cost})", True, pg.Color("white"))
+            cost_surf = FONT_MEDIUM.render(f"({cost})", True, pg.Color("white"))
             cost_rect = cost_surf.get_rect(x=rect.x + 5, y=rect.y + 25)
             self.surface.blit(cost_surf, cost_rect)
 
         if hasattr(self.producer, "production_queue") and self.producer.production_queue:
             queue_y = self.PRODUCTION_QUEUE_POS_Y
             self.surface.blit(
-                self.font.render("Queue:", True, pg.Color("white")),
+                FONT_MEDIUM.render("Queue:", True, pg.Color("white")),
                 (self.MARGIN_X, queue_y),
             )
             queue_y += 20
@@ -1537,7 +1536,7 @@ class ProductionInterface:
                 repeat_text = " [R]" if item["repeat"] else ""
                 text = f"{UNIT_BUTTON_LABELS.get(unit_type, unit_type)}{repeat_text}"
                 self.surface.blit(
-                    self.font.render(text, True, pg.Color("white")),
+                    FONT_MEDIUM.render(text, True, pg.Color("white")),
                     (self.MARGIN_X + 10, queue_y),
                 )
                 repeat_rect = pg.Rect(self.MARGIN_X + 150, queue_y, 20, 20)
@@ -1545,7 +1544,7 @@ class ProductionInterface:
                 pg.draw.rect(self.surface, repeat_color, repeat_rect, border_radius=2)
                 if item["repeat"]:
                     self.surface.blit(
-                        self.font.render("R", True, pg.Color("white")),
+                        FONT_MEDIUM.render("R", True, pg.Color("white")),
                         (repeat_rect.x + 6, repeat_rect.y + 3),
                     )
                 if i == 0 and self.producer.production_timer is not None:
@@ -1977,25 +1976,20 @@ class GameManager:
     Handles menu, setup, playing, victory/defeat states.
     """
 
-    def __init__(self, screen, clock, font_large, font_medium) -> None:
+    def __init__(self, screen, clock) -> None:
         """
-        Sets up screen, clock, fonts, initial menu state.
+        Sets up screen, clock, initial menu state.
 
         :param screen: Pygame screen.
         :param clock: Pygame clock.
-        :param font_large: Large font.
-        :param font_medium: Medium font.
         """
-        # Sets up screen, clock, fonts, initial menu state.
         self.screen = screen
         self.clock = clock
-        self.font_large = font_large
-        self.font_medium = font_medium
         self.state = GameState.MENU
 
         screen_size_ = self.screen.size
-        self.main_menu = MainMenu(font_large=font_large, font_medium=font_medium, screen_size=screen_size_)
-        self.skirmish_setup = SkirmishSetup(font_large=font_large, font_medium=font_medium, screen_size=screen_size_)
+        self.main_menu = MainMenu(screen_size_)
+        self.skirmish_setup = SkirmishSetup(screen_size_)
         self.victory_screen = None
 
         self.game_data = None
@@ -2147,7 +2141,7 @@ class GameManager:
         interface = None
         interface_rect = None
         if not spectate:
-            interface = ProductionInterface(hq=player_hq, font=self.font_medium)
+            interface = ProductionInterface(hq=player_hq)
             interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
         else:
             interface_rect = pg.Rect(0, 0, 0, 0)
@@ -2181,7 +2175,7 @@ class GameManager:
             "select_start": None,
             "select_rect": None,
             "ais": ais,
-            "font": self.font_medium,
+            "font": FONT_MEDIUM,
             "interface_rect": interface_rect,
             "spectator": spectate,
             "teams": teams_list,
@@ -2499,8 +2493,6 @@ class GameManager:
             if g["player_hq"] and g["player_hq"].health <= 0:
                 self.state = GameState.DEFEAT
                 self.victory_screen = VictoryScreen(
-                    font_large=self.font_large,
-                    font_medium=self.font_medium,
                     is_victory=False,
                     all_stats=all_stats,
                     player_team=g["player_team"],
@@ -2519,8 +2511,6 @@ class GameManager:
                     self.state = GameState.VICTORY if is_player_victory else GameState.DEFEAT
 
                 self.victory_screen = VictoryScreen(
-                    font_large=self.font_large,
-                    font_medium=self.font_medium,
                     is_victory=is_player_victory,
                     all_stats=all_stats,
                     player_team=g.get("player_team"),
@@ -2675,8 +2665,6 @@ class GameManager:
                     if result == "menu":
                         self.state = GameState.MENU
                         self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large,
-                            font_medium=self.font_medium,
                             screen_size=self.screen.size,
                         )
                     elif result and result[0] == "start_game":
@@ -2701,8 +2689,6 @@ class GameManager:
                     if result == "menu":
                         self.state = GameState.MENU
                         self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large,
-                            font_medium=self.font_medium,
                             screen_size=self.screen.size,
                         )
 
@@ -2718,11 +2704,7 @@ def main() -> None:
     screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pg.display.set_caption("Paper Tigers")
     clock = pg.time.Clock()
-
-    font_large = pg.font.SysFont(None, 72)
-    font_medium = pg.font.SysFont(None, 28)
-
-    manager = GameManager(screen, clock, font_large, font_medium)
+    manager = GameManager(screen, clock)
     manager.run()
 
 

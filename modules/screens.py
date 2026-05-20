@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import pygame as pg
 
 from modules.data_2d import MAPS
+from modules.fonts import FONT_LARGE, FONT_MEDIUM
 from modules.team import team_to_color, team_to_name
 
 if TYPE_CHECKING:
@@ -50,14 +51,13 @@ class _MenuButton:
         """
         self.current_color = self.hover_color if self.rect.collidepoint(mouse_pos) else self.color
 
-    def draw(self, surface: pg.Surface, font: pg.Font) -> None:
+    def draw(self, surface: pg.Surface) -> None:
         """Draws button and text.
 
         :param surface: Surface to draw on.
-        :param font: Font for text.
         """
         pg.draw.rect(surface, self.current_color, self.rect, border_radius=10)
-        text_surf = font.render(self.text, True, pg.Color("white"))
+        text_surf = FONT_MEDIUM.render(self.text, True, pg.Color("white"))
         text_rect = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, text_rect)
 
@@ -70,18 +70,11 @@ class _MenuButton:
         return self.rect.collidepoint(mouse_pos)
 
 
-@dataclass(kw_only=True)
+@dataclass
 class MainMenu:
-    """Main menu with Single Player and Quit buttons.
-
-    :param font_large: Large font for title.
-    :param font_medium: Medium font for buttons.
-    """
+    """Main menu with Single Player and Quit buttons."""
 
     screen_size: InitVar[IntPoint]
-
-    font_large: pg.Font
-    font_medium: pg.Font
 
     def __post_init__(self, screen_size: IntPoint) -> None:
 
@@ -127,25 +120,19 @@ class MainMenu:
         :param surface: Surface to draw on.
         """
         surface.fill(pg.Color(40, 40, 40))
-        title = self.font_large.render("RTS GAME", True, pg.Color(0, 255, 200))
+        title = FONT_LARGE.render("RTS GAME", True, pg.Color(0, 255, 200))
         title_rect = title.get_rect(center=(surface.width // 2, 100))
         surface.blit(title, title_rect)
-        self.skirmish_btn.draw(surface, self.font_medium)
-        self.quit_btn.draw(surface, self.font_medium)
+        self.skirmish_btn.draw(surface)
+        self.quit_btn.draw(surface)
 
 
-@dataclass(kw_only=True)
+@dataclass
 class SkirmishSetup:
-    """Setup menu for mode, size, map selection.
-
-    :param font_large: Large font.
-    :param font_medium: Medium font.
-    """
+    """Setup menu for mode, size, map selection."""
 
     screen_size: InitVar[IntPoint]
 
-    font_large: pg.Font
-    font_medium: pg.Font
     map_choice: str = ""
     game_mode: Literal["1v1", "2v2", "3v3", "4v4", "4ffa"] | None = None
     size_choice: Literal["tiny", "small", "medium", "large", "huge"] | None = None
@@ -294,62 +281,58 @@ class SkirmishSetup:
         """
         surface.fill(pg.Color(40, 40, 40))
 
-        title = self.font_large.render("Skirmish Setup", True, pg.Color(0, 255, 200))
+        title = FONT_LARGE.render("Skirmish Setup", True, pg.Color(0, 255, 200))
         title_rect = title.get_rect(center=(surface.width // 2, 40))
         surface.blit(title, title_rect)
 
-        mode_label = self.font_medium.render("Select Game Mode:", True, pg.Color(200, 200, 200))
+        mode_label = FONT_MEDIUM.render("Select Game Mode:", True, pg.Color(200, 200, 200))
         surface.blit(mode_label, (50, 120))
-        self.mode_1v1.draw(surface, self.font_medium)
-        self.mode_2v2.draw(surface, self.font_medium)
-        self.mode_3v3.draw(surface, self.font_medium)
-        self.mode_4v4.draw(surface, self.font_medium)
-        self.mode_4ffa.draw(surface, self.font_medium)
+        self.mode_1v1.draw(surface)
+        self.mode_2v2.draw(surface)
+        self.mode_3v3.draw(surface)
+        self.mode_4v4.draw(surface)
+        self.mode_4ffa.draw(surface)
 
         if self.game_mode:
-            mode_text = self.font_medium.render(f"Selected: {self.game_mode}", True, pg.Color(100, 255, 100))
+            mode_text = FONT_MEDIUM.render(f"Selected: {self.game_mode}", True, pg.Color(100, 255, 100))
             surface.blit(mode_text, (surface.width - 250, 160))
 
-        size_label = self.font_medium.render("Select Size:", True, pg.Color(200, 200, 200))
+        size_label = FONT_MEDIUM.render("Select Size:", True, pg.Color(200, 200, 200))
         surface.blit(size_label, (50, 190))
-        self.size_tiny.draw(surface, self.font_medium)
-        self.size_small.draw(surface, self.font_medium)
-        self.size_medium.draw(surface, self.font_medium)
-        self.size_large.draw(surface, self.font_medium)
-        self.size_huge.draw(surface, self.font_medium)
+        self.size_tiny.draw(surface)
+        self.size_small.draw(surface)
+        self.size_medium.draw(surface)
+        self.size_large.draw(surface)
+        self.size_huge.draw(surface)
 
         if self.size_choice:
-            size_text = self.font_medium.render(f"Selected: {self.size_choice}", True, pg.Color(100, 255, 100))
+            size_text = FONT_MEDIUM.render(f"Selected: {self.size_choice}", True, pg.Color(100, 255, 100))
             surface.blit(size_text, (surface.width - 250, 230))
 
-        map_label = self.font_medium.render("Select Map:", True, pg.Color(200, 200, 200))
+        map_label = FONT_MEDIUM.render("Select Map:", True, pg.Color(200, 200, 200))
         surface.blit(map_label, (50, 320))
         for btn in self.map_buttons.values():
-            btn.draw(surface, self.font_medium)
+            btn.draw(surface)
 
         if self.map_choice:
-            map_text = self.font_medium.render(f"Selected: {self.map_choice}", True, pg.Color(100, 255, 100))
+            map_text = FONT_MEDIUM.render(f"Selected: {self.map_choice}", True, pg.Color(100, 255, 100))
             surface.blit(map_text, (surface.width - 250, 390))
 
-        self.start_btn.draw(surface, self.font_medium)
-        self.spectate_btn.draw(surface, self.font_medium)
-        self.back_btn.draw(surface, self.font_medium)
+        self.start_btn.draw(surface)
+        self.spectate_btn.draw(surface)
+        self.back_btn.draw(surface)
 
 
 @dataclass(kw_only=True)
 class VictoryScreen:
     """Displays win/loss message with continue button.
 
-    :param font_large: Large font.
-    :param font_medium: Medium font.
     :param is_victory: Victory status (True/False/None).
     :param all_stats: Dict of team stats.
     :param player_team: Player's team.
     """
 
     screen_size: InitVar[IntPoint]
-    font_large: pg.Font
-    font_medium: pg.Font
     is_victory: bool
     # pyrefly: ignore [implicit-any-type-argument]
     all_stats: dict
@@ -419,8 +402,8 @@ class VictoryScreen:
             message_text = "Your HQ was destroyed!"
             message_color = pg.Color(255, 100, 100)
 
-        title = self.font_large.render(title_text, True, title_color)
-        message = self.font_medium.render(message_text, True, message_color)
+        title = FONT_LARGE.render(title_text, True, title_color)
+        message = FONT_MEDIUM.render(message_text, True, message_color)
 
         title_rect = title.get_rect(center=(surface.width // 2, 150))
         msg_rect = message.get_rect(center=(surface.width // 2, 200))
@@ -466,7 +449,7 @@ class VictoryScreen:
             ]
             x_pos = self.table_x
             for i, header in enumerate(headers):
-                text_surf = self.font_medium.render(header, True, pg.Color("white"))
+                text_surf = FONT_MEDIUM.render(header, True, pg.Color("white"))
                 text_rect = text_surf.get_rect(
                     center=(x_pos + self.col_widths[i] // 2, self.table_y + self.row_height // 2)
                 )
@@ -503,7 +486,7 @@ class VictoryScreen:
 
                 for col_idx, value in enumerate(values):
                     color = team_color if col_idx == 0 else pg.Color(255, 255, 255)
-                    text_surf = self.font_medium.render(value, True, color)
+                    text_surf = FONT_MEDIUM.render(value, True, color)
                     text_rect = text_surf.get_rect(
                         center=(x_pos + self.col_widths[col_idx] // 2, row_y + self.row_height // 2)
                     )
@@ -512,4 +495,4 @@ class VictoryScreen:
 
                 x_pos = self.table_x  # Reset for next row
 
-        self.continue_btn.draw(surface, self.font_medium)
+        self.continue_btn.draw(surface)
