@@ -32,7 +32,9 @@ from modules.game_object.game_object_2d import GameObject2d
 from modules.game_state import GameState
 from modules.geometry import (
     calculate_formation_positions_2d,
+    check_collision_2d,
     closest_point_on_rect,
+    find_free_spawn_position_2d,
     get_starting_positions,
     snap_to_grid,
 )
@@ -44,6 +46,8 @@ from modules.team import Team, team_to_color, team_to_name
 from modules.unit_stats_2d import UnitStats
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from pygame.typing import Point
 
     from modules.unit_stats_2d import WeaponStats
@@ -56,10 +60,11 @@ if TYPE_CHECKING:
 
 
 def is_valid_building_position(
+    *,
     position: Point,
     team: Team,
     new_building_cls: type,
-    buildings: list,
+    buildings: Iterable,
     map_width: int = MAP_WIDTH,
     map_height: int = MAP_HEIGHT,
     building_range: int = 200,
@@ -105,61 +110,6 @@ def is_valid_building_position(
             return False
 
     return has_nearby_friendly or new_building_cls.__name__ == "Headquarters"
-
-
-def find_free_spawn_position(
-    building_pos: Point, target_pos: Point, global_buildings, global_units, unit_size=(40, 40)
-) -> Point:
-    """
-    Finds a nearby free position for spawning units, avoiding overlaps with buildings/units.
-
-    :param building_pos: Position of the spawning building.
-    :param target_pos: Preferred target position (e.g., rally point).
-    :param global_buildings: List or group of all buildings.
-    :param global_units: List or group of all units.
-    :param unit_size: Size of the unit to spawn (default: (40, 40)).
-    :return: A free position tuple, or target_pos if no free spot found.
-    """
-    # Finds a nearby free position for spawning units, avoiding overlaps with buildings/units.
-    for _ in range(20):
-        offset_x = random.uniform(-60, 60)
-        offset_y = random.uniform(-60, 60)
-        pos_x = target_pos[0] + offset_x
-        pos_y = target_pos[1] + offset_y
-        unit_rect = pg.Rect(pos_x - unit_size[0] / 2, pos_y - unit_size[1] / 2, unit_size[0], unit_size[1])
-        overlaps_building = any(b.rect.colliderect(unit_rect) for b in global_buildings if b.health > 0)
-        overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.air)
-        if not overlaps_building and not overlaps_unit:
-            return (pos_x, pos_y)
-    return target_pos
-
-
-# =============================================================================
-# Group: Projectile System
-# =============================================================================
-# Projectile class for bullets/rockets; handles trailing effect and collision detection.
-
-
-def check_collision(entity, projectile):
-    """
-    Detects collision between entity and projectile using rect or radius approximation.
-
-    :param entity: Entity to check against.
-    :param projectile: Projectile to check.
-    :return: True if collision detected.
-    """
-    # Detects collision between entity and projectile using rect or radius approximation.
-    proj_rect = pg.Rect(
-        projectile.position.x - projectile.length / 2,
-        projectile.position.y - projectile.width / 2,
-        projectile.length,
-        projectile.width,
-    )
-    if hasattr(entity, "radius"):
-        dist = entity.distance_to(projectile.position)
-        return dist < (entity.radius + max(projectile.length, projectile.width) / 2)
-    else:
-        return entity.rect.colliderect(proj_rect)
 
 
 # =============================================================================
@@ -296,7 +246,7 @@ class Unit(GameObject2d):
         :return: Chase position or None if already in range.
         """
         # Computes the position to move to so that the distance to the closest edge of the building is exactly attack_range.
-        closest = closest_point_on_rect(target_building.rect, self.position)
+        closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
         dir_to_closest = Vector2(closest) - self.position
         dist_to_closest = dir_to_closest.length()
         if dist_to_closest <= self.attack_range:
@@ -471,13 +421,13 @@ class Unit(GameObject2d):
         if not self.is_building:
             if self.attack_target and self.attack_target.health > 0:
                 if self.attack_target.is_building:
-                    closest = closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                     dir_to_closest = Vector2(closest) - self.position
                     dist = dir_to_closest.length()
                 else:
                     dist = self.distance_to(self.attack_target.position)
                 if self.attack_target.is_building:
-                    closest_enemy = closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest_enemy = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                     dir_to_enemy = Vector2(closest_enemy) - self.position
                 else:
                     dir_to_enemy = Vector2(self.attack_target.position) - self.position
@@ -612,7 +562,7 @@ class Unit(GameObject2d):
             return
 
         if target.is_building:
-            closest = closest_point_on_rect(target.rect, self.position)
+            closest = closest_point_on_rect(rect=target.rect, pos=self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
         else:
@@ -745,7 +695,9 @@ class Headquarters(Unit):
         """
         # Instantiates and places a building if valid, deducts cost.
         all_buildings_list = list(all_buildings)
-        if is_valid_building_position(position, self.team, unit_cls, all_buildings_list):
+        if is_valid_building_position(
+            position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list
+        ):
             unit_type = unit_cls.__name__
             building = unit_cls(position, self.team, hq=self)
             if unit_type in ["WarFactory", "Barracks", "Hangar"]:
@@ -1111,13 +1063,12 @@ class AI:
                 snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
                 position = snapped_center
                 if is_valid_building_position(
-                    position,
-                    self.hq.team,
-                    building_cls,
-                    list(all_buildings),
-                    map_width,
-                    map_height,
-                    margin=60,
+                    position=position,
+                    team=self.hq.team,
+                    new_building_cls=building_cls,
+                    buildings=list(all_buildings),
+                    map_width=map_width,
+                    map_height=map_height,
                 ):
                     return position
                 attempts += 1
@@ -1881,7 +1832,7 @@ def handle_attacks(
         for obj in candidates:
             if hasattr(obj, "team") and obj.team not in unit_allies and hasattr(obj, "health") and obj.health > 0:
                 if obj.is_building:
-                    closest_pt = closest_point_on_rect(obj.rect, entity.position)
+                    closest_pt = closest_point_on_rect(rect=obj.rect, pos=entity.position)
                     dist = Vector2(closest_pt).distance_to(entity.position)
                 else:
                     dist = entity.distance_to(obj.position)
@@ -1909,7 +1860,7 @@ def handle_attacks(
         if closest_target:
             entity.attack_target = closest_target
             if closest_target.is_building:
-                closest_pt = closest_point_on_rect(closest_target.rect, entity.position)
+                closest_pt = closest_point_on_rect(rect=closest_target.rect, pos=entity.position)
                 dir_c = Vector2(closest_pt) - entity.position
                 dist_to_target = dir_c.length()
             else:
@@ -1945,7 +1896,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
 
         hit = False
         for e in enemy_units + enemy_buildings:
-            if check_collision(e, projectile):
+            if check_collision_2d(e, projectile):
                 if e.take_damage(projectile.damage):
                     create_explosion_2d(e.position, particles, e.team)
                     attacker_hq = g["hqs"][projectile.team]
@@ -2136,7 +2087,9 @@ class GameManager:
             hqs[team] = hq
             units = pg.sprite.Group()
             for j in range(3):
-                offset = find_free_spawn_position(pos, pos, global_buildings.sprites(), global_units.sprites())
+                offset = find_free_spawn_position_2d(
+                    target_pos=pos, global_buildings=global_buildings.sprites(), global_units=global_units.sprites()
+                )
                 units.add(Infantry(position=offset, team=team, hq=hq))
 
             unit_groups[team] = units
@@ -2307,12 +2260,12 @@ class GameManager:
                             unit_type = g["interface"].placing_cls.__name__
                             cost = UNIT_CLASSES[unit_type]["cost"]
                             if g["player_hq"].credits >= cost and is_valid_building_position(
-                                snapped,
-                                g["player_team"],
-                                g["interface"].placing_cls,
-                                buildings_list,
-                                g["map_width"],
-                                g["map_height"],
+                                position=snapped,
+                                team=g["player_team"],
+                                new_building_cls=g["interface"].placing_cls,
+                                buildings=buildings_list,
+                                map_width=g["map_width"],
+                                map_height=g["map_height"],
                             ):
                                 building = g["interface"].placing_cls(snapped, g["player_team"], hq=g["player_hq"])
                                 g["global_buildings"].add(building)
@@ -2389,9 +2342,7 @@ class GameManager:
                             else:
                                 # Normal move
                                 formation_positions = calculate_formation_positions_2d(
-                                    center=world_pos,
-                                    target=world_pos,
-                                    num_units=len(g["selected_units"]),
+                                    center=world_pos, num_units=len(g["selected_units"])
                                 )
                                 for unit, pos in zip(g["selected_units"], formation_positions):
                                     unit.move_target = pos
@@ -2635,12 +2586,12 @@ class GameManager:
                     buildings_list = list(g["global_buildings"])
                     unit_type = g["interface"].placing_cls.__name__
                     valid = is_valid_building_position(
-                        snapped,
-                        g["player_team"],
-                        g["interface"].placing_cls,
-                        buildings_list,
-                        g["map_width"],
-                        g["map_height"],
+                        position=snapped,
+                        team=g["player_team"],
+                        new_building_cls=g["interface"].placing_cls,
+                        buildings=buildings_list,
+                        map_width=g["map_width"],
+                        map_height=g["map_height"],
                     )
                     width, height = UNIT_CLASSES[unit_type]["size"]
                     half_w, half_h = width / 2, height / 2

@@ -11,12 +11,11 @@ if TYPE_CHECKING:
 
     from pygame.typing import Point
 
-    from modules.game_object.game_object_2d import GameObject2d
-    from modules.game_object.game_object_iso import GameObjectIso
+    from modules.game_object.game_object import _GameObject
 
 
 @dataclass(kw_only=True)
-class Camera(ABC):
+class _Camera(ABC):
     """Generic camera. Handles viewport transformation, zooming, panning, and clamping to map bounds.
 
     Manages the visible rectangle in world coordinates.
@@ -51,7 +50,7 @@ class Camera(ABC):
     @abstractmethod
     def update(
         self,
-        selected_units: Sequence[GameObject2d | GameObjectIso],
+        selected_units: Sequence[_GameObject],
         mouse_pos: Point,
         interface_rect: pg.Rect,
         keys=None,  # pyrefly: ignore[implicit-any-parameter]
