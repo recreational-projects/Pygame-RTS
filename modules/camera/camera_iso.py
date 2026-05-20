@@ -15,7 +15,11 @@ from modules.data_iso import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pygame.typing import Point
+
+    from modules.game_object.game_object import _GameObject
 
 
 class CameraIso(Camera):
@@ -48,7 +52,13 @@ class CameraIso(Camera):
         return iso_x, iso_y
 
     @override
-    def update(self, selected_units: list, mouse_pos: Point, interface_rect: pg.Rect, keys=None) -> None:
+    def update(
+        self,
+        selected_units: Sequence[_GameObject],
+        mouse_pos: Point,
+        interface_rect: pg.Rect,
+        keys=None,  # pyrefly: ignore[implicit-any-parameter]
+    ) -> None:
         if keys is None:
             keys = pg.key.get_pressed()
 

@@ -22,16 +22,22 @@ line-length = 120  # for both linter and formatter
 [tool.ruff.lint]
 future-annotations = true
 select = [
-    "ANN",
-    "D212", # multi-line-summary-first-line
+    "ANN", # flake8-annotations
+    "D", # pydocstyle
     "E", # pycodestyle
-    "F",
+    "F", # pyflakes
+    "FBT", # flake8-boolean-trap
     "I", # isort
     "TC", # flake8-type-checking
     "UP", # pyupgrade
 ]
 ignore = [
     "COM812", # missing-trailing-comma: conflicts with formatter
+    "D203", "D213", # format choices
+    "EM", # flake8-errmsg
+    "FIX",
+    "TD",
+    "TRY", # tryceratops
 ]
 extend-safe-fixes = [
     "TC",
@@ -44,21 +50,20 @@ extend-safe-fixes = [
     "E",
     "E501", # line-too-long
     "F841",
+    "FBT",
+]
+"modules/*.py" = [
+    "D",
 ]
 "modules/draw_2d.py" = [
     "ANN001", # missing-type-function-argument
 ]
 "modules/camera/*.py" = [
-    "ANN001", # missing-type-function-argument
-]
-"modules/particles.py" = [
-    "ANN001", # missing-type-function-argument: entity (prob GameObject but that needs extraction)
+    "ANN001", # missing-type-function-argument: keys
 ]
 "modules/screens.py" = [
     "ANN401", # any-type
-]
-"modules/spatial_hash.py" = [
-    "ANN001", # missing-type-function-argument
+    "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 
 [tool.pyrefly]

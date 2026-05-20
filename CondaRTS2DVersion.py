@@ -28,7 +28,7 @@ from modules.data_2d import (
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
 from modules.fog_of_war import FogOfWar2d
 from modules.game_console import GameConsole
-from modules.game_object_2d import GameObject
+from modules.game_object.game_object_2d import GameObject2d
 from modules.game_state import GameState
 from modules.geometry import (
     calculate_formation_positions_2d,
@@ -168,7 +168,7 @@ def check_collision(entity, projectile):
 # Abstract GameObject base for all entities; Unit subclass for mobile/producing entities.
 
 
-class Unit(GameObject):
+class Unit(GameObject2d):
     """
     Subclass for mobile/producing entities (units and buildings).
 
@@ -1510,7 +1510,7 @@ class ProductionInterface:
             rect = pg.Rect(x, self.TOP_BUTTONS_POS_Y, self.TOP_BUTTON_WIDTH, self.TOP_BUTTON_HEIGHT)
             self.top_rects[label] = rect
 
-    def update_producer(self, building: GameObject) -> None:
+    def update_producer(self, building: GameObject2d) -> None:
         """
         Updates producible items based on `building`.
         """

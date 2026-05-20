@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import random
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import TYPE_CHECKING
 
 import pygame as pg
-from pygame.math import Vector2
 
 from modules.data_2d import PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
+from modules.game_object.game_object import _GameObject
 from modules.particles import PlasmaBurnParticle
 from modules.team import team_to_color
 from modules.typing import ensure_rect, is_rect
@@ -19,37 +19,22 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class GameObject(pg.sprite.Sprite, ABC):
-    """Abstract base for all entities (units and buildings).
-
-    Provides common properties like position, health, selection, drawing.
-    """
+class GameObject2d(_GameObject, ABC):
+    """Abstract base for 2d entities."""
 
     def __init__(self, position: Point, team: Team) -> None:
-        """Base entity: position, team, health, selection, plasma particles, basic image/rect.
-
-        :param position: Initial position (x, y).
-        :param team: Team enum.
-        """
-        # Base entity: position, team, health, selection, plasma particles, basic image/rect.
-        super().__init__()
-        self.position = Vector2(position)
-        self.team = team
-        self.health = 100
-        self.max_health = 100
-        self.under_attack = False
-        self.under_attack_timer = 0
-        self.selected = False
-        self.is_seen = False
-        self.body_angle: float = 0
+        super().__init__(position, team)
+        # self.body_angle: float = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
+        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((32, 32))
 
         if self.rect is None:
             return  # TODO: HQ requires this
 
         if self.image is not None:  # TODO: type guard - not sure why these can be None
-            self.rect = self.image.get_rect(center=position)
+            # pyrefly: ignore [missing-override-decorator]
+            self.rect = self.image.get_rect(center=self.position)
 
     def distance_to(self, other_pos: Point) -> float:
         """Euclidean distance to another position.
@@ -60,12 +45,11 @@ class GameObject(pg.sprite.Sprite, ABC):
         # Euclidean distance to another position.
         return self.position.distance_to(other_pos)
 
-    def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+    def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
         """Base draw: scales image, handles rotation if needed, selection circle, health bar, particles.
 
         :param surface: Surface to draw on.
         :param camera: Camera2d for transformation.
-        :param mouse_pos: Optional for hover.
         """
         ensure_rect(self.rect)
         if not is_rect(self.rect):  # TODO: not sure why `ensure_rect` is insufficient here
@@ -126,9 +110,9 @@ class GameObject(pg.sprite.Sprite, ABC):
         if hasattr(self, "is_building") and self.is_building:  # TODO: fix root cause
             if self.health >= self.max_health:
                 show = False
-        else:
-            if not (self.under_attack or hovered):
-                show = False
+
+        elif not (self.under_attack or hovered):
+            show = False
 
         if not show:
             return
@@ -163,7 +147,3 @@ class GameObject(pg.sprite.Sprite, ABC):
                 self.plasma_burn_particles.append(PlasmaBurnParticle(self.position, self, color, PLASMA_BURN_DURATION))
 
         return self.health <= 0
-
-    @abstractmethod
-    def update(self) -> None:
-        """Abstract update method for entity-specific logic."""

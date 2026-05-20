@@ -47,6 +47,7 @@ class UnitStats(JSONWizard):
 
     @override
     @classmethod
+    # pyrefly: ignore [implicit-any-type-argument]
     def from_dict(cls, o: dict) -> Self:
         instance = fromdict(cls, o)
         if instance.air and (instance.fly_height is None or instance.fly_height <= 0):

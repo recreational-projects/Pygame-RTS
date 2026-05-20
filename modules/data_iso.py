@@ -326,6 +326,7 @@ UNIT_CLASSES = {
         "speed": 0,
         "attack_range": 0,
         "sight_range": 200,
+        # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
         "size": (40, 40),
         "air": False,
@@ -338,6 +339,7 @@ UNIT_CLASSES = {
         "speed": 0,
         "attack_range": 0,
         "sight_range": 200,
+        # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
         "producible": ["Infantry", "Grenadier", "RocketSoldier", "Marksman"],
         "production_time": 60,
@@ -352,6 +354,7 @@ UNIT_CLASSES = {
         "speed": 0,
         "attack_range": 0,
         "sight_range": 200,
+        # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
         "producible": [
             "Tank",
@@ -372,6 +375,7 @@ UNIT_CLASSES = {
         "speed": 0,
         "attack_range": 0,
         "sight_range": 200,
+        # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
         "producible": ["AttackHelicopter"],
         "production_time": 90,
@@ -386,6 +390,7 @@ UNIT_CLASSES = {
         "speed": 0,
         "attack_range": 0,
         "sight_range": 200,
+        # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
         "size": (32, 32),
         "air": False,
@@ -398,6 +403,7 @@ UNIT_CLASSES = {
         "speed": 0,
         "attack_range": 0,
         "sight_range": 200,
+        # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
         "income": 150,
         "income_interval": 300,

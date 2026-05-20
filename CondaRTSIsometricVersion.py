@@ -27,7 +27,7 @@ from modules.data_iso import (
 )
 from modules.fog_of_war import FogOfWarIso
 from modules.game_console import GameConsole
-from modules.game_object_iso import GameObject
+from modules.game_object.game_object_iso import GameObjectIso
 from modules.game_state import GameState
 from modules.geometry import (
     absolute_world_to_iso,
@@ -381,7 +381,7 @@ def check_collision(entity, projectile):
         return entity.rect.colliderect(proj_rect)
 
 
-class Unit(GameObject):
+class Unit(GameObjectIso):
     def __init__(self, position: Point, team: Team, unit_type: str, hq=None) -> None:
         super().__init__(position, team)
         self.team_color = team_to_color[team]
@@ -2596,7 +2596,7 @@ class ProductionInterface:
             rect = pg.Rect(x, self.TOP_BUTTONS_POS_Y, self.TOP_BUTTON_WIDTH, self.TOP_BUTTON_HEIGHT)
             self.top_rects[label] = rect
 
-    def update_producer(self, building: GameObject) -> None:
+    def update_producer(self, building: GameObjectIso) -> None:
         """
         Updates producible items based on `building`.
         """
@@ -2972,7 +2972,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         hit = False
         for e in enemy_units + enemy_buildings:
             if check_collision(e, projectile):
-                if e.take_damage(projectile.damage, particles):
+                if e.take_damage(projectile.damage):
                     create_explosion_iso(e.position, particles, e.team)
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:

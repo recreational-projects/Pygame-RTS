@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import InitVar, dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import pygame as pg
 
@@ -146,10 +146,10 @@ class SkirmishSetup:
 
     font_large: pg.Font
     font_medium: pg.Font
-    game_mode = None
-    size_choice = None
-    map_choice = None
-    map_buttons: dict = field(default_factory=dict)
+    map_choice: str = ""
+    game_mode: Literal["1v1", "2v2", "3v3", "4v4", "4ffa"] | None = None
+    size_choice: Literal["tiny", "small", "medium", "large", "huge"] | None = None
+    map_buttons: dict[str, _MenuButton] = field(default_factory=dict)
 
     def __post_init__(self, screen_size: IntPoint) -> None:
 
@@ -351,6 +351,7 @@ class VictoryScreen:
     font_large: pg.Font
     font_medium: pg.Font
     is_victory: bool
+    # pyrefly: ignore [implicit-any-type-argument]
     all_stats: dict
     player_team: Team | None = None
 
@@ -383,9 +384,8 @@ class VictoryScreen:
         :param event: Pygame event.
         :return: Transition string or None.
         """
-        if event.type == pg.MOUSEBUTTONDOWN:
-            if self.continue_btn.is_clicked(event.pos):
-                return "menu"
+        if event.type == pg.MOUSEBUTTONDOWN and self.continue_btn.is_clicked(event.pos):
+            return "menu"
 
         return None
 

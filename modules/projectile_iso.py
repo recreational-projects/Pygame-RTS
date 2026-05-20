@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pygame as pg
 from pygame.math import Vector2
@@ -30,6 +30,7 @@ class Projectile(pg.sprite.Sprite):
         self.length = weapon["projectile_length"]
         self.width = weapon["projectile_width"]
         self.angle = math.atan2(self.direction.y, self.direction.x)
+        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
         color = team_to_color[team]
         if self.image is not None:  # TODO: type guard - not sure why needed
@@ -37,11 +38,13 @@ class Projectile(pg.sprite.Sprite):
                 alpha = int(255 * (i / self.length))
                 pg.draw.line(self.image, (color.r, color.g, color.b, alpha), (i, 0), (i, self.width), 1)
 
+            # pyrefly: ignore [missing-override-decorator]
             self.rect = self.image.get_rect(center=self.position)
 
         self.trail = deque(maxlen=5)
 
-    def update(self) -> None:
+    @override
+    def update(self, *args: Any, **kwargs: Any) -> None:
         self.trail.append(self.position.copy())
         self.position += self.direction * self.speed
         self.age += 1

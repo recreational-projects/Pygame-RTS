@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pygame.typing import Point
+
+    from modules.game_object.game_object_2d import GameObject2d
+    from modules.game_object.game_object_iso import GameObjectIso
 
 
 @dataclass(kw_only=True)
@@ -44,5 +49,11 @@ class Camera(ABC):
         """Transforms a world Rect to screen coordinates."""
 
     @abstractmethod
-    def update(self, selected_units: list, mouse_pos: Point, interface_rect: pg.Rect, keys=None) -> None:
+    def update(
+        self,
+        selected_units: Sequence[GameObject2d | GameObjectIso],
+        mouse_pos: Point,
+        interface_rect: pg.Rect,
+        keys=None,  # pyrefly: ignore[implicit-any-parameter]
+    ) -> None:
         """Handles panning via keys, edge-scrolling, and centering on selected units."""

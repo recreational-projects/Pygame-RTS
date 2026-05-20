@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import random
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import TYPE_CHECKING
 
 import pygame as pg
-from pygame.math import Vector2
 
 from modules.data_iso import MAP_HEIGHT, MAP_WIDTH, PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
+from modules.game_object.game_object import _GameObject
 from modules.particles import PlasmaBurnParticle
 from modules.team import team_to_color
 from modules.typing import ensure_rect, is_rect
@@ -19,23 +19,19 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class GameObject(pg.sprite.Sprite, ABC):
+class GameObjectIso(_GameObject, ABC):
+    """Abstract base for isometric entities."""
+
     def __init__(self, position: Point, team: Team) -> None:
-        super().__init__()
-        self.position = Vector2(position)
-        self.team = team
-        self.health = 100
-        self.max_health = 100
-        self.under_attack = False
-        self.under_attack_timer = 0
-        self.selected = False
-        self.is_seen = False
-        self.body_angle = 0
+        super().__init__(position, team)
+        # self.body_angle = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         self.map_width = MAP_WIDTH
         self.map_height = MAP_HEIGHT
+        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((32, 32))
         if self.image is not None:  # TODO: type guard - not sure why this can be None
+            # pyrefly: ignore [missing-override-decorator]
             self.rect = self.image.get_rect(center=position)
 
     def distance_to(self, other_pos: Point) -> float:
@@ -56,9 +52,9 @@ class GameObject(pg.sprite.Sprite, ABC):
         if hasattr(self, "is_building") and self.is_building:  # TODO: fix root cause
             if self.health >= self.max_health:
                 show = False
-        else:
-            if not (self.under_attack or hovered):
-                show = False
+
+        elif not (self.under_attack or hovered):
+            show = False
 
         if not show:
             return
@@ -78,7 +74,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
         pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
 
-    def take_damage(self, damage: int, particles: pg.sprite.Group) -> bool:
+    def take_damage(self, damage: int) -> bool:
         self.health -= damage
         self.under_attack = True
         self.under_attack_timer = 120
@@ -88,7 +84,3 @@ class GameObject(pg.sprite.Sprite, ABC):
                 self.plasma_burn_particles.append(PlasmaBurnParticle(self.position, self, color, PLASMA_BURN_DURATION))
 
         return self.health <= 0
-
-    @abstractmethod
-    def update(self) -> None:
-        pass
