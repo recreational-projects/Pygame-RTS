@@ -25,5 +25,7 @@ class _GameObject(pg.sprite.Sprite, ABC):
         self.team = team
         self.health = 100  # TODO
         self.max_health = 100  # TODO
-        # self.under_attack = False
+        self.under_attack = False
         self.under_attack_timer = 0
+        self.selected = False
+        self.is_seen = False

@@ -24,9 +24,7 @@ class GameObject2d(_GameObject, ABC):
 
     def __init__(self, position: Point, team: Team) -> None:
         super().__init__(position, team)
-        self.selected = False
-        self.is_seen = False
-        self.body_angle: float = 0
+        # self.body_angle: float = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((32, 32))
@@ -52,7 +50,6 @@ class GameObject2d(_GameObject, ABC):
 
         :param surface: Surface to draw on.
         :param camera: Camera2d for transformation.
-        :param mouse_pos: Optional for hover.
         """
         ensure_rect(self.rect)
         if not is_rect(self.rect):  # TODO: not sure why `ensure_rect` is insufficient here

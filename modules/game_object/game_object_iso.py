@@ -24,9 +24,7 @@ class GameObjectIso(_GameObject, ABC):
 
     def __init__(self, position: Point, team: Team) -> None:
         super().__init__(position, team)
-        self.selected = False
-        self.is_seen = False
-        self.body_angle = 0
+        # self.body_angle = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         self.map_width = MAP_WIDTH
         self.map_height = MAP_HEIGHT
