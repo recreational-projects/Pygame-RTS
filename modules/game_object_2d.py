@@ -10,6 +10,7 @@ from pygame.math import Vector2
 from modules.data_2d import PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
 from modules.particles import PlasmaBurnParticle
 from modules.team import team_to_color
+from modules.typing import ensure_rect, is_rect
 
 if TYPE_CHECKING:
     from pygame.typing import Point
@@ -43,7 +44,11 @@ class GameObject(pg.sprite.Sprite, ABC):
         self.body_angle = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         self.image = pg.Surface((32, 32))
-        if self.image is not None and self.rect is not None:  # TODO: type guard - not sure why these can be None
+
+        if self.rect is None:
+            return  # TODO: HQ requires this
+
+        if self.image is not None:  # TODO: type guard - not sure why these can be None
             self.rect = self.image.get_rect(center=position)
 
     def distance_to(self, other_pos: Point) -> float:
@@ -62,7 +67,10 @@ class GameObject(pg.sprite.Sprite, ABC):
         :param camera: Camera2d for transformation.
         :param mouse_pos: Optional for hover.
         """
-        # Base draw: scales image, handles rotation if needed, selection circle, health bar, particles.
+        ensure_rect(self.rect)
+        if not is_rect(self.rect):  # TODO: not sure why `ensure_rect` is insufficient here
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
@@ -79,16 +87,20 @@ class GameObject(pg.sprite.Sprite, ABC):
                 blit_pos = (screen_pos[0] - offset_x, screen_pos[1] - offset_y)
                 surface.blit(scaled_image, blit_pos)
 
-        if self.rect is not None:  # TODO: type guard - not sure why this can be None
-            if self.selected:
-                radius = max(self.rect.width, self.rect.height) / 2 * zoom + 3
-                pg.draw.circle(
-                    surface,
-                    (255, 255, 0),
-                    (int(screen_pos[0]), int(screen_pos[1])),
-                    int(radius),
-                    int(2 * zoom),
-                )
+        ensure_rect(self.rect)
+        if not is_rect(self.rect):  # TODO: not sure why `ensure_rect` is insufficient here
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if self.selected:
+            ensure_rect(self.rect)
+            radius = max(self.rect.width, self.rect.height) / 2 * zoom + 3
+            pg.draw.circle(
+                surface,
+                (255, 255, 0),
+                (int(screen_pos[0]), int(screen_pos[1])),
+                int(radius),
+                int(2 * zoom),
+            )
 
         for particle in self.plasma_burn_particles:
             particle.draw_2d(surface, camera)
@@ -102,7 +114,10 @@ class GameObject(pg.sprite.Sprite, ABC):
         """
         # Draws health bar above entity if under attack, hovered, or building with damage.
         hovered = False
-        if mouse_pos is not None:
+        if mouse_pos is not None:  # TODO: type guard - not sure why needed
+            if not is_rect(self.rect):  # TODO: not sure why `ensure_rect` is insufficient here
+                raise TypeError("self.rect` is unexpected non-`Rect` type")
+
             screen_rect = camera.get_screen_rect(self.rect)
             if screen_rect.collidepoint(mouse_pos):
                 hovered = True
@@ -124,11 +139,13 @@ class GameObject(pg.sprite.Sprite, ABC):
         bar_width = 25
         bar_height = 4
         bar_x = screen_pos[0] - bar_width / 2
-        if self.rect is not None:  # TODO: type guard - not sure why this can be None
-            bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
-            pg.draw.rect(screen, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
-            pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
-            pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
+        pg.draw.rect(screen, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
+        pg.draw.rect(screen, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
+        pg.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
 
     def take_damage(self, damage: int) -> bool:
         """Applies damage, sets attack flag, spawns plasma burn particles if low health.

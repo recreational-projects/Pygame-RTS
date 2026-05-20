@@ -8,6 +8,9 @@ if TYPE_CHECKING:
     from pygame.math import Vector2
     from pygame.typing import IntPoint
 
+    from modules.game_object_2d import GameObject as GameObject2d
+    from modules.game_object_iso import GameObject as GameObjectIso
+
 
 class SpatialHash2d:
     """Simple grid-based spatial index for efficient nearby object queries.
@@ -48,7 +51,7 @@ class SpatialHash2d:
 
         return nearby
 
-    def add(self, obj) -> None:
+    def add(self, obj: GameObject2d | GameObjectIso) -> None:
         """Adds an object to its corresponding grid cell.
 
         :param obj: Object with a 'position' attribute (Vector2).
@@ -96,7 +99,7 @@ class SpatialHashIso:
 
         return nearby
 
-    def add(self, obj) -> None:
+    def add(self, obj: GameObject2d | GameObjectIso) -> None:
         key = self._get_key(obj.position)
         if key not in self.grid:
             self.grid[key] = []
