@@ -8,8 +8,7 @@ if TYPE_CHECKING:
     from pygame.math import Vector2
     from pygame.typing import IntPoint
 
-    from modules.units_2d import Unit2d
-    from modules.units_iso import UnitIso
+    from modules.units import Unit2d, UnitIso
 
 
 class SpatialHash2d:

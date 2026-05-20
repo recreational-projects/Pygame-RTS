@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from pygame.math import Vector2
 
 from modules.geometry import check_collision, closest_point_on_rect
-from modules.particles import create_explosion_iso
+from modules.particle import create_explosion_iso
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -17,16 +17,17 @@ if TYPE_CHECKING:
     import pygame as pg
     from pygame.typing import IntPoint
 
-    from modules.ai_iso import AI
+    from modules.ai import AiIso
     from modules.camera.camera_iso import CameraIso
     from modules.fog_of_war import FogOfWarIso
-    from modules.particles import GenericParticle
-    from modules.production_interface_iso import ProductionInterface
-    from modules.projectile.projectile_iso import ProjectileIso
+    from modules.particle import Particle
+    from modules.production_interface import ProductionInterfaceIso
+    from modules.projectile import ProjectileIso
     from modules.spatial_hash import SpatialHashIso
     from modules.team import Team
     from modules.terrain_feature_iso import TerrainFeature
-    from modules.units_iso import Headquarters, UnitIso
+    from modules.units import UnitIso
+    from modules.units.units_iso import Headquarters
 
 
 @dataclass(kw_only=True)
@@ -38,7 +39,7 @@ class GameDataIso:
     global_units: pg.sprite.Group[UnitIso]
     global_buildings: pg.sprite.Group[UnitIso]
     projectiles: pg.sprite.Group[ProjectileIso]
-    particles: pg.sprite.Group[GenericParticle]
+    particles: pg.sprite.Group[Particle]
     selected_units: pg.sprite.Group[UnitIso]
     unit_groups: MutableMapping[Team, Any] = field(default_factory=dict)
     hqs: dict[Team, Any] = field(default_factory=dict)
@@ -51,7 +52,7 @@ class GameDataIso:
     map_width: int
     map_height: int
     game_mode: str
-    ais: list[AI]
+    ais: list[AiIso]
     interface_rect: pg.Rect
     teams: list[Team]
 
@@ -66,7 +67,7 @@ class GameDataIso:
 
     # optional:
     player_hq: Headquarters | None = field(default=None)
-    interface: ProductionInterface | None = field(default=None)
+    interface: ProductionInterfaceIso | None = field(default=None)
     spectator_mode: bool = field(default=False)
 
     # internal:
@@ -110,7 +111,7 @@ class GameDataIso:
                     d.plasma_burn_particles.clear()
 
     def handle_projectiles(self) -> None:
-        from modules.units_iso import UnitIso  # TODO: refactor
+        from modules.units import UnitIso  # TODO: refactor
 
         for projectile in self.projectiles:
             proj_allies = self.alliances[projectile.team]

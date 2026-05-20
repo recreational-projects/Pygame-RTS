@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+from abc import ABC
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING
 
 import pygame as pg
@@ -12,37 +14,48 @@ if TYPE_CHECKING:
 
     from pygame.typing import Point
 
-    from modules.camera.camera_2d import Camera2d
-    from modules.camera.camera_iso import CameraIso
-    from modules.units_2d import Unit2d
-    from modules.units_iso import UnitIso
+    from modules.camera import Camera2d, CameraIso
+    from modules.units import Unit2d, UnitIso
 
 
-class FogOfWar2d:
+@dataclass(kw_only=True)
+class _FogOfWarGeneric(ABC):
     """Manages explored/visible tiles on a grid, revealing areas based on unit sight ranges.
 
     Uses 2D boolean grids for explored and currently visible tiles.
     """
 
-    def __init__(self, *, map_width: int, map_height: int, tile_size: int, spectator: bool = False) -> None:
-        """Initializes 2D grids for explored and visible tiles.
+    map_width: InitVar[int]
+    """Map width in pixels."""
+    map_height: InitVar[int]
+    """Map height in pixels."""
+    spectator_mode: InitVar[bool]
+    """If True, reveals entire map."""
+    tile_size: int
+    """Size of each fog tile (default: TILE_SIZE)."""
 
-        :param map_width: Map width in pixels.
-        :param map_height: Map height in pixels.
-        :param tile_size: Size of each fog tile (default: TILE_SIZE).
-        :param spectator: If True, reveals entire map.
-        """
-        self.tile_size = tile_size
-        num_tiles_x = map_width // tile_size
-        num_tiles_y = map_height // tile_size
-        self.explored = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        if spectator:
-            self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-            self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
+    # internal:
+    explored: list[list[bool]] = field(init=False)
+    """Grid of explored tiles (True = explored)."""
+    visible: list[list[bool]] = field(init=False)
+    """Grid of currently visible tiles (True = visible)."""
+
+    def __post_init__(self, map_width: int, map_height: int, spectator_mode: bool) -> None:
+        """Initializes 2D grids for explored and visible tiles."""
+        num_tiles_x_ = map_width // self.tile_size
+        num_tiles_y_ = map_height // self.tile_size
+        if spectator_mode:
+            self.explored = [[True] * num_tiles_y_ for _ in range(num_tiles_x_)]
+            self.visible = [[True] * num_tiles_y_ for _ in range(num_tiles_x_)]
+        else:
+            self.explored = [[False] * num_tiles_y_ for _ in range(num_tiles_x_)]
+            self.visible = [[False] * num_tiles_y_ for _ in range(num_tiles_x_)]
 
     def update_visibility(
-        self, ally_units: Iterable[Unit2d], ally_buildings: Iterable[Unit2d], global_buildings: Iterable[Unit2d]
+        self,
+        ally_units: Iterable[Unit2d],
+        ally_buildings: Iterable[Unit2d] | Iterable[UnitIso],
+        global_buildings: Iterable[Unit2d] | Iterable[UnitIso],
     ) -> None:
         """Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
 
@@ -113,6 +126,9 @@ class FogOfWar2d:
 
         return False
 
+
+@dataclass(kw_only=True)
+class FogOfWar2d(_FogOfWarGeneric):
     def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
         """Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
 
@@ -147,68 +163,8 @@ class FogOfWar2d:
         surface.blit(fog_overlay, (0, 0))
 
 
-class FogOfWarIso:
-    def __init__(self, *, map_width: int, map_height: int, tile_size: int, spectator: bool = False) -> None:
-        self.tile_size = tile_size
-        num_tiles_x = map_width // tile_size
-        num_tiles_y = map_height // tile_size
-        self.explored = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        if spectator:
-            self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-            self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
-
-    def update_visibility(
-        self, ally_units: Iterable[UnitIso], ally_buildings: Iterable[UnitIso], global_buildings: Iterable[UnitIso]
-    ) -> None:
-        if not ally_units and not ally_buildings:
-            return
-
-        num_tiles_x = len(self.visible)
-        num_tiles_y = len(self.visible[0])
-        self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
-        for unit in ally_units:
-            self._reveal(unit.position, unit.sight_range)
-
-        for building in ally_buildings:
-            if building.health > 0:
-                self._reveal(building.position, building.sight_range)
-
-        for building in global_buildings:
-            if building.health > 0:
-                tx, ty = (
-                    int(building.position[0] // self.tile_size),
-                    int(building.position[1] // self.tile_size),
-                )
-                if 0 <= tx < num_tiles_x and 0 <= ty < num_tiles_y:
-                    building.is_seen = building.is_seen or self.visible[tx][ty]
-
-    def _reveal(self, center: Point, radius: int) -> None:
-        cx, cy = center
-        tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
-        radius_tiles = radius // self.tile_size
-        for ty in range(max(0, tile_y - radius_tiles), min(len(self.explored[0]), tile_y + radius_tiles + 1)):
-            for tx in range(max(0, tile_x - radius_tiles), min(len(self.explored), tile_x + radius_tiles + 1)):
-                tile_center_x = tx * self.tile_size + self.tile_size // 2
-                tile_center_y = ty * self.tile_size + self.tile_size // 2
-                if math.sqrt((cx - tile_center_x) ** 2 + (cy - tile_center_y) ** 2) <= radius:
-                    self.explored[tx][ty] = True
-                    self.visible[tx][ty] = True
-
-    def is_visible(self, pos: Point) -> bool:
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.visible) and 0 <= ty < len(self.visible[0]):
-            return self.visible[tx][ty]
-
-        return False
-
-    def is_explored(self, pos: Point) -> bool:
-        tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
-        if 0 <= tx < len(self.explored) and 0 <= ty < len(self.explored[0]):
-            return self.explored[tx][ty]
-
-        return False
-
+@dataclass(kw_only=True)
+class FogOfWarIso(_FogOfWarGeneric):
     def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
         min_wx, max_wx, min_wy, max_wy = camera.get_render_bounds(self.tile_size)
         start_tx = max(0, int(min_wx // self.tile_size))

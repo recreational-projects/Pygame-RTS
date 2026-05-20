@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from modules.data_iso import PROJECTILE_LIFETIME
-from modules.projectile.generic_projectile import GenericProjectile
 from modules.team import team_to_color
+
+from .projectile_generic import ProjectileGeneric
 
 if TYPE_CHECKING:
     from pygame.math import Vector2
@@ -17,10 +18,10 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_iso import CameraIso
     from modules.team import Team
-    from modules.unit_stats.unit_stats import WeaponStats
+    from modules.unit_stats.unit_stats_generic import WeaponStats
 
 
-class ProjectileIso(GenericProjectile):
+class ProjectileIso(ProjectileGeneric):
     """Projectile for isometric game."""
 
     def __init__(self, *, position: Point, direction: Vector2, team: Team, weapon: WeaponStats) -> None:

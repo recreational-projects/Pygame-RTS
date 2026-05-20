@@ -10,12 +10,12 @@ import pygame as pg
 from pygame.math import Vector2
 
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
-from modules.game_object.game_object_2d import GameObject2d
+from modules.game_object import GameObject2d
 from modules.geometry import closest_point_on_rect
-from modules.particles import GenericParticle, create_explosion_2d
-from modules.projectile.projectile_2d import Projectile2d
+from modules.particle import Particle, create_explosion_2d
+from modules.projectile import Projectile2d
 from modules.team import Team, team_to_color
-from modules.unit_stats.unit_stats_2d import UnitStats2d
+from modules.unit_stats import UnitStats2d
 from modules.world_2d import is_valid_building_position
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
-    from modules.unit_stats.unit_stats import WeaponStats
+    from modules.unit_stats.unit_stats_generic import WeaponStats
 
 
 class Unit2d(GameObject2d):
@@ -76,7 +76,6 @@ class Unit2d(GameObject2d):
         if not self.image:  # TODO: type guard - not sure why needed
             raise TypeError("Unit has no `image`")
 
-        # pyrefly: ignore [missing-override-decorator]
         self.rect = self.image.get_rect(center=position)
         # Modular drawing setup
         self._setup_drawing()
@@ -85,7 +84,6 @@ class Unit2d(GameObject2d):
         """Sets up image or complex draw method based on type."""
         unit_type_str = self.__class__.__name__
         if unit_type_str in SIMPLE_DRAW_RECIPES:
-            # pyrefly: ignore [missing-override-decorator]
             self.image = SIMPLE_DRAW_RECIPES[unit_type_str](self.size, team_to_color[self.team])
 
         if not self.image:  # TODO: type guard - not sure why needed
@@ -455,7 +453,7 @@ class Unit2d(GameObject2d):
         return False
 
     def shoot(
-        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[GenericParticle]
+        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[Particle]
     ) -> None:
         """Fires a projectile using current weapon at target, with lead prediction.
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, override
 
 import pygame as pg
 
-from modules.camera.camera import _Camera
+from modules.camera.camera_generic import _CameraGeneric
 from modules.data_iso import (
     PAN_EDGE,
     PAN_SPEED,
@@ -21,10 +21,10 @@ if TYPE_CHECKING:
 
     from pygame.typing import Point
 
-    from modules.game_object.game_object import GameObject
+    from modules.game_object import GameObjectGeneric
 
 
-class CameraIso(_Camera):
+class CameraIso(_CameraGeneric):
     """Camera for isometric game."""
 
     target_rect: pg.Rect = field(init=False)
@@ -57,7 +57,7 @@ class CameraIso(_Camera):
     def update(
         self,
         *,
-        selected_units: Sequence[GameObject],
+        selected_units: Sequence[GameObjectGeneric],
         mouse_pos: Point,
         interface_rect: pg.Rect,
         keys=None,  # pyrefly: ignore[implicit-any-parameter]

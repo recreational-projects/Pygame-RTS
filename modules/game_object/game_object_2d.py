@@ -9,33 +9,32 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from modules.data_2d import PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
-from modules.game_object.game_object import GameObject
-from modules.particles import PlasmaBurnParticle
+from modules.particle import PlasmaBurnParticle
 from modules.team import team_to_color
 from modules.typing import ensure_rect, is_rect
+
+from .game_object_generic import GameObjectGeneric
 
 if TYPE_CHECKING:
     from pygame.typing import Point
 
-    from modules.camera.camera_2d import Camera2d
+    from modules.camera import Camera2d
     from modules.team import Team
 
 
-class GameObject2d(GameObject, ABC):
+class GameObject2d(GameObjectGeneric, ABC):
     """Abstract base for 2d entities."""
 
     def __init__(self, *, position: Point, team: Team) -> None:
         super().__init__(position=position, team=team)
         # self.body_angle: float = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
-        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((32, 32))
 
         if self.rect is None:
             return  # TODO: HQ requires this
 
         if self.image is not None:  # TODO: type guard - not sure why these can be None
-            # pyrefly: ignore [missing-override-decorator]
             self.rect = self.image.get_rect(center=self.position)
 
     def distance_to(self, other_pos: Point) -> float:

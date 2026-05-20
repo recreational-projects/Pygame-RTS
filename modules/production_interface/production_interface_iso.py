@@ -8,45 +8,26 @@ from typing import TYPE_CHECKING, ClassVar
 import pygame as pg
 
 from modules.data import UNIT_BUTTON_LABELS
-from modules.data_2d import CONSOLE_HEIGHT, SCREEN_HEIGHT, SCREEN_WIDTH
+from modules.data_iso import CONSOLE_HEIGHT, SCREEN_HEIGHT, SCREEN_WIDTH
 from modules.fonts import FONT_MEDIUM
-from modules.unit_stats.unit_stats_2d import get_unit_cost
-from modules.units_2d import (
-    Barracks,
-    BlackMarket,
-    Hangar,
-    Headquarters,
-    OilDerrick,
-    PowerPlant,
-    Refinery,
-    ShaleFracker,
-    Turret,
-    WarFactory,
-)
+from modules.unit_stats.unit_stats_iso import get_unit_cost
+from modules.units.units_iso import Barracks, Hangar, Headquarters, PowerPlant, Refinery, Turret, WarFactory
 
 if TYPE_CHECKING:
     from pygame.typing import Point
 
-    from modules.units_2d import Unit2d
+    from modules.units import UnitIso
 
 
 @dataclass(kw_only=True)
-class ProductionInterface:
-    """Dataclass for production sidebar UI layout and colors.
-
-    Manages the right-hand UI panel for building/production.
-    """
-
+class ProductionInterfaceIso:
     _STR_TO_BUILDING_CLASS: ClassVar = {
         "Barracks": Barracks,
         "WarFactory": WarFactory,
         "Hangar": Hangar,
         "PowerPlant": PowerPlant,
         "Turret": Turret,
-        "OilDerrick": OilDerrick,
         "Refinery": Refinery,
-        "ShaleFracker": ShaleFracker,
-        "BlackMarket": BlackMarket,
     }  # Don't move to data for now as it contains class references
 
     WIDTH: ClassVar = 200
@@ -83,17 +64,14 @@ class ProductionInterface:
     """Current (selected) producing building. Defaults to HQ."""
     producible_items: list[str] = field(default_factory=list)
     """Currently producible items based on `producer` class."""
-    production_timer: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
-        """Post-init: creates surface, top buttons, labels, defaults to HQ producer."""
         self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT - CONSOLE_HEIGHT))
         self.producer = self.hq
         self._create_top_buttons()
         self.update_producer(self.hq)
 
     def _create_top_buttons(self) -> None:
-        """Creates rects for Repair/Sell/Map buttons."""
         self.top_rects.clear()
         start_x = self.MARGIN_X
         for i, label in enumerate(["Repair", "Sell", "Map"]):
@@ -101,11 +79,8 @@ class ProductionInterface:
             rect = pg.Rect(x, self.TOP_BUTTONS_POS_Y, self.TOP_BUTTON_WIDTH, self.TOP_BUTTON_HEIGHT)
             self.top_rects[label] = rect
 
-    def update_producer(self, building: Unit2d | None) -> None:
+    def update_producer(self, building: UnitIso) -> None:
         """Updates producible items based on `building`."""
-        if building is None:
-            raise ValueError("Building must be provided.")
-
         if isinstance(building, (Barracks, WarFactory, Hangar)):
             self.producer = building
         else:
@@ -120,28 +95,17 @@ class ProductionInterface:
             self.item_rects[item] = rect
 
     def draw(self, surface_: pg.Surface) -> None:
-        """Renders sidebar: credits/power, buttons, queue with progress.
-
-        :param surface_: Main screen surface.
-        """
         self.surface.fill(self.FILL_COLOR)
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
-
         self.surface.blit(
             FONT_MEDIUM.render(f"Credits: ${self.hq.credits}", True, pg.Color("white")),
             (self.MARGIN_X, self.CREDITS_POS_Y),
         )
-
         power_color = pg.Color("green") if self.hq.has_enough_power else pg.Color("red")
         self.surface.blit(
-            FONT_MEDIUM.render(
-                f"Power: {self.hq.power_output}/{self.hq.power_usage}",
-                True,
-                power_color,
-            ),
+            FONT_MEDIUM.render(f"Power: {self.hq.power_output}/{self.hq.power_usage}", True, power_color),
             (self.MARGIN_X, self.POWER_POS_Y),
         )
-
         for label, rect in self.top_rects.items():
             color = self.INACTIVE_TAB_COLOR
             pg.draw.rect(self.surface, color, rect, border_radius=self.BUTTON_RADIUS)
@@ -162,22 +126,15 @@ class ProductionInterface:
             cost_surf = FONT_MEDIUM.render(f"({cost})", True, pg.Color("white"))
             cost_rect = cost_surf.get_rect(x=rect.x + 5, y=rect.y + 25)
             self.surface.blit(cost_surf, cost_rect)
-
         if hasattr(self.producer, "production_queue") and self.producer.production_queue:
             queue_y = self.PRODUCTION_QUEUE_POS_Y
-            self.surface.blit(
-                FONT_MEDIUM.render("Queue:", True, pg.Color("white")),
-                (self.MARGIN_X, queue_y),
-            )
+            self.surface.blit(FONT_MEDIUM.render("Queue:", True, pg.Color("white")), (self.MARGIN_X, queue_y))
             queue_y += 20
             for i, item in enumerate(self.producer.production_queue):
                 unit_type = item["unit_type"] if "unit_type" in item else item["cls"].__name__
                 repeat_text = " [R]" if item["repeat"] else ""
                 text = f"{UNIT_BUTTON_LABELS.get(unit_type, unit_type)}{repeat_text}"
-                self.surface.blit(
-                    FONT_MEDIUM.render(text, True, pg.Color("white")),
-                    (self.MARGIN_X + 10, queue_y),
-                )
+                self.surface.blit(FONT_MEDIUM.render(text, True, pg.Color("white")), (self.MARGIN_X + 10, queue_y))
                 repeat_rect = pg.Rect(self.MARGIN_X + 150, queue_y, 20, 20)
                 repeat_color = self.ACTION_ALLOWED_COLOR if item["repeat"] else self.INACTIVE_TAB_COLOR
                 pg.draw.rect(self.surface, repeat_color, repeat_rect, border_radius=2)
@@ -200,18 +157,10 @@ class ProductionInterface:
                     )
                     pg.draw.rect(self.surface, self.LINE_COLOR, (self.MARGIN_X + 10, queue_y + 20, 100, 5), 1)
                 queue_y += 25
-
         surface_.blit(self.surface, (SCREEN_WIDTH - self.WIDTH, 0))
 
-    def handle_click(self, screen_pos: Point) -> bool | tuple[str, Unit2d]:
-        """Handles clicks on buttons: repair, sell, queue items, start placement.
-
-        :param screen_pos: Mouse position.
-        :return: True if handled, or tuple ('sell', building) for sell action.
-        """
-        # Handles clicks on buttons: repair, sell, queue items, start placement.
+    def handle_click(self, screen_pos: Point) -> bool | tuple[str, UnitIso]:
         local_pos = (screen_pos[0] - (SCREEN_WIDTH - self.WIDTH), screen_pos[1])
-
         for label, rect in self.top_rects.items():
             if rect.collidepoint(local_pos):
                 if label == "Repair":
@@ -223,12 +172,8 @@ class ProductionInterface:
                                 self.hq.credits -= cost
                                 self.producer.health = self.producer.max_health
 
-                elif label == "Sell":
-                    if self.producer != self.hq:
-                        return "sell", self.producer
-
-                elif label == "Map":
-                    pass
+                elif label == "Sell" and self.producer != self.hq:
+                    return "sell", self.producer
 
                 return True
 

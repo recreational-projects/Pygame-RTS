@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 
     from pygame.typing import ColorLike, Point
 
-    from modules.camera.camera_2d import Camera2d
+    from modules.camera import Camera2d
     from modules.fog_of_war import FogOfWar2d
     from modules.team import Team
-    from modules.units_2d import Unit2d
+    from modules.units import Unit2d
 
 
 def _create_infantry_image(size: Point, team_color: ColorLike) -> pg.Surface:

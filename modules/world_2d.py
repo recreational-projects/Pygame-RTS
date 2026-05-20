@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.team import Team
-    from modules.units_2d import Unit2d
+    from modules.units import Unit2d
 
 
 def is_valid_building_position(

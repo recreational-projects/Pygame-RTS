@@ -13,9 +13,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
-    "pyrefly>=1.0.0",
-    "pytest>=9.0.3",
-    "ruff>=0.15.16",
+    "pyrefly>=1.1.1",
+    "pytest>=9.1.1",
+    "ruff>=0.15.18",
 ]
 
 [tool.ruff]
@@ -62,7 +62,7 @@ extend-safe-fixes = [
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument: keys
 ]
-"modules/production_interface_*.py" = [
+"modules/production_interface/*.py" = [
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/screens.py" = [

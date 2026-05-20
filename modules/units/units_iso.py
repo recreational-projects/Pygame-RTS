@@ -10,13 +10,13 @@ import pygame as pg
 from pygame.math import Vector2
 
 from modules.data_iso import TILE_SIZE
-from modules.game_object.game_object_iso import GameObjectIso
+from modules.game_object import GameObjectIso
 from modules.geometry import closest_point_on_rect
-from modules.particles import GenericParticle, create_explosion_iso
+from modules.particle import Particle, create_explosion_iso
 from modules.pathfinding_iso import astar
-from modules.projectile.projectile_iso import ProjectileIso
+from modules.projectile import ProjectileIso
 from modules.team import Team, team_to_color
-from modules.unit_stats.unit_stats_iso import UnitStatsIso
+from modules.unit_stats import UnitStatsIso
 from modules.world_iso import is_valid_building_position
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.camera.camera_iso import CameraIso
-    from modules.unit_stats.unit_stats import WeaponStats
+    from modules.unit_stats.unit_stats_generic import WeaponStats
 
 
 class UnitIso(GameObjectIso):
@@ -73,7 +73,6 @@ class UnitIso(GameObjectIso):
             self.production_queue = []
             self.production_timer: int | None = None
 
-        # pyrefly: ignore [missing-override-decorator]
         self.rect = pg.Rect(self.position.x - self.size[0] / 2, self.position.y - self.size[1] / 2, *self.size)
         self._setup_drawing()
 
@@ -708,7 +707,7 @@ class UnitIso(GameObjectIso):
     def update(
         self,
         *args: Any,
-        particles: pg.sprite.Group[GenericParticle] | None = None,
+        particles: pg.sprite.Group[Particle] | None = None,
         friendly_units: MutableSet[UnitIso] | None = None,
         all_units: pg.sprite.Group[UnitIso] | None = None,
         global_buildings: Iterable[UnitIso] | None = None,
@@ -964,7 +963,7 @@ class UnitIso(GameObjectIso):
         *,
         target: UnitIso,
         projectiles: pg.sprite.Group[ProjectileIso],
-        particles: pg.sprite.Group[GenericParticle],
+        particles: pg.sprite.Group[Particle],
     ) -> None:
         if not self.weapons or self.last_shot_time > 0:
             return

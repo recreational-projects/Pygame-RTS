@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_iso import CameraIso
     from modules.fog_of_war import FogOfWarIso
-    from modules.game_data_iso import GameDataIso
+    from modules.game_data import GameDataIso
     from modules.team import Team
-    from modules.units_iso import UnitIso
+    from modules.units import UnitIso
 
 
 def draw_mini_map(

@@ -27,7 +27,6 @@ def astar(
     goal_tile = (int(goal.x // tile_size), int(goal.y // tile_size))
     num_tiles_x = map_width // tile_size
     num_tiles_y = map_height // tile_size
-    # pyrefly: ignore [implicit-any-empty-container]
     open_set = []
     heapq.heappush(open_set, (0.0, start_tile))
     came_from: dict[IntPoint, IntPoint] = {}

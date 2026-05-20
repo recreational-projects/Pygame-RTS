@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, override
 import pygame as pg
 from pygame.math import Vector2
 
-from modules.ai_2d import AI
+from modules.ai import Ai2d
 from modules.data import Palette
 from modules.data_2d import (
     MAPS,
@@ -23,24 +23,25 @@ from modules.data_2d import (
     TILE_SIZE,
 )
 from modules.draw_2d import draw_mini_map
-from modules.game_data_2d import GameData2d
-from modules.game_manager.game_manager_generic import GameManagerGeneric
+from modules.game_data import GameData2d
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
 from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_name
 from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
-from modules.units_2d import Headquarters
+from modules.units.units_2d import Headquarters
 from modules.world import handle_unit_building_collisions, handle_unit_collisions
 from modules.world_2d import (
     is_valid_building_position,
 )
 
+from .game_manager_generic import _GameManagerGeneric
+
 if TYPE_CHECKING:
     from pygame.typing import IntPoint, Point
 
-    from modules.units_2d import Unit2d
+    from modules.units import Unit2d
 
 
 def _handle_minimap_click(*, game_data: GameData2d, mouse_pos: IntPoint, minimap_origin: IntPoint) -> None:
@@ -233,7 +234,7 @@ def _handle_mouse_1_release_while_selecting(*, game_data: GameData2d, mouse_pos:
 
 
 @dataclass(kw_only=True)
-class GameManager2d(GameManagerGeneric):
+class GameManager2d(_GameManagerGeneric):
     """GameManager for 2d game."""
 
     game_data: GameData2d = field(init=False)
@@ -589,7 +590,7 @@ class GameManager2d(GameManagerGeneric):
             center_y = map_height / 2
             build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
             random.seed(team.value * 12345)  # Seed per team for consistent "personality" across runs
-            ai = AI(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
+            ai = Ai2d(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
             ais.append(ai)
 
         self.game_data = GameData2d(

@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from modules.data_iso import MAP_HEIGHT, MAP_WIDTH, PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
-from modules.game_object.game_object import GameObject
-from modules.particles import PlasmaBurnParticle
+from modules.particle import PlasmaBurnParticle
 from modules.team import team_to_color
+
+from .game_object_generic import GameObjectGeneric
 
 if TYPE_CHECKING:
     from pygame.typing import Point
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class GameObjectIso(GameObject, ABC):
+class GameObjectIso(GameObjectGeneric, ABC):
     """Abstract base for isometric entities."""
 
     def __init__(self, *, position: Point, team: Team) -> None:
@@ -28,10 +29,8 @@ class GameObjectIso(GameObject, ABC):
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         self.map_width = MAP_WIDTH
         self.map_height = MAP_HEIGHT
-        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((32, 32))
         if self.image is not None:  # TODO: type guard - not sure why this can be None
-            # pyrefly: ignore [missing-override-decorator]
             self.rect = self.image.get_rect(center=position)
 
     def distance_to(self, other_pos: Point) -> float:

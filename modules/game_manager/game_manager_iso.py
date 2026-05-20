@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, override
 import pygame as pg
 from pygame.math import Vector2
 
-from modules.ai_iso import AI
+from modules.ai import AiIso
 from modules.camera.camera_iso import CameraIso
 from modules.data import Palette
 from modules.data_iso import (
@@ -27,27 +27,30 @@ from modules.data_iso import (
 )
 from modules.draw_iso import draw_fitness_panel, draw_mini_map
 from modules.fog_of_war import FogOfWarIso
-from modules.game_data_iso import GameDataIso
-from modules.game_manager.game_manager_generic import GameManagerGeneric
+from modules.game_data import GameDataIso
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_iso, get_starting_positions, snap_to_grid
-from modules.production_interface_iso import ProductionInterface
+from modules.production_interface import ProductionInterfaceIso
 from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_name
 from modules.terrain_feature_iso import generate_terrain_features
 from modules.unit_stats.unit_stats_iso import get_unit_cost, get_unit_size
-from modules.units_iso import Headquarters, Infantry, UnitIso
+from modules.units.units_iso import Headquarters, Infantry
 from modules.world import handle_unit_building_collisions, handle_unit_collisions
 from modules.world_iso import (
     find_free_spawn_position,
     is_valid_building_position,
 )
 
+from .game_manager_generic import _GameManagerGeneric
+
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
     from pygame.typing import IntPoint, Point
+
+    from modules.units import UnitIso
 
 
 def _handle_minimap_click(*, game_data: GameDataIso, mouse_pos: IntPoint, mini_x: int, mini_y: int) -> None:
@@ -248,7 +251,7 @@ def _handle_mouse_1_release_while_selecting(*, game_data: GameDataIso, mouse_pos
 
 
 @dataclass(kw_only=True)
-class GameManagerIso(GameManagerGeneric):
+class GameManagerIso(_GameManagerGeneric):
     """GameManager for isometric game."""
 
     game_data: GameDataIso = field(init=False)
@@ -702,7 +705,7 @@ class GameManagerIso(GameManagerGeneric):
             center_y = map_height / 2
             build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
             random.seed(team.value * 12345)
-            ai = AI(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
+            ai = AiIso(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
             ais.append(ai)
 
         camera = CameraIso(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
@@ -713,7 +716,7 @@ class GameManagerIso(GameManagerGeneric):
             if player_hq is None:
                 raise ValueError("Player HQ is None")
 
-            interface = ProductionInterface(hq=player_hq)
+            interface = ProductionInterfaceIso(hq=player_hq)
             interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
         else:
             interface = None
@@ -736,7 +739,7 @@ class GameManagerIso(GameManagerGeneric):
             interface=interface,
             interface_rect=interface_rect,
             fog_of_war=FogOfWarIso(
-                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectator_mode
+                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator_mode=spectator_mode
             ),
             camera=camera,
             map_color=color,

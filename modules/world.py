@@ -9,8 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from modules.spatial_hash import SpatialHash2d, SpatialHashIso
-    from modules.units_2d import Unit2d
-    from modules.units_iso import UnitIso
+    from modules.units import Unit2d, UnitIso
 
 
 # pyrefly: ignore [implicit-any-type-argument]
