@@ -41,9 +41,12 @@ from modules.projectile_2d import Projectile
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_color, team_to_name
+from modules.unit_stats_2d import UnitStats
 
 if TYPE_CHECKING:
     from pygame.typing import Point
+
+    from modules.unit_stats_2d import WeaponStats
 
 
 # =============================================================================
@@ -75,10 +78,9 @@ def is_valid_building_position(
     :param margin: Minimum distance margin between buildings.
     :return: True if placement is valid.
     """
-    # Validates if a building can be placed at position: checks bounds, overlaps, proximity to friendly buildings.
-    width, height = UNIT_CLASSES[new_building_cls.__name__]["size"]
-    half_w_n, half_h_n = width / 2, height / 2
-    temp_rect = pg.Rect(position[0] - half_w_n, position[1] - half_h_n, width, height)
+    _cls_stats = UnitStats.from_dict(UNIT_CLASSES[new_building_cls.__name__])
+    width, height = _cls_stats.size[0], _cls_stats.size[1]
+    temp_rect = pg.Rect(position[0] - width / 2, position[1] - height / 2, width, height)
     if not (
         0 <= temp_rect.left and temp_rect.right <= map_width and 0 <= temp_rect.top and temp_rect.bottom <= map_height
     ):
@@ -90,12 +92,12 @@ def is_valid_building_position(
     for building in buildings:
         if building.team == team and building.health > 0:
             # Dynamic min_dist based on sizes + margin
-            e_size = UNIT_CLASSES[building.unit_type]["size"]
-            half_w_e, half_h_e = e_size[0] / 2, e_size[1] / 2
-            min_dist = max(half_w_n + half_w_e, half_h_n + half_h_e) + margin
+            half_w_e, half_h_e = building.size[0] / 2, building.size[1] / 2
+            min_dist = max(width / 2 + half_w_e, height / 2 + half_h_e) + margin
             dist = math.hypot(proposed_center[0] - building.position.x, proposed_center[1] - building.position.y)
             if dist < min_dist:
                 return False
+
             if dist <= building_range:
                 has_nearby_friendly = True
 
@@ -173,53 +175,118 @@ class Unit(GameObject):
     Extends GameObject with movement, combat, production, income.
     """
 
-    def __init__(self, position: Point, team: Team, unit_type: str, hq=None) -> None:
+    def __init__(self, *, position: Point, team: Team, unit_type_str: str, hq=None) -> None:
         """
         Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
 
         :param position: Initial position.
         :param team: Team enum.
-        :param unit_type: String key from UNIT_CLASSES.
+        :param unit_type_str: String key from UNIT_CLASSES.
         :param hq: Optional Headquarters reference.
         """
         # Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
-        super().__init__(position, team)
+        super().__init__(position=position, team=team)
         self.hq = hq
-        stats = UNIT_CLASSES[unit_type]
-        self.stats = stats.copy()
-        self.unit_type = unit_type
-        self.health = stats["hp"]
-        self.max_health = stats["hp"]
-        self.speed = stats["speed"]
-        self.sight_range = stats["sight_range"]
-        self.attack_range = stats["attack_range"]
-        self.weapons = stats["weapons"]
-        self.is_building = stats["is_building"]
-        self.current_weapon = 0
+        self._stats = UnitStats.from_dict(UNIT_CLASSES[unit_type_str])
+        self.health: int = self._stats.hp
+        self.max_health: int = self._stats.hp
+
+        self.current_weapon_index = 0
         self.attack_target = None
         self.last_shot_time = 0
-        self.cooldown = stats["weapons"][0].get("cooldown", 0) if stats["weapons"] else 0
         self.move_target = None
         self.formation_target = None
         self.player_ordered = False
         self.random_offset_angle = random.uniform(-0.5, 0.5)
-        self.turret_angle = 0
-        self.body_angle = 0
-        self.air = stats["air"]
+        self.turret_angle: float = 0
+        self.body_angle: float = 0
         self.team_color = team_to_color[team]
-        self.fly_height = stats.get("fly_height", 0)
-        if "income" in stats:
-            self.income = stats["income"]
+        if self.income:
             self.collection_timer = 0
-        if "producible" in stats:
+
+        if self.producible:
             self.rally_point = Vector2(position[0] + 80, position[1])
             self.production_queue = []
             self.production_timer = None
             self.gate_open = False
             self.gate_timer = 0
+
+        if not self.image:  # TODO: type guard - not sure why needed
+            raise TypeError("Unit has no `image`")
+
         self.rect = self.image.get_rect(center=position)
         # Modular drawing setup
-        self._setup_drawing(unit_type)
+        self._setup_drawing()
+
+    @property
+    def cost(self) -> int:
+        return self._stats.cost
+
+    @property
+    def speed(self) -> float:
+        return self._stats.speed
+
+    @property
+    def attack_range(self) -> int:
+        return self._stats.attack_range
+
+    @property
+    def sight_range(self) -> int:
+        return self._stats.sight_range
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return self._stats.size
+
+    @property
+    def is_building(self) -> bool:
+        return self._stats.is_building
+
+    @property
+    def is_air(self) -> bool:
+        return self._stats.air
+
+    @property
+    def income(self) -> int | None:
+        return self._stats.income
+
+    @property
+    def income_interval(self) -> int:
+        return self._stats.income_interval
+
+    @property
+    def fly_height(self) -> int:
+        if not self.is_air:
+            raise ValueError("`fly_height` is only available for air units.")
+
+        if self._stats.fly_height is None:
+            raise ValueError("`fly_height` is `None`.")
+
+        return self._stats.fly_height
+
+    @property
+    def production_time(self) -> int | None:
+        return self._stats.production_time
+
+    @property
+    def weapons(self) -> list[WeaponStats]:
+        return self._stats.weapons
+
+    @property
+    def current_weapon(self) -> WeaponStats:
+        return self.weapons[self.current_weapon_index]
+
+    @property
+    def producible(self) -> list[str]:
+        return self._stats.producible
+
+    @property
+    def is_resource_building(self) -> bool:
+        return isinstance(self, OilDerrick | Refinery | ShaleFracker | BlackMarket)
+
+    @property
+    def is_military_producer_building(self) -> bool:
+        return isinstance(self, Barracks | WarFactory | Hangar)
 
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:
         """
@@ -234,8 +301,10 @@ class Unit(GameObject):
         dist_to_closest = dir_to_closest.length()
         if dist_to_closest <= self.attack_range:
             return None  # Already in range
+
         if dist_to_closest == 0:
             return None
+
         dir_unit = dir_to_closest.normalize()
         target_pos = Vector2(closest) - dir_unit * self.attack_range
         # Add perpendicular spread to avoid clustering
@@ -244,40 +313,50 @@ class Unit(GameObject):
         target_pos += perp_dir * spread_dist
         return target_pos
 
-    def _setup_drawing(self, unit_type: str) -> None:
+    def _setup_drawing(self) -> None:
         """
         Sets up image or complex draw method based on type.
-
-        :param unit_type: Unit type string.
         """
-        # Sets up image or complex draw method based on type.
-        if unit_type in SIMPLE_DRAW_RECIPES:
-            self.image = SIMPLE_DRAW_RECIPES[unit_type](UNIT_CLASSES[unit_type]["size"], self.team)
-            if unit_type in ["Infantry", "Grenadier"]:
-                self.needs_rotation = True
-        elif unit_type in COMPLEX_DRAW_RECIPES:
-            create_surfaces, draw_func = COMPLEX_DRAW_RECIPES[unit_type]
+
+        unit_type_str = self.__class__.__name__
+        if unit_type_str in SIMPLE_DRAW_RECIPES:
+            self.image = SIMPLE_DRAW_RECIPES[unit_type_str](self.size, self.team)
+
+        if not self.image:  # TODO: type guard - not sure why needed
+            raise TypeError("Unit has no `image`")
+
+        if unit_type_str in ["Infantry", "Grenadier"]:
+            self.needs_rotation = True
+
+        elif unit_type_str in COMPLEX_DRAW_RECIPES:
+            create_surfaces, draw_func = COMPLEX_DRAW_RECIPES[unit_type_str]
             self.body_surf, self.turret_surf, self.barrel_surf = create_surfaces(self.team)
-            if unit_type == "AttackHelicopter":
+            if unit_type_str == "AttackHelicopter":
                 self.turret_offset = Vector2(12, 0)
                 self.barrel_offset = Vector2(6, 0)
             else:
-                self.turret_offset = Vector2(0, -3) if unit_type != "Turret" else Vector2(0, -15)
+                self.turret_offset = Vector2(0, -3) if unit_type_str != "Turret" else Vector2(0, -15)
                 self.barrel_offset = (
                     Vector2(8, 0)
-                    if unit_type == "Tank"
+                    if unit_type_str == "Tank"
                     else Vector2(10, 0)
-                    if unit_type == "MachineGunVehicle"
+                    if unit_type_str == "MachineGunVehicle"
                     else Vector2(15, 0)
-                    if unit_type == "RocketArtillery"
+                    if unit_type_str == "RocketArtillery"
                     else Vector2(10, 0)
                 )
             self.draw = draw_func.__get__(self, self.__class__)
-        elif self.is_building and unit_type in BUILDING_DRAW_RECIPES:
-            self.image = BUILDING_DRAW_RECIPES[unit_type](UNIT_CLASSES[unit_type]["size"], self.team)
+
+        elif self.is_building and unit_type_str in BUILDING_DRAW_RECIPES:
+            self.image = BUILDING_DRAW_RECIPES[unit_type_str](self.size, self.team)
+
         else:
             # Fallback
             self.image.fill(self.team_color)
+
+        if not self.image:  # TODO: type guard
+            raise TypeError("Unit has no `image`")
+
         self.rect = self.image.get_rect(center=self.position)
 
     def _draw_gate(self, surface: pg.Surface, camera: Camera2d) -> None:
@@ -287,10 +366,12 @@ class Unit(GameObject):
         :param surface: Surface to draw on.
         :param camera: Camera2d for transformation.
         """
-        # Draws animated opening gates for production buildings.
-        door_width = self.stats.get("gate_width", 20)
-        half_door_offset = self.stats.get("half_door_offset", 15)
-        door_color = self.stats.get("door_color", (60, 60, 60))
+        if not self.rect:  # TODO: type guard - not sure why needed
+            raise TypeError("Unit has no `image`")
+
+        door_width = self._stats.gate_width
+        half_door_offset = self._stats.half_door_offset
+        door_color = self._stats.door_color
         door_height = self.rect.height - 20
         half_door = door_width // 2
         left_door = pg.Rect(self.rect.right - door_width, self.rect.top + 10, half_door, door_height)
@@ -312,20 +393,30 @@ class Unit(GameObject):
             self.gate_timer -= 1
             if self.gate_timer <= 0:
                 self.gate_open = False
+
         if self.production_queue:
             if self.production_timer is None:
-                self.production_timer = self.stats["production_time"]
+                self.production_timer = self.production_time
+
             self.production_timer -= 1
             if self.production_timer <= 0:
                 item = self.production_queue.pop(0)
                 unit_type = item["unit_type"]
                 repeat = item.get("repeat", False)
+
+                if not isinstance(self.rect, pg.Rect):
+                    raise TypeError("Unit has unexpected `rect` type")
+
                 spawn_pos = (self.rect.right, self.rect.centery)
                 try:
-                    new_unit = globals()[unit_type](spawn_pos, self.team, hq=self.hq)
+                    new_unit = globals()[unit_type](position=spawn_pos, team=self.team, hq=self.hq)
                 except KeyError:
-                    new_unit = globals()["Infantry"](spawn_pos, self.team, hq=self.hq)  # fallback
-                self.hq.stats["units_created"] += 1
+                    new_unit = globals()["Infantry"](position=spawn_pos, team=self.team, hq=self.hq)  # fallback
+
+                if not self.hq:
+                    raise ValueError("Unit has no `hq`")
+
+                self.hq.game_stats["units_created"] += 1
                 new_unit.position = Vector2(spawn_pos)
                 new_unit.rect.center = new_unit.position
                 new_unit.move_target = self.rally_point
@@ -335,6 +426,7 @@ class Unit(GameObject):
                 self.gate_timer = 60
                 if repeat:
                     self.production_queue.append({"unit_type": unit_type, "repeat": True})
+
                 self.production_timer = None
 
     def update(
@@ -401,7 +493,8 @@ class Unit(GameObject):
                     # Small random movement to avoid clustering
                     if not self.attack_target.is_building and random.random() < 0.1:
                         self.position += dir_to_enemy.rotate_rad(random.uniform(-0.5, 0.5)) * self.speed * 0.2
-                    # Restore move_target after combat if needed, but for now, stay stopped until enemy dead or out of sight
+                        # Restore move_target after combat if needed, but for now, stay stopped until enemy dead or out of sight
+
                 else:
                     # Chase the target
                     if self.attack_target.is_building:
@@ -427,21 +520,22 @@ class Unit(GameObject):
             else:
                 self.move_target = None
 
-        if (
-            hasattr(self, "stats")
-            and "producible" in self.stats
-            and friendly_units is not None
-            and all_units is not None
-        ):
+        if self.producible and friendly_units is not None and all_units is not None:
             self._update_production(friendly_units, all_units)
 
         if hasattr(self, "collection_timer"):
             self.collection_timer += 1
-            if self.collection_timer >= self.stats.get("income_interval", 300):
-                income = self.stats["income"]
+            if self.collection_timer >= self.income_interval:
+                income = self.income
+                if not self.hq:
+                    raise ValueError("Unit has no `hq`")
+
                 self.hq.credits += income
-                self.hq.stats["credits_earned"] += income
+                self.hq.game_stats["credits_earned"] += income
                 self.collection_timer = 0
+
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("Unit has unexpected `rect` type")
 
         self.rect.center = self.position
 
@@ -458,13 +552,19 @@ class Unit(GameObject):
         # Overridden draw for units: handles air height, rotation, rally point, gate animation.
         if self.health <= 0:
             return
+
         screen_pos = camera.world_to_screen(self.position)
-        if self.air:
+        if self.is_air:
             screen_pos = (screen_pos[0], screen_pos[1] - self.fly_height * camera.zoom)
+
         zoom = camera.zoom
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("Unit has unexpected `rect` type")
+
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
+
         scaled_size = (int(self.image.get_width() * zoom), int(self.image.get_height() * zoom))
         if scaled_size[0] > 0 and scaled_size[1] > 0:
             scaled_image = pg.transform.smoothscale(self.image, scaled_size)
@@ -499,59 +599,43 @@ class Unit(GameObject):
         for particle in self.plasma_burn_particles:
             particle.draw_2d(surface, camera)
 
-    def get_attack_range(self) -> float:
-        """
-        Returns the unit's attack range.
-
-        :return: Attack range in pixels.
-        """
-        # Returns the unit's attack range.
-        return self.attack_range
-
-    def get_damage(self) -> int:
-        """
-        Returns the primary weapon's damage.
-
-        :return: Damage value.
-        """
-        # Returns the primary weapon's damage.
-        if self.weapons:
-            return self.weapons[0]["damage"]
-        return 0
-
     def shoot(self, target, projectiles: pg.sprite.Group) -> None:
         """
-        Fires a projectile at target with lead prediction; triggers small explosion.
+        Fires a projectile using current weapon at target, with lead prediction.
+
+        Triggers small explosion.
 
         :param target: Target entity.
         :param projectiles: Group to add projectile to.
         """
-        # Fires a projectile at target with lead prediction; triggers small explosion.
-        if not self.weapons or self.last_shot_time > 0:
+        if self.last_shot_time > 0:
             return
-        weapon = self.weapons[0]
+
         if target.is_building:
             closest = closest_point_on_rect(target.rect, self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
         else:
             dist = self.distance_to(target.position)
-            time_to_target = dist / weapon["projectile_speed"]
+            time_to_target = dist / self.current_weapon.projectile_speed
             target_vel = Vector2(
                 target.speed * math.cos(getattr(target, "body_angle", 0)) if hasattr(target, "speed") else 0,
                 target.speed * math.sin(getattr(target, "body_angle", 0)) if hasattr(target, "speed") else 0,
             )
             predicted_pos = target.position + target_vel * time_to_target
             aim_pos = predicted_pos
-        if dist > self.get_attack_range():
+
+        if dist > self.attack_range:
             return
+
         vec = aim_pos - self.position
         if vec.length() == 0:
             return
+
         direction = vec.normalize()
-        proj = Projectile(self.position, direction, weapon["damage"], self.team, weapon)
+        proj = Projectile(pos=self.position, direction=direction, team=self.team, weapon=self.current_weapon)
         projectiles.add(proj)
-        self.last_shot_time = weapon["cooldown"]
+        self.last_shot_time = self.current_weapon.cooldown
         self.turret_angle = math.atan2(direction.y, direction.x)
         create_explosion_2d(self.position, pg.sprite.Group(), self.team, 3)
 
@@ -568,8 +652,8 @@ class Infantry(Unit):
     Infantry unit class.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Infantry", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="Infantry", hq=hq)
 
 
 class Tank(Unit):
@@ -577,8 +661,8 @@ class Tank(Unit):
     Tank unit class.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Tank", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="Tank", hq=hq)
 
 
 class Grenadier(Unit):
@@ -586,8 +670,8 @@ class Grenadier(Unit):
     Grenadier unit class.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Grenadier", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="Grenadier", hq=hq)
 
 
 class MachineGunVehicle(Unit):
@@ -595,8 +679,8 @@ class MachineGunVehicle(Unit):
     Machine Gun Vehicle unit class.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "MachineGunVehicle", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="MachineGunVehicle", hq=hq)
 
 
 class RocketArtillery(Unit):
@@ -604,8 +688,8 @@ class RocketArtillery(Unit):
     Rocket Artillery unit class.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "RocketArtillery", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="RocketArtillery", hq=hq)
 
 
 class AttackHelicopter(Unit):
@@ -613,8 +697,8 @@ class AttackHelicopter(Unit):
     Attack Helicopter unit class.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "AttackHelicopter", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="AttackHelicopter", hq=hq)
 
 
 # =============================================================================
@@ -628,10 +712,10 @@ class Headquarters(Unit):
     Headquarters building: main base with credits, power management, building placement.
     """
 
-    def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Headquarters", hq=hq)
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team, unit_type_str="Headquarters", hq=hq)
         # HQ-specific: starts with credits, manages power, building placement queue.
-        self.credits = self.stats["starting_credits"]
+        self.credits = self._stats.starting_credits
         self.power_output = 100
         self.power_usage = 50
         self.has_enough_power = True
@@ -641,7 +725,7 @@ class Headquarters(Unit):
         self.pending_building_pos = None
         self.rally_point = Vector2(position[0] + (100 if team == Team.GREEN else position[0] - 100), position[1])
         self.radius = 50
-        self.stats = {
+        self.game_stats = {
             "units_created": 0,
             "units_lost": 0,
             "units_destroyed": 0,
@@ -667,8 +751,8 @@ class Headquarters(Unit):
             if unit_type in ["WarFactory", "Barracks", "Hangar"]:
                 building.parent_hq = self
             all_buildings.add(building)
-            self.stats["buildings_constructed"] += 1
-            self.credits -= UNIT_CLASSES[unit_type]["cost"]
+            self.game_stats["buildings_constructed"] += 1
+            self.credits -= building.cost
             self.pending_building = None
 
 
@@ -678,7 +762,7 @@ class Barracks(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Barracks", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="Barracks", hq=hq)
         self.parent_hq = None
 
 
@@ -688,7 +772,7 @@ class WarFactory(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "WarFactory", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="WarFactory", hq=hq)
         self.parent_hq = None
 
 
@@ -698,7 +782,7 @@ class Hangar(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Hangar", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="Hangar", hq=hq)
         self.parent_hq = None
 
 
@@ -708,7 +792,7 @@ class PowerPlant(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "PowerPlant", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="PowerPlant", hq=hq)
 
 
 class OilDerrick(Unit):
@@ -717,7 +801,7 @@ class OilDerrick(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "OilDerrick", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="OilDerrick", hq=hq)
 
 
 class Refinery(Unit):
@@ -726,7 +810,7 @@ class Refinery(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Refinery", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="Refinery", hq=hq)
         self.radius = 60
 
 
@@ -736,7 +820,7 @@ class ShaleFracker(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "ShaleFracker", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="ShaleFracker", hq=hq)
 
 
 class BlackMarket(Unit):
@@ -745,7 +829,7 @@ class BlackMarket(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "BlackMarket", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="BlackMarket", hq=hq)
 
 
 class Turret(Unit):
@@ -754,7 +838,7 @@ class Turret(Unit):
     """
 
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Turret", hq=hq)
+        super().__init__(position=position, team=team, unit_type_str="Turret", hq=hq)
 
 
 # =============================================================================
@@ -843,26 +927,19 @@ class AI:
         nearby_enemies = [u for u in enemy_units if u.health > 0 and u.distance_to(hq_pos) < 600]
         self.threat_level = len(nearby_enemies) / max(1, self.enemy_strength) if self.enemy_strength > 0 else 0
 
-        resource_buildings = [
-            b for b in friendly_buildings if b.unit_type in ["OilDerrick", "Refinery", "ShaleFracker", "BlackMarket"]
-        ]
-        self.economy_level = min(3, len(resource_buildings) // 2)
+        self.resource_buildings = [b for b in friendly_buildings if b.is_resource_building]
+        self.economy_level = min(3, len(self.resource_buildings) // 2)
 
-        self.resource_count = len(
-            [
-                b
-                for b in friendly_buildings
-                if b.unit_type in ["OilDerrick", "Refinery", "ShaleFracker", "BlackMarket"] and b.health > 0
-            ]
-        )
-        self.turret_count = len([b for b in friendly_buildings if b.unit_type == "Turret" and b.health > 0])
+        self.resource_count = len([b for b in friendly_buildings if b.is_resource_building and b.health > 0])
+        self.turret_count = len([b for b in friendly_buildings if isinstance(b, Turret) and b.health > 0])
+
         self.military_prod_count = len(
-            [b for b in friendly_buildings if b.unit_type in ["Barracks", "WarFactory", "Hangar"] and b.health > 0]
+            [b for b in friendly_buildings if b.is_military_producer_building and b.health > 0]
         )
-        self.power_count = len([b for b in friendly_buildings if b.unit_type == "PowerPlant" and b.health > 0])
-        self.total_buildings = self.military_prod_count + self.resource_count + self.power_count + self.turret_count
+        _power_count = len([b for b in friendly_buildings if isinstance(b, PowerPlant) and b.health > 0])
+        self.total_buildings = sum((self.military_prod_count, self.resource_count, _power_count, self.turret_count))
 
-        power_plants = len([b for b in friendly_buildings if b.unit_type == "PowerPlant"])
+        power_plants = len([b for b in friendly_buildings if isinstance(b, PowerPlant)])
         self.power_shortage = power_plants < self.economy_level + 1
 
         inf_prio = 0.5 if self.threat_level > 0.5 else 0.6
@@ -938,7 +1015,7 @@ class AI:
 
         if enemy_units:
             unit_target = min(
-                (u for u in enemy_units if u.health > 0 and u.unit_type in ["Infantry", "Grenadier"]),
+                (u for u in enemy_units if u.health > 0 and isinstance(u, Infantry | Grenadier)),
                 key=lambda u: u.distance_to(from_pos),
                 default=None,
             )
@@ -1240,9 +1317,9 @@ class AI:
 
         # Production: Base 60, now varied (e.g., 42-78 frames)
         if int(effective_timer) % int(60 * self.interval_multiplier) == 0:
-            barracks_list = [b for b in friendly_buildings if b.unit_type == "Barracks" and b.health > 0]
-            war_factory_list = [b for b in friendly_buildings if b.unit_type == "WarFactory" and b.health > 0]
-            hangar_list = [b for b in friendly_buildings if b.unit_type == "Hangar" and b.health > 0]
+            barracks_list = [b for b in friendly_buildings if isinstance(b, Barracks) and b.health > 0]
+            war_factory_list = [b for b in friendly_buildings if isinstance(b, WarFactory) and b.health > 0]
+            hangar_list = [b for b in friendly_buildings if isinstance(b, Hangar) and b.health > 0]
             self.queue_unit_production(barracks_list, war_factory_list, hangar_list, friendly_units)
 
         # Building: Base 180, now varied (e.g., 126-234 frames)
@@ -1266,7 +1343,7 @@ class AI:
                 if self.resource_count == 0 and self.hq.credits >= UNIT_CLASSES["OilDerrick"]["cost"]:
                     cls = OilDerrick
                 elif self.resource_count < 2 and self.hq.credits >= UNIT_CLASSES["Refinery"]["cost"]:
-                    built_ref = any(b.unit_type == "Refinery" for b in friendly_buildings if b.health > 0)
+                    built_ref = any(isinstance(b, Refinery) for b in friendly_buildings if b.health > 0)
                     if not built_ref:
                         cls = Refinery
                     else:
@@ -1278,9 +1355,9 @@ class AI:
                 ):
                     cls = PowerPlant
                 elif self.military_prod_count < max(1, self.resource_count // 2 + 1):
-                    built_barracks = any(b.unit_type == "Barracks" for b in friendly_buildings if b.health > 0)
-                    built_factory = any(b.unit_type == "WarFactory" for b in friendly_buildings if b.health > 0)
-                    built_hangar = any(b.unit_type == "Hangar" for b in friendly_buildings if b.health > 0)
+                    built_barracks = any(isinstance(b, Barracks) for b in friendly_buildings if b.health > 0)
+                    built_factory = any(isinstance(b, WarFactory) for b in friendly_buildings if b.health > 0)
+                    built_hangar = any(isinstance(b, Hangar) for b in friendly_buildings if b.health > 0)
                     if not built_barracks:
                         cls = Barracks
                     elif self.resource_count >= 2 and not built_factory:
@@ -1325,7 +1402,7 @@ class AI:
             self.defense_timer = random.randint(0, defense_interval // 2)  # Reset with jitter
 
         enemy_hq = min(
-            (b for b in enemy_buildings if b.unit_type == "Headquarters" and b.health > 0),
+            (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
             key=lambda b: self.hq.distance_to(b.position),
             default=None,
         )
@@ -1701,12 +1778,14 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHash2d) -> None:
     """
     # Resolves overlaps between ground units using simple repulsion.
     for i, unit in enumerate(all_units):
-        if unit.health <= 0 or unit.air:
+        if unit.health <= 0 or unit.is_air:
             continue
+
         nearby = unit_hash.query(unit.position, max(unit.rect.width, unit.rect.height))
         for other in nearby:
-            if other is unit or other.health <= 0 or other.air or id(other) <= id(unit):
+            if other is unit or other.health <= 0 or other.is_air or id(other) <= id(unit):
                 continue
+
             if unit.rect.colliderect(other.rect):
                 dx = other.position.x - unit.position.x
                 dy = other.position.y - unit.position.y
@@ -1734,7 +1813,7 @@ def handle_unit_building_collisions(all_units: list, all_buildings: list, buildi
     :param building_hash: SpatialHash2d for buildings.
     """
     # Pushes units away from building overlaps.
-    for unit in [u for u in all_units if u.health > 0 and not u.air]:
+    for unit in [u for u in all_units if u.health > 0 and not u.is_air]:
         nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
         for building in [b for b in nearby_builds if b.health > 0]:
             if unit.rect.colliderect(building.rect):
@@ -1779,12 +1858,14 @@ def handle_attacks(
     armed_entities = []
     # Mobile units
     for u in all_units:
-        if u.team == team and hasattr(u, "weapons") and u.weapons and u.health > 0:
+        if u.team == team and u.weapons and u.health > 0:
             armed_entities.append(u)
+
     # Buildings
     for b in all_buildings:
-        if b.team == team and hasattr(b, "weapons") and b.weapons and b.health > 0:
+        if b.team == team and b.weapons and b.health > 0:
             armed_entities.append(b)
+
     for entity in armed_entities:
         if entity.last_shot_time != 0:
             continue
@@ -1870,11 +1951,11 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:
-                            e.hq.stats["buildings_lost"] += 1
-                            attacker_hq.stats["buildings_destroyed"] += 1
+                            e.hq.game_stats["buildings_lost"] += 1
+                            attacker_hq.game_stats["buildings_destroyed"] += 1
                         else:
-                            e.hq.stats["units_lost"] += 1
-                            attacker_hq.stats["units_destroyed"] += 1
+                            e.hq.game_stats["units_lost"] += 1
+                            attacker_hq.game_stats["units_destroyed"] += 1
                     if e in all_units:
                         all_units.remove(e)
                         if isinstance(e, Unit):
@@ -2041,8 +2122,8 @@ class GameManager:
 
         for i, team in enumerate(teams_list):
             pos = positions[i]
-            hq = Headquarters(pos, team)
-            hq.stats = {
+            hq = Headquarters(position=pos, team=team)
+            hq.game_stats = {
                 "units_created": 3,
                 "units_lost": 0,
                 "units_destroyed": 0,
@@ -2056,7 +2137,8 @@ class GameManager:
             units = pg.sprite.Group()
             for j in range(3):
                 offset = find_free_spawn_position(pos, pos, global_buildings.sprites(), global_units.sprites())
-                units.add(Infantry(offset, team, hq=hq))
+                units.add(Infantry(position=offset, team=team, hq=hq))
+
             unit_groups[team] = units
 
         if not spectate:
@@ -2462,7 +2544,7 @@ class GameManager:
                 g["fog_of_war"].update_visibility([], [], g["global_buildings"].sprites())
 
             alive_hqs = [hq for hq in g["hqs"].values() if hq.health > 0]
-            all_stats = {team_to_name[team]: hq.stats for team, hq in g["hqs"].items()}
+            all_stats = {team_to_name[team]: hq.game_stats for team, hq in g["hqs"].items()}
             if g["player_hq"] and g["player_hq"].health <= 0:
                 self.state = GameState.DEFEAT
                 self.victory_screen = VictoryScreen(

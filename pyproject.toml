@@ -5,12 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dataclass-wizard>=0.39.1",
     "pygame-ce>=2.5.5",
 ]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
+    "pyrefly>=1.0.0",
     "ruff>=0.15.13",
 ]
 
@@ -57,4 +59,9 @@ extend-safe-fixes = [
 ]
 "modules/spatial_hash.py" = [
     "ANN001", # missing-type-function-argument
+]
+
+[tool.pyrefly]
+project-includes = [
+    "modules",
 ]

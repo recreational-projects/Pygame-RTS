@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pygame as pg
 from pygame.math import Vector2
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_2d import Camera2d
     from modules.team import Team
+    from modules.unit_stats_2d import WeaponStats
 
 
 class Projectile(pg.sprite.Sprite):
@@ -23,7 +24,7 @@ class Projectile(pg.sprite.Sprite):
     Creates a tapered image with a fading trail deque.
     """
 
-    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]) -> None:
+    def __init__(self, pos: Point, direction: Vector2, team: Team, weapon: WeaponStats) -> None:
         """Initializes projectile with tapered image, trail deque for fading tail.
 
         :param pos: Starting position (x, y).
@@ -35,13 +36,13 @@ class Projectile(pg.sprite.Sprite):
         super().__init__()
         self.position = Vector2(pos)
         self.direction = direction.normalize() if direction.length() > 0 else Vector2(1, 0)
-        self.damage = damage
+        self.damage = weapon.damage
         self.team = team
-        self.speed = weapon["projectile_speed"]
+        self.speed = weapon.projectile_speed
         self.lifetime = PROJECTILE_LIFETIME * 30
         self.age = 0
-        self.length = weapon["projectile_length"]
-        self.width = weapon["projectile_width"]
+        self.length = weapon.projectile_length
+        self.width = weapon.projectile_width
         self.angle = math.atan2(self.direction.y, self.direction.x)
         self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
         color = team_to_color[team]
