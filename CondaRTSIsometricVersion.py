@@ -26,6 +26,7 @@ from modules.data_iso import (
     UNIT_CLASSES,
 )
 from modules.fog_of_war import FogOfWarIso
+from modules.fonts import FONT_MEDIUM
 from modules.game_console import GameConsole
 from modules.game_object.game_object_iso import GameObjectIso
 from modules.game_state import GameState
@@ -2584,7 +2585,6 @@ class ProductionInterface:
 
     hq: Headquarters
     all_buildings = None
-    font: pg.Font = None
 
     surface: pg.Surface = dataclass_field(init=False)
     top_rects: dict = dataclass_field(init=False, default_factory=dict)
@@ -2630,19 +2630,19 @@ class ProductionInterface:
         self.surface.fill(self.FILL_COLOR)
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
         self.surface.blit(
-            self.font.render(f"Credits: ${self.hq.credits}", True, pg.Color("white")),
+            FONT_MEDIUM.render(f"Credits: ${self.hq.credits}", True, pg.Color("white")),
             (self.MARGIN_X, self.CREDITS_POS_Y),
         )
         power_color = pg.Color("green") if self.hq.has_enough_power else pg.Color("red")
         self.surface.blit(
-            self.font.render(f"Power: {self.hq.power_output}/{self.hq.power_usage}", True, power_color),
+            FONT_MEDIUM.render(f"Power: {self.hq.power_output}/{self.hq.power_usage}", True, power_color),
             (self.MARGIN_X, self.POWER_POS_Y),
         )
         for label, rect in self.top_rects.items():
             color = self.INACTIVE_TAB_COLOR
             pg.draw.rect(self.surface, color, rect, border_radius=self.BUTTON_RADIUS)
             pg.draw.rect(self.surface, self.LINE_COLOR, rect, 1)
-            text_surf = self.font.render(label, True, pg.Color("white"))
+            text_surf = FONT_MEDIUM.render(label, True, pg.Color("white"))
             text_rect = text_surf.get_rect(center=rect.center)
             self.surface.blit(text_surf, text_rect)
         for item, rect in self.item_rects.items():
@@ -2651,27 +2651,27 @@ class ProductionInterface:
             can_produce = self.hq.credits >= cost
             color = self.ACTION_ALLOWED_COLOR if can_produce else self.ACTION_BLOCKED_COLOR
             pg.draw.rect(self.surface, color, rect, border_radius=self.BUTTON_RADIUS)
-            label_surf = self.font.render(label, True, pg.Color("white"))
+            label_surf = FONT_MEDIUM.render(label, True, pg.Color("white"))
             label_rect = label_surf.get_rect(x=rect.x + 5, y=rect.y + 5)
             self.surface.blit(label_surf, label_rect)
-            cost_surf = self.font.render(f"({cost})", True, pg.Color("white"))
+            cost_surf = FONT_MEDIUM.render(f"({cost})", True, pg.Color("white"))
             cost_rect = cost_surf.get_rect(x=rect.x + 5, y=rect.y + 25)
             self.surface.blit(cost_surf, cost_rect)
         if hasattr(self.producer, "production_queue") and self.producer.production_queue:
             queue_y = self.PRODUCTION_QUEUE_POS_Y
-            self.surface.blit(self.font.render("Queue:", True, pg.Color("white")), (self.MARGIN_X, queue_y))
+            self.surface.blit(FONT_MEDIUM.render("Queue:", True, pg.Color("white")), (self.MARGIN_X, queue_y))
             queue_y += 20
             for i, item in enumerate(self.producer.production_queue):
                 unit_type = item["unit_type"] if "unit_type" in item else item["cls"].__name__
                 repeat_text = " [R]" if item["repeat"] else ""
                 text = f"{UNIT_BUTTON_LABELS.get(unit_type, unit_type)}{repeat_text}"
-                self.surface.blit(self.font.render(text, True, pg.Color("white")), (self.MARGIN_X + 10, queue_y))
+                self.surface.blit(FONT_MEDIUM.render(text, True, pg.Color("white")), (self.MARGIN_X + 10, queue_y))
                 repeat_rect = pg.Rect(self.MARGIN_X + 150, queue_y, 20, 20)
                 repeat_color = self.ACTION_ALLOWED_COLOR if item["repeat"] else self.INACTIVE_TAB_COLOR
                 pg.draw.rect(self.surface, repeat_color, repeat_rect, border_radius=2)
                 if item["repeat"]:
                     self.surface.blit(
-                        self.font.render("R", True, pg.Color("white")),
+                        FONT_MEDIUM.render("R", True, pg.Color("white")),
                         (repeat_rect.x + 6, repeat_rect.y + 3),
                     )
                 if i == 0 and self.producer.production_timer is not None:
@@ -2836,9 +2836,8 @@ def draw_fitness_panel(screen: pg.Surface, g) -> None:
     panel_surf.fill((40, 40, 40, 128))
     screen.blit(panel_surf, panel_rect.topleft)
     pg.draw.rect(screen, (100, 100, 100), panel_rect, 2)
-    font = g["font"]
     y_offset = panel_y + 10
-    title_surf = font.render("Fitness", True, (255, 255, 255))
+    title_surf = FONT_MEDIUM.render("Fitness", True, (255, 255, 255))
     screen.blit(title_surf, (panel_x + 10, y_offset))
     y_offset += 30
     for team in g["teams"]:
@@ -2848,14 +2847,14 @@ def draw_fitness_panel(screen: pg.Surface, g) -> None:
         name = team_to_name[team]
         fitness = g["current_fitness"].get(team, 0)
         delta = g["fitness_deltas"].get(team, 0)
-        name_surf = font.render(f"{name}:", True, team_to_color[team])
+        name_surf = FONT_MEDIUM.render(f"{name}:", True, team_to_color[team])
         screen.blit(name_surf, (panel_x + 10, y_offset))
-        value_surf = font.render(str(fitness), True, (255, 255, 255))
+        value_surf = FONT_MEDIUM.render(str(fitness), True, (255, 255, 255))
         screen.blit(value_surf, (panel_x + 120, y_offset))
         if delta != 0:
             delta_text = f"{'+' if delta > 0 else ''}{delta}"
             delta_color = (0, 255, 0) if delta > 0 else (255, 0, 0)
-            delta_surf = font.render(delta_text, True, delta_color)
+            delta_surf = FONT_MEDIUM.render(delta_text, True, delta_color)
             screen.blit(delta_surf, (panel_x + 140, y_offset))
         y_offset += 25
 
@@ -3042,16 +3041,14 @@ def cleanup_dead_entities(g) -> None:
 
 
 class GameManager:
-    def __init__(self, screen, clock, font_large, font_medium) -> None:
+    def __init__(self, screen, clock) -> None:
         self.screen = screen
         self.clock = clock
-        self.font_large = font_large
-        self.font_medium = font_medium
         self.state = GameState.MENU
 
         screen_size_ = self.screen.size
-        self.main_menu = MainMenu(font_large=font_large, font_medium=font_medium, screen_size=screen_size_)
-        self.skirmish_setup = SkirmishSetup(font_large=font_large, font_medium=font_medium, screen_size=screen_size_)
+        self.main_menu = MainMenu(screen_size_)
+        self.skirmish_setup = SkirmishSetup(screen_size_)
         self.victory_screen = None
 
         self.game_data = None
@@ -3191,7 +3188,7 @@ class GameManager:
         interface = None
         interface_rect = None
         if not spectate:
-            interface = ProductionInterface(hq=player_hq, font=self.font_medium)
+            interface = ProductionInterface(hq=player_hq)
             interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
         else:
             interface_rect = pg.Rect(0, 0, 0, 0)
@@ -3224,7 +3221,6 @@ class GameManager:
             "select_start": None,
             "select_rect": None,
             "ais": ais,
-            "font": self.font_medium,
             "interface_rect": interface_rect,
             "spectator": spectate,
             "teams": teams_list,
@@ -3567,8 +3563,6 @@ class GameManager:
             if g["player_hq"] and g["player_hq"].health <= 0:
                 self.state = GameState.DEFEAT
                 self.victory_screen = VictoryScreen(
-                    font_large=self.font_large,
-                    font_medium=self.font_medium,
                     is_victory=False,
                     all_stats=all_stats,
                     player_team=g["player_team"],
@@ -3587,8 +3581,6 @@ class GameManager:
                     self.state = GameState.VICTORY if is_player_victory else GameState.DEFEAT
 
                 self.victory_screen = VictoryScreen(
-                    font_large=self.font_large,
-                    font_medium=self.font_medium,
                     is_victory=is_player_victory,
                     all_stats=all_stats,
                     player_team=g.get("player_team"),
@@ -3716,9 +3708,7 @@ class GameManager:
                     result = self.skirmish_setup.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large, font_medium=self.font_medium, screen_size=self.screen.size
-                        )
+                        self.skirmish_setup = SkirmishSetup(self.screen.size)
 
                     elif result and result[0] == "start_game":
                         _, game_mode, size_choice, map_choice, spectate = result
@@ -3737,9 +3727,8 @@ class GameManager:
                     result = self.victory_screen.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(
-                            font_large=self.font_large, font_medium=self.font_medium, screen_size=self.screen.size
-                        )
+                        self.skirmish_setup = SkirmishSetup(self.screen.size)
+
                 pg.display.flip()
                 self.clock.tick(60)
         pg.quit()
@@ -3752,11 +3741,7 @@ def main() -> None:
     screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pg.display.set_caption("Paper Tigers")
     clock = pg.time.Clock()
-
-    font_large = pg.font.SysFont(None, 72)
-    font_medium = pg.font.SysFont(None, 28)
-
-    manager = GameManager(screen, clock, font_large, font_medium)
+    manager = GameManager(screen, clock)
     manager.run()
 
 

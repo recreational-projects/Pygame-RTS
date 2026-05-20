@@ -8,16 +8,18 @@ from typing import TYPE_CHECKING
 import pygame as pg
 from pygame.math import Vector2
 
+from modules.data_2d import MINI_MAP_HEIGHT, MINI_MAP_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE
 from modules.team import team_to_color
 
 if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
+    from modules.fog_of_war import FogOfWar2d
     from modules.team import Team
 
 
-def create_infantry_image(size: Point, team: Team) -> pg.Surface:
+def _create_infantry_image(size: Point, team: Team) -> pg.Surface:
     """Creates a simple pixel-art style image for an Infantry unit.
 
     :param size: Tuple of (width, height) for the surface.
@@ -42,7 +44,7 @@ def create_infantry_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_grenadier_image(size: Point, team: Team) -> pg.Surface:
+def _create_grenadier_image(size: Point, team: Team) -> pg.Surface:
     """Creates a simple pixel-art style image for a Grenadier unit.
 
     :param size: Tuple of (width, height) for the surface.
@@ -67,7 +69,7 @@ def create_grenadier_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_tank_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
+def _create_tank_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
     """Creates separate surfaces for tank body, turret, and barrel for modular rotation.
 
     :param team: The team enum for color selection.
@@ -90,7 +92,7 @@ def create_tank_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_tank(
+def _draw_tank(
     obj,  # pyrefly: ignore [implicit-any-parameter]
     surface: pg.Surface,
     camera: Camera2d,
@@ -142,7 +144,7 @@ def draw_tank(
         particle.draw_2d(surface, camera)
 
 
-def create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
+def _create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
     """Creates surfaces for MachineGunVehicle: body with wheels, turret, and MG barrel.
 
     :param team: The team enum for color selection.
@@ -167,7 +169,7 @@ def create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surfac
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_machinegunvehicle(
+def _draw_machinegunvehicle(
     obj,  # pyrefly: ignore [implicit-any-parameter]
     surface: pg.Surface,
     camera: Camera2d,
@@ -217,7 +219,7 @@ def draw_machinegunvehicle(
         particle.draw_2d(surface, camera)
 
 
-def create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
+def _create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
     """Surfaces for RocketArtillery: body with tracks, rectangular turret, triple rocket barrels.
 
     :param team: The team enum for color selection.
@@ -240,7 +242,7 @@ def create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface,
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_rocketartillery(
+def _draw_rocketartillery(
     obj,  # pyrefly: ignore [implicit-any-parameter]
     surface: pg.Surface,
     camera: Camera2d,
@@ -290,7 +292,7 @@ def draw_rocketartillery(
         particle.draw_2d(surface, camera)
 
 
-def create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
+def _create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
     """Surfaces for AttackHelicopter: fuselage, cockpit, tail rotor, skids, turret, and missile pod.
 
     :param team: The team enum for color selection.
@@ -315,7 +317,7 @@ def create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_attackhelicopter(
+def _draw_attackhelicopter(
     obj,  # pyrefly: ignore [implicit-any-parameter]
     surface: pg.Surface,
     camera: Camera2d,
@@ -373,7 +375,7 @@ def draw_attackhelicopter(
         particle.draw_2d(surface, camera)
 
 
-def create_headquarters_image(size: Point, team: Team) -> pg.Surface:
+def _create_headquarters_image(size: Point, team: Team) -> pg.Surface:
     """Static building image for Headquarters: multi-story with windows, antenna, flag.
 
     :param size: Tuple of (width, height) for the surface.
@@ -485,7 +487,7 @@ def create_headquarters_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_barracks_image(size: Point, team: Team) -> pg.Surface:
+def _create_barracks_image(size: Point, team: Team) -> pg.Surface:
     """Barracks: sloped roof, windows, door with gate details.
 
     :param size: Tuple of (width, height) for the surface.
@@ -584,7 +586,7 @@ def create_barracks_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_warfactory_image(size: Point, team: Team) -> pg.Surface:
+def _create_warfactory_image(size: Point, team: Team) -> pg.Surface:
     """WarFactory: industrial building with smokestack, windows, conveyor details.
 
     :param size: Tuple of (width, height) for the surface.
@@ -694,7 +696,7 @@ def create_warfactory_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_hangar_image(size: Point, team: Team) -> pg.Surface:
+def _create_hangar_image(size: Point, team: Team) -> pg.Surface:
     """Hangar: arched roof, control tower, doors for aircraft.
 
     :param size: Tuple of (width, height) for the surface.
@@ -780,7 +782,7 @@ def create_hangar_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_powerplant_image(size: Point, team: Team) -> pg.Surface:
+def _create_powerplant_image(size: Point, team: Team) -> pg.Surface:
     """PowerPlant: cooling towers, windows, exhaust pipes.
 
     :param size: Tuple of (width, height) for the surface.
@@ -898,7 +900,7 @@ def create_powerplant_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_oilderrick_image(size: Point, team: Team) -> pg.Surface:
+def _create_oilderrick_image(size: Point, team: Team) -> pg.Surface:
     """OilDerrick: derrick structure, platform, pump jack.
 
     :param size: Tuple of (width, height) for the surface.
@@ -988,7 +990,7 @@ def create_oilderrick_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_refinery_image(size: Point, team: Team) -> pg.Surface:
+def _create_refinery_image(size: Point, team: Team) -> pg.Surface:
     """Refinery: tanks, pipes, distillation tower.
 
     :param size: Tuple of (width, height) for the surface.
@@ -1081,7 +1083,7 @@ def create_refinery_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_shalefracker_image(size: Point, team: Team) -> pg.Surface:
+def _create_shalefracker_image(size: Point, team: Team) -> pg.Surface:
     """ShaleFracker: drilling rig with piston and wellhead.
 
     :param size: Tuple of (width, height) for the surface.
@@ -1157,7 +1159,7 @@ def create_shalefracker_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_blackmarket_image(size: Point, team: Team) -> pg.Surface:
+def _create_blackmarket_image(size: Point, team: Team) -> pg.Surface:
     """BlackMarket: tent-like structure with stalls and signage.
 
     :param size: Tuple of (width, height) for the surface.
@@ -1250,7 +1252,7 @@ def create_blackmarket_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
+def _create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface]:
     """Turret: base platform, rotating turret, gun barrel.
 
     :param team: The team enum for color selection.
@@ -1336,7 +1338,7 @@ def create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surfa
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_turret(
+def _draw_turret(
     obj,  # pyrefly: ignore [implicit-any-parameter]
     surface: pg.Surface,
     camera: Camera2d,
@@ -1381,28 +1383,129 @@ def draw_turret(
 
 # Drawing recipe dictionary for simple rotated units
 SIMPLE_DRAW_RECIPES = {
-    "Infantry": create_infantry_image,
-    "Grenadier": create_grenadier_image,
+    "Infantry": _create_infantry_image,
+    "Grenadier": _create_grenadier_image,
 }
 
 # Complex draw mappings
 COMPLEX_DRAW_RECIPES = {
-    "Tank": (create_tank_surfaces, draw_tank),
-    "MachineGunVehicle": (create_machinegunvehicle_surfaces, draw_machinegunvehicle),
-    "RocketArtillery": (create_rocketartillery_surfaces, draw_rocketartillery),
-    "AttackHelicopter": (create_attackhelicopter_surfaces, draw_attackhelicopter),
-    "Turret": (create_turret_surfaces, draw_turret),
+    "Tank": (_create_tank_surfaces, _draw_tank),
+    "MachineGunVehicle": (_create_machinegunvehicle_surfaces, _draw_machinegunvehicle),
+    "RocketArtillery": (_create_rocketartillery_surfaces, _draw_rocketartillery),
+    "AttackHelicopter": (_create_attackhelicopter_surfaces, _draw_attackhelicopter),
+    "Turret": (_create_turret_surfaces, _draw_turret),
 }
 
 # Static image recipes for buildings
 BUILDING_DRAW_RECIPES = {
-    "Headquarters": create_headquarters_image,
-    "Barracks": create_barracks_image,
-    "WarFactory": create_warfactory_image,
-    "Hangar": create_hangar_image,
-    "PowerPlant": create_powerplant_image,
-    "OilDerrick": create_oilderrick_image,
-    "Refinery": create_refinery_image,
-    "ShaleFracker": create_shalefracker_image,
-    "BlackMarket": create_blackmarket_image,
+    "Headquarters": _create_headquarters_image,
+    "Barracks": _create_barracks_image,
+    "WarFactory": _create_warfactory_image,
+    "Hangar": _create_hangar_image,
+    "PowerPlant": _create_powerplant_image,
+    "OilDerrick": _create_oilderrick_image,
+    "Refinery": _create_refinery_image,
+    "ShaleFracker": _create_shalefracker_image,
+    "BlackMarket": _create_blackmarket_image,
 }
+
+
+def draw_mini_map(
+    *,
+    screen: pg.Surface,
+    camera: Camera2d,
+    fog_of_war: FogOfWar2d,
+    map_width: int,
+    map_height: int,
+    map_color: pg.Color,
+    buildings,  # pyrefly: ignore [implicit-any-parameter]
+    all_units,  # pyrefly: ignore [implicit-any-parameter]
+    player_allies: frozenset[Team],
+) -> pg.Rect:
+    """
+    Renders scaled top-down map with terrain variation, entities, camera view outline.
+
+    :param screen: Main screen.
+    :param camera: Camera2d.
+    :param fog_of_war: FogOfWar instance.
+    :param map_width: Map width.
+    :param map_height: Map height.
+    :param map_color: Base map color tuple.
+    :param buildings: Building group.
+    :param all_units: Unit group.
+    :param player_allies: Allied teams for visibility.
+    :return: Minimap Rect.
+    """
+    # Renders scaled top-down map with terrain variation, entities, camera view outline.
+    mini_map_rect = pg.Rect(
+        SCREEN_WIDTH - MINI_MAP_WIDTH,
+        SCREEN_HEIGHT - MINI_MAP_HEIGHT,
+        MINI_MAP_WIDTH,
+        MINI_MAP_HEIGHT,
+    )
+    mini_map = pg.Surface((MINI_MAP_WIDTH, MINI_MAP_HEIGHT))
+    mini_map.fill((0, 0, 0))
+
+    num_tx = map_width // TILE_SIZE
+    num_ty = map_height // TILE_SIZE
+    scale_x = MINI_MAP_WIDTH / map_width
+    scale_y = MINI_MAP_HEIGHT / map_height
+    tile_mw = TILE_SIZE * scale_x
+    tile_mh = TILE_SIZE * scale_y
+
+    for tx in range(num_tx):
+        mx = tx * TILE_SIZE * scale_x
+        tile_center_x = (tx + 0.5) * TILE_SIZE
+        for ty in range(num_ty):
+            tile_center_y = (ty + 0.5) * TILE_SIZE
+            if not fog_of_war.is_explored((tile_center_x, tile_center_y)):
+                continue
+            my = ty * TILE_SIZE * scale_y
+            var_r = ((tx * 17 + ty * 31) % 41) - 20
+            var_g = ((tx * 23 + ty * 37) % 41) - 20
+            var_b = ((tx * 29 + ty * 41) % 41) - 20
+            tile_r = max(0, min(255, map_color.r + var_r))
+            tile_g = max(0, min(255, map_color.g + var_g))
+            tile_b = max(0, min(255, map_color.b + var_b))
+            if not fog_of_war.is_visible((tile_center_x, tile_center_y)):
+                avg = (tile_r + tile_g + tile_b) // 3
+                tile_r = tile_g = tile_b = avg
+            pg.draw.rect(mini_map, (tile_r, tile_g, tile_b), (mx, my, tile_mw, tile_mh))
+            crater_seed = (tx * 123 + ty * 456) % 100
+            if crater_seed < 5:
+                cx = mx + tile_mw / 2
+                cy = my + tile_mh / 2
+                cr = tile_mw / 4
+                dark_r = max(0, tile_r - 40)
+                dark_g = max(0, tile_g - 40)
+                dark_b = max(0, tile_b - 40)
+                pg.draw.circle(mini_map, (dark_r, dark_g, dark_b), (int(cx), int(cy)), int(cr))
+
+    for building in buildings:
+        if (
+            building.health > 0
+            and (building.team in player_allies or building.is_seen)
+            and fog_of_war.is_explored(building.position)
+        ):
+            color = team_to_color[building.team]
+            x = int(building.position.x * scale_x)
+            y = int(building.position.y * scale_y)
+            pg.draw.rect(mini_map, color, (x - 2, y - 2, 5, 5))
+
+    for unit in all_units:
+        if unit.health > 0 and (unit.team in player_allies or fog_of_war.is_visible(unit.position)):
+            color = team_to_color[unit.team]
+            x = int(unit.position.x * scale_x)
+            y = int(unit.position.y * scale_y)
+            pg.draw.circle(mini_map, color, (x, y), 2)
+
+    cam_rect = pg.Rect(
+        camera.rect.x * scale_x,
+        camera.rect.y * scale_y,
+        camera.rect.width * scale_x,
+        camera.rect.height * scale_y,
+    )
+    pg.draw.rect(mini_map, (255, 255, 255), cam_rect, 1)
+
+    screen.blit(mini_map, (SCREEN_WIDTH - MINI_MAP_WIDTH, SCREEN_HEIGHT - MINI_MAP_HEIGHT))
+    return mini_map_rect

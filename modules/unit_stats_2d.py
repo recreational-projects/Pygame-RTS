@@ -1,10 +1,14 @@
+"""Structures data in `modules.data_2d.UNIT_CLASSES`."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Self, override
+from typing import Self
 
 from dataclass_wizard import fromdict  # handles structuring from nested dicts
 from dataclass_wizard.serial_json import JSONWizard
+
+from modules.data_2d import UNIT_CLASSES
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -20,9 +24,24 @@ class WeaponStats:
     cooldown: int = 0
 
 
+def get_unit_cost(unit_cls_str: str) -> int:
+    """Returns the cost of a unit before it is instantiated, e.g pre-purchase."""
+    unit_stats = UnitStats.from_data(unit_cls_str)
+    return unit_stats.cost
+
+
+def get_unit_size(unit_cls_str: str) -> tuple[int, int]:
+    """Returns the size of a unit before it is instantiated, e.g pre-purchase."""
+    unit_stats = UnitStats.from_data(unit_cls_str)
+    return unit_stats.size
+
+
 @dataclass(kw_only=True, frozen=True)
 class UnitStats(JSONWizard):
-    """Static unit stats."""
+    """Static unit stats.
+
+    Inherits from JSONWizard to allow structuring from nested dicts.
+    """
 
     cost: int
     hp: int
@@ -45,10 +64,13 @@ class UnitStats(JSONWizard):
     weapons: list[WeaponStats] = field(default_factory=list)
     producible: list[str] = field(default_factory=list)
 
-    @override
+    @classmethod
+    def from_data(cls, unit_type_str: str) -> Self:
+        return cls._from_dict(UNIT_CLASSES[unit_type_str])
+
     @classmethod
     # pyrefly: ignore [implicit-any-type-argument]
-    def from_dict(cls, o: dict) -> Self:
+    def _from_dict(cls, o: dict) -> Self:
         instance = fromdict(cls, o)
         if instance.air and (instance.fly_height is None or instance.fly_height <= 0):
             raise ValueError("`air` units must have a `fly_height` > 0")
