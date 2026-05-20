@@ -41,7 +41,7 @@ class GameObject(pg.sprite.Sprite, ABC):
         self.under_attack_timer = 0
         self.selected = False
         self.is_seen = False
-        self.body_angle = 0
+        self.body_angle: float = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         self.image = pg.Surface((32, 32))
 
