@@ -965,7 +965,7 @@ class Unit(GameObjectIso):
             particle.draw_iso(surface, camera)
 
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:
-        closest = closest_point_on_rect(target_building.rect, self.position)
+        closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
         dir_to_closest = Vector2(closest) - self.position
         dist_to_closest = dir_to_closest.length()
         if dist_to_closest <= self.attack_range:
@@ -978,7 +978,7 @@ class Unit(GameObjectIso):
         max_spread = min(15, self.attack_range * 0.15)
         spread_dist = random.uniform(-max_spread, max_spread)
         target_pos += perp_dir * spread_dist
-        new_closest = closest_point_on_rect(target_building.rect, target_pos)
+        new_closest = closest_point_on_rect(rect=target_building.rect, pos=target_pos)
         new_dist = Vector2(new_closest).distance_to(target_pos)
         if new_dist > self.attack_range:
             overage = new_dist - self.attack_range
@@ -1105,13 +1105,13 @@ class Unit(GameObjectIso):
                     self.move_target = None
             if self.attack_target and self.attack_target.health > 0:
                 if self.attack_target.is_building:
-                    closest = closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                     dir_to_closest = Vector2(closest) - self.position
                     dist = dir_to_closest.length()
                 else:
                     dist = self.distance_to(self.attack_target.position)
                 if self.attack_target.is_building:
-                    closest_enemy = closest_point_on_rect(self.attack_target.rect, self.position)
+                    closest_enemy = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                     dir_to_enemy = Vector2(closest_enemy) - self.position
                 else:
                     dir_to_enemy = Vector2(self.attack_target.position) - self.position
@@ -1172,7 +1172,7 @@ class Unit(GameObjectIso):
             and self.last_shot_time <= 0
         ):
             if self.attack_target.is_building:
-                closest = closest_point_on_rect(self.attack_target.rect, self.position)
+                closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                 dist = Vector2(closest).distance_to(self.position)
                 aim_target = self.attack_target
             else:
@@ -1189,7 +1189,7 @@ class Unit(GameObjectIso):
             return
         weapon = self.weapons[0]
         if target.is_building:
-            closest = closest_point_on_rect(target.rect, self.position)
+            closest = closest_point_on_rect(rect=target.rect, pos=self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
         else:
@@ -1975,7 +1975,9 @@ class AI:
         avg_pos = total_pos / num_to_send
         formation_type = "v" if self.personality in ["aggressive", "rusher"] else "line"
         spacing = 40 * self.formation_spacing_mult
-        positions = calculate_formation_positions_iso(avg_pos, target_center, num_to_send, formation_type, spacing)
+        positions = calculate_formation_positions_iso(
+            center=avg_pos, target=target_center, num_units=num_to_send, formation_type=formation_type, spacing=spacing
+        )
         positions = [(max(0, min(p[0], map_width)), max(0, min(p[1], map_height))) for p in positions]
         attackers = friendly_units[:num_to_send]
         for unit, pos in zip(attackers, positions):
@@ -1990,7 +1992,11 @@ class AI:
             return
         spacing = 30 * self.formation_spacing_mult
         positions = calculate_formation_positions_iso(
-            focal_point, focal_point, len(idle_units), formation_type, spacing
+            center=focal_point,
+            target=focal_point,
+            num_units=len(idle_units),
+            formation_type=formation_type,
+            spacing=spacing,
         )
         for unit, pos in zip(idle_units, positions):
             unit.move_target = pos
@@ -2007,7 +2013,9 @@ class AI:
         target.x = max(0, min(target.x, map_width))
         target.y = max(0, min(target.y, map_height))
         formation_type = "line" if self.personality == "defensive" else "v"
-        positions = calculate_formation_positions_iso(target, target, len(friendly_buildings), formation_type)
+        positions = calculate_formation_positions_iso(
+            center=target, target=target, num_units=len(friendly_buildings), formation_type=formation_type
+        )
         for i, b in enumerate([b for b in friendly_buildings if hasattr(b, "rally_point")]):
             if i < len(positions):
                 b.rally_point = Vector2(positions[i])
@@ -2376,7 +2384,9 @@ class AI:
             scout_tx = max(0, min(scout_target[0] + random.uniform(-200, 200), map_width))
             scout_ty = max(0, min(scout_target[1] + random.uniform(-200, 200), map_height))
             idle_units = [u for u in friendly_units if u.health > 0 and u.move_target is None][:8]
-            positions = calculate_formation_positions_iso((scout_tx, scout_ty), scout_target, len(idle_units), "line")
+            positions = calculate_formation_positions_iso(
+                center=(scout_tx, scout_ty), target=scout_target, num_units=len(idle_units), formation_type="line"
+            )
             for scout, pos in zip(idle_units, positions):
                 scout.move_target = pos
             self.scout_timer = random.randint(0, scout_interval // 2)
@@ -2414,7 +2424,10 @@ class AI:
                     patrol_tx = random.uniform(0, map_width)
                     patrol_ty = random.uniform(0, map_height)
                 positions = calculate_formation_positions_iso(
-                    (patrol_tx, patrol_ty), (patrol_tx, patrol_ty), num_patrol, "line"
+                    center=(patrol_tx, patrol_ty),
+                    target=(patrol_tx, patrol_ty),
+                    num_units=num_patrol,
+                    formation_type="line",
                 )
                 for unit, pos in zip(idle_in_base[:num_patrol], positions):
                     unit.move_target = pos
@@ -2715,7 +2728,7 @@ class ProductionInterface:
 
 def get_iso_bounds(map_w: int, map_h: int, zoom: float = 1.0) -> tuple[float, float, float, float]:
     corners = [(0, 0), (map_w, 0), (map_w, map_h), (0, map_h)]
-    isos = [absolute_world_to_iso(c, zoom) for c in corners]
+    isos = [absolute_world_to_iso(world_pos=c, zoom=zoom) for c in corners]
     min_x = min(ix for ix, iy in isos)
     max_x = max(ix for ix, iy in isos)
     min_y = min(iy for ix, iy in isos)
@@ -2764,10 +2777,10 @@ def draw_mini_map(
             c2 = (c1[0] + tile_size_world, c1[1])
             c3 = (c2[0], c2[1] + tile_size_world)
             c4 = (c1[0], c3[1])
-            iso_c1 = absolute_world_to_iso(c1, mini_zoom)
-            iso_c2 = absolute_world_to_iso(c2, mini_zoom)
-            iso_c3 = absolute_world_to_iso(c3, mini_zoom)
-            iso_c4 = absolute_world_to_iso(c4, mini_zoom)
+            iso_c1 = absolute_world_to_iso(world_pos=c1, zoom=mini_zoom)
+            iso_c2 = absolute_world_to_iso(world_pos=c2, zoom=mini_zoom)
+            iso_c3 = absolute_world_to_iso(world_pos=c3, zoom=mini_zoom)
+            iso_c4 = absolute_world_to_iso(world_pos=c4, zoom=mini_zoom)
             draw_points = [
                 (iso_c1[0] + draw_offset_x, iso_c1[1] + draw_offset_y),
                 (iso_c2[0] + draw_offset_x, iso_c2[1] + draw_offset_y),
@@ -2787,14 +2800,14 @@ def draw_mini_map(
             and (building.team in player_allies or building.is_seen)
             and fog_of_war.is_explored(building.position)
         ):
-            iso_pos = absolute_world_to_iso(building.position, mini_zoom)
+            iso_pos = absolute_world_to_iso(world_pos=building.position, zoom=mini_zoom)
             draw_pos = (iso_pos[0] + draw_offset_x, iso_pos[1] + draw_offset_y)
             size = 3
             color = team_to_color[building.team]
             pg.draw.rect(mini_map, color, (draw_pos[0] - size, draw_pos[1] - size, size * 2, size * 2))
     for unit in all_units:
         if unit.health > 0 and (unit.team in player_allies or fog_of_war.is_visible(unit.position)):
-            iso_pos = absolute_world_to_iso(unit.position, mini_zoom)
+            iso_pos = absolute_world_to_iso(world_pos=unit.position, zoom=mini_zoom)
             draw_pos = (iso_pos[0] + draw_offset_x, iso_pos[1] + draw_offset_y)
             color = team_to_color[unit.team]
             pg.draw.circle(mini_map, color, (int(draw_pos[0]), int(draw_pos[1])), 1)
@@ -2806,7 +2819,7 @@ def draw_mini_map(
         cam_world_br,
         (cam_world_tl[0], cam_world_br[1]),
     ]
-    iso_cams = [absolute_world_to_iso(c, mini_zoom) for c in cam_corners]
+    iso_cams = [absolute_world_to_iso(world_pos=c, zoom=mini_zoom) for c in cam_corners]
     cam_draw_points = [(ix + draw_offset_x, iy + draw_offset_y) for ix, iy in iso_cams]
     pg.draw.polygon(mini_map, (255, 255, 255), cam_draw_points, 1)
     screen.blit(mini_map, (SCREEN_WIDTH - MINI_MAP_WIDTH, SCREEN_HEIGHT - MINI_MAP_HEIGHT))
@@ -2918,7 +2931,7 @@ def handle_attacks(
         for obj in candidates:
             if hasattr(obj, "team") and obj.team not in unit_allies and hasattr(obj, "health") and obj.health > 0:
                 if obj.is_building:
-                    closest_pt = closest_point_on_rect(obj.rect, entity.position)
+                    closest_pt = closest_point_on_rect(rect=obj.rect, pos=entity.position)
                     dist = Vector2(closest_pt).distance_to(entity.position)
                 else:
                     dist = entity.distance_to(obj.position)
@@ -2945,7 +2958,7 @@ def handle_attacks(
             continue
         entity.attack_target = closest_target
         if closest_target.is_building:
-            closest_pt = closest_point_on_rect(closest_target.rect, entity.position)
+            closest_pt = closest_point_on_rect(rect=closest_target.rect, pos=entity.position)
             dir_vec = Vector2(closest_pt) - entity.position
             dist_to_target = dir_vec.length()
         else:
@@ -3373,9 +3386,7 @@ class GameManager:
                                         unit.path = []
                             else:
                                 formation_positions = calculate_formation_positions_iso(
-                                    center=world_pos,
-                                    target=world_pos,
-                                    num_units=len(g["selected_units"]),
+                                    center=world_pos, target=world_pos, num_units=len(g["selected_units"])
                                 )
                                 for unit, pos in zip(g["selected_units"], formation_positions):
                                     unit.move_target = pos

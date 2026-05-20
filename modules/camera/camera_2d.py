@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, override
 
 import pygame as pg
 
-from modules.camera.camera import Camera
+from modules.camera.camera import _Camera
 from modules.data_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from modules.game_object.game_object import _GameObject
 
 
-class Camera2d(Camera):
+class Camera2d(_Camera):
     """Camera for 2d game."""
 
     @override

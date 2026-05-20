@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, override
 
 import pygame as pg
 
-from modules.camera.camera import Camera
+from modules.camera.camera import _Camera
 from modules.data_iso import (
     PAN_EDGE,
     PAN_SPEED,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from modules.game_object.game_object import _GameObject
 
 
-class CameraIso(Camera):
+class CameraIso(_Camera):
     """Camera for isometric game."""
 
     target_rect: pg.Rect = field(init=False)
