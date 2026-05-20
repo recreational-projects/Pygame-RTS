@@ -175,7 +175,8 @@ def find_free_spawn_position_2d(
 
 
 def check_collision_2d(
-    entity,  # noqa: ANN001 pyrefly: ignore [implicit-any-parameter]
+    # pyrefly: ignore [implicit-any-parameter]
+    entity,  # noqa: ANN001
     projectile: Projectile,
 ) -> bool:
     """

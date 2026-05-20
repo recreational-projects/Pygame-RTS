@@ -13,6 +13,7 @@ dependencies = [
 dev = [
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
+    "pytest>=9.0.3",
     "ruff>=0.15.13",
 ]
 
@@ -64,6 +65,9 @@ extend-safe-fixes = [
 "modules/screens.py" = [
     "ANN401", # any-type
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
+]
+"tests/*.py" = [
+    "D",
 ]
 
 [tool.pyrefly]

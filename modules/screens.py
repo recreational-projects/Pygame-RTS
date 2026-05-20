@@ -333,7 +333,7 @@ class VictoryScreen:
     """
 
     screen_size: InitVar[IntPoint]
-    is_victory: bool
+    is_victory: bool | None
     # pyrefly: ignore [implicit-any-type-argument]
     all_stats: dict
     player_team: Team | None = None
