@@ -90,40 +90,40 @@ def create_tank_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surface
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_tank(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_tank(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
     """Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
     Handles selection circle and health bar.
 
-    :param self: The Tank instance.
+    :param obj: The Tank instance.
     :param surface: The Pygame surface to draw on.
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
     # Handles selection circle and health bar.
-    if self.health <= 0:
+    if obj.health <= 0:
         return
-    screen_pos = camera.world_to_screen(self.position)
+    screen_pos = camera.world_to_screen(obj.position)
     zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(30 * zoom), int(20 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
+    body_scaled = pg.transform.smoothscale(obj.body_surf, (int(30 * zoom), int(20 * zoom)))
+    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(obj.body_angle))
     body_rect = rotated_body.get_rect(center=screen_pos)
     surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(12 * zoom), int(12 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
+    turret_scaled = pg.transform.smoothscale(obj.turret_surf, (int(12 * zoom), int(12 * zoom)))
+    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(obj.turret_angle))
     turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
+    offset_rot = obj.turret_offset.rotate_rad(obj.body_angle) * zoom
     turret_center = Vector2(body_rect.center) + offset_rot
     turret_rect.center = turret_center
     surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(20 * zoom), int(6 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
+    barrel_scaled = pg.transform.smoothscale(obj.barrel_surf, (int(20 * zoom), int(6 * zoom)))
+    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(obj.turret_angle))
     barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
+    barrel_offset_rot = obj.barrel_offset.rotate_rad(obj.turret_angle) * zoom
     barrel_center = Vector2(turret_center) + barrel_offset_rot
     barrel_rect.center = barrel_center
     surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
+    if obj.selected:
         radius = 15 * zoom + 3
         pg.draw.circle(
             surface,
@@ -132,8 +132,8 @@ def draw_tank(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | No
             int(radius),
             int(2 * zoom),
         )
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
+    obj.draw_health_bar(surface, camera, mouse_pos)
+    for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
 
@@ -162,38 +162,38 @@ def create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surfac
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_machinegunvehicle(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
     """Custom draw for MachineGunVehicle, similar to Tank.
 
-    :param self: The MachineGunVehicle instance.
+    :param obj: The MachineGunVehicle instance.
     :param surface: The Pygame surface to draw on.
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for MachineGunVehicle, similar to Tank.
-    if self.health <= 0:
+    if obj.health <= 0:
         return
-    screen_pos = camera.world_to_screen(self.position)
+    screen_pos = camera.world_to_screen(obj.position)
     zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(35 * zoom), int(25 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
+    body_scaled = pg.transform.smoothscale(obj.body_surf, (int(35 * zoom), int(25 * zoom)))
+    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(obj.body_angle))
     body_rect = rotated_body.get_rect(center=screen_pos)
     surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(8 * zoom), int(8 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
+    turret_scaled = pg.transform.smoothscale(obj.turret_surf, (int(8 * zoom), int(8 * zoom)))
+    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(obj.turret_angle))
     turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
+    offset_rot = obj.turret_offset.rotate_rad(obj.body_angle) * zoom
     turret_center = Vector2(body_rect.center) + offset_rot
     turret_rect.center = turret_center
     surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(25 * zoom), int(2 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
+    barrel_scaled = pg.transform.smoothscale(obj.barrel_surf, (int(25 * zoom), int(2 * zoom)))
+    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(obj.turret_angle))
     barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
+    barrel_offset_rot = obj.barrel_offset.rotate_rad(obj.turret_angle) * zoom
     barrel_center = Vector2(turret_center) + barrel_offset_rot
     barrel_rect.center = barrel_center
     surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
+    if obj.selected:
         radius = 17.5 * zoom + 3
         pg.draw.circle(
             surface,
@@ -202,8 +202,8 @@ def draw_machinegunvehicle(self, surface: pg.Surface, camera: Camera2d, mouse_po
             int(radius),
             int(2 * zoom),
         )
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
+    obj.draw_health_bar(surface, camera, mouse_pos)
+    for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
 
@@ -230,38 +230,38 @@ def create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface,
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_rocketartillery(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_rocketartillery(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
     """Custom draw for RocketArtillery, analogous to previous vehicle draws.
 
-    :param self: The RocketArtillery instance.
+    :param obj: The RocketArtillery instance.
     :param surface: The Pygame surface to draw on.
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for RocketArtillery, analogous to previous vehicle draws.
-    if self.health <= 0:
+    if obj.health <= 0:
         return
-    screen_pos = camera.world_to_screen(self.position)
+    screen_pos = camera.world_to_screen(obj.position)
     zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(40 * zoom), int(25 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
+    body_scaled = pg.transform.smoothscale(obj.body_surf, (int(40 * zoom), int(25 * zoom)))
+    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(obj.body_angle))
     body_rect = rotated_body.get_rect(center=screen_pos)
     surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(12 * zoom), int(12 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
+    turret_scaled = pg.transform.smoothscale(obj.turret_surf, (int(12 * zoom), int(12 * zoom)))
+    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(obj.turret_angle))
     turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
+    offset_rot = obj.turret_offset.rotate_rad(obj.body_angle) * zoom
     turret_center = Vector2(body_rect.center) + offset_rot
     turret_rect.center = turret_center
     surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(30 * zoom), int(8 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
+    barrel_scaled = pg.transform.smoothscale(obj.barrel_surf, (int(30 * zoom), int(8 * zoom)))
+    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(obj.turret_angle))
     barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
+    barrel_offset_rot = obj.barrel_offset.rotate_rad(obj.turret_angle) * zoom
     barrel_center = Vector2(turret_center) + barrel_offset_rot
     barrel_rect.center = barrel_center
     surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
+    if obj.selected:
         radius = 20 * zoom + 3
         pg.draw.circle(
             surface,
@@ -270,8 +270,8 @@ def draw_rocketartillery(self, surface: pg.Surface, camera: Camera2d, mouse_pos:
             int(radius),
             int(2 * zoom),
         )
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
+    obj.draw_health_bar(surface, camera, mouse_pos)
+    for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
 
@@ -300,46 +300,46 @@ def create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_attackhelicopter(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
     """Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
 
-    :param self: The AttackHelicopter instance.
+    :param obj: The AttackHelicopter instance.
     :param surface: The Pygame surface to draw on.
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
-    if self.health <= 0:
+    if obj.health <= 0:
         return
-    fly_screen_pos = camera.world_to_screen((self.position.x, self.position.y - self.fly_height))
+    fly_screen_pos = camera.world_to_screen((obj.position.x, obj.position.y - obj.fly_height))
     zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(25 * zoom), int(15 * zoom)))
-    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(self.body_angle))
+    body_scaled = pg.transform.smoothscale(obj.body_surf, (int(25 * zoom), int(15 * zoom)))
+    rotated_body = pg.transform.rotate(body_scaled, -math.degrees(obj.body_angle))
     body_rect = rotated_body.get_rect(center=fly_screen_pos)
     surface.blit(rotated_body, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(8 * zoom), int(6 * zoom)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
+    turret_scaled = pg.transform.smoothscale(obj.turret_surf, (int(8 * zoom), int(6 * zoom)))
+    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(obj.turret_angle))
     turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
+    offset_rot = obj.turret_offset.rotate_rad(obj.body_angle) * zoom
     turret_center = Vector2(body_rect.center) + offset_rot
     turret_rect.center = turret_center
     surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(12 * zoom), int(2 * zoom)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
+    barrel_scaled = pg.transform.smoothscale(obj.barrel_surf, (int(12 * zoom), int(2 * zoom)))
+    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(obj.turret_angle))
     barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
+    barrel_offset_rot = obj.barrel_offset.rotate_rad(obj.turret_angle) * zoom
     barrel_center = Vector2(turret_center) + barrel_offset_rot
     barrel_rect.center = barrel_center
     surface.blit(rotated_barrel, barrel_rect.topleft)
     rotor_size = int(20 * zoom)
     pg.draw.circle(
         surface,
-        self.team_color,
+        obj.team_color,
         (int(fly_screen_pos[0]), int(fly_screen_pos[1])),
         rotor_size // 2,
         int(2 * zoom),
     )  # Rotor blades
-    if self.selected:
+    if obj.selected:
         radius = 12.5 * zoom + 3
         pg.draw.circle(
             surface,
@@ -348,8 +348,8 @@ def draw_attackhelicopter(self, surface: pg.Surface, camera: Camera2d, mouse_pos
             int(radius),
             int(2 * zoom),
         )
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
+    obj.draw_health_bar(surface, camera, mouse_pos)
+    for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
 
@@ -1316,41 +1316,41 @@ def create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surfa
     return body_surf, turret_surf, barrel_surf
 
 
-def draw_turret(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
+def draw_turret(obj, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
     """Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
 
-    :param self: The Turret instance.
+    :param obj: The Turret instance.
     :param surface: The Pygame surface to draw on.
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
     # Custom draw for Turret: no body rotation (static building), turret and barrel rotate.
-    if self.health <= 0:
+    if obj.health <= 0:
         return
-    screen_pos = camera.world_to_screen(self.position)
+    screen_pos = camera.world_to_screen(obj.position)
     zoom = camera.zoom
-    body_scaled = pg.transform.smoothscale(self.body_surf, (int(30 * zoom * 0.8), int(30 * zoom * 0.8)))
+    body_scaled = pg.transform.smoothscale(obj.body_surf, (int(30 * zoom * 0.8), int(30 * zoom * 0.8)))
     body_rect = body_scaled.get_rect(center=screen_pos)
     surface.blit(body_scaled, body_rect.topleft)
-    turret_scaled = pg.transform.smoothscale(self.turret_surf, (int(10 * zoom * 0.8), int(10 * zoom * 0.8)))
-    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(self.turret_angle))
+    turret_scaled = pg.transform.smoothscale(obj.turret_surf, (int(10 * zoom * 0.8), int(10 * zoom * 0.8)))
+    rotated_turret = pg.transform.rotate(turret_scaled, -math.degrees(obj.turret_angle))
     turret_rect = rotated_turret.get_rect()
-    offset_rot = self.turret_offset.rotate_rad(self.body_angle) * zoom
+    offset_rot = obj.turret_offset.rotate_rad(obj.body_angle) * zoom
     turret_center = Vector2(body_rect.center) + offset_rot
     turret_rect.center = turret_center
     surface.blit(rotated_turret, turret_rect.topleft)
-    barrel_scaled = pg.transform.smoothscale(self.barrel_surf, (int(10 * zoom * 0.8), int(2.5 * zoom * 0.8)))
-    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(self.turret_angle))
+    barrel_scaled = pg.transform.smoothscale(obj.barrel_surf, (int(10 * zoom * 0.8), int(2.5 * zoom * 0.8)))
+    rotated_barrel = pg.transform.rotate(barrel_scaled, -math.degrees(obj.turret_angle))
     barrel_rect = rotated_barrel.get_rect()
-    barrel_offset_rot = self.barrel_offset.rotate_rad(self.turret_angle) * zoom
+    barrel_offset_rot = obj.barrel_offset.rotate_rad(obj.turret_angle) * zoom
     barrel_center = Vector2(turret_center) + barrel_offset_rot
     barrel_rect.center = barrel_center
     surface.blit(rotated_barrel, barrel_rect.topleft)
-    if self.selected:
-        screen_rect = camera.get_screen_rect(self.rect)
+    if obj.selected:
+        screen_rect = camera.get_screen_rect(obj.rect)
         pg.draw.rect(surface, (255, 255, 0), screen_rect, int(3 * zoom))
-    self.draw_health_bar(surface, camera, mouse_pos)
-    for particle in self.plasma_burn_particles:
+    obj.draw_health_bar(surface, camera, mouse_pos)
+    for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
 

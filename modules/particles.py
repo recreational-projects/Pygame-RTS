@@ -15,7 +15,10 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_2d import Camera2d
     from modules.camera.camera_iso import CameraIso
+    from modules.game_object_2d import GameObject as GameObject2d
+    from modules.game_object_iso import GameObject as GameObjectIso
     from modules.team import Team
+
 
 PARTICLES_PER_EXPLOSION_ISO = 3
 PARTICLES_PER_EXPLOSION_2D = 20
@@ -152,7 +155,7 @@ class PlasmaBurnParticle(_Particle):
     Used for damage burn effects on entities.
     """
 
-    def __init__(self, pos: Point, entity, color: pg.Color, lifetime: int) -> None:
+    def __init__(self, pos: Point, entity: GameObject2d | GameObjectIso, color: pg.Color, lifetime: int) -> None:
         """:param pos: Initial position (unused, as it follows entity).
         :param entity: Entity to attach to.
         :param color: Pygame Color for the particle.

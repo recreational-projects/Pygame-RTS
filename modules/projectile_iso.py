@@ -32,22 +32,30 @@ class Projectile(pg.sprite.Sprite):
         self.angle = math.atan2(self.direction.y, self.direction.x)
         self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
         color = team_to_color[team]
-        for i in range(self.length):
-            alpha = int(255 * (i / self.length))
-            pg.draw.line(self.image, (color.r, color.g, color.b, alpha), (i, 0), (i, self.width), 1)
+        if self.image is not None:  # TODO: type guard - not sure why needed
+            for i in range(self.length):
+                alpha = int(255 * (i / self.length))
+                pg.draw.line(self.image, (color.r, color.g, color.b, alpha), (i, 0), (i, self.width), 1)
 
-        self.rect = self.image.get_rect(center=self.position)
+            self.rect = self.image.get_rect(center=self.position)
+
         self.trail = deque(maxlen=5)
 
     def update(self) -> None:
         self.trail.append(self.position.copy())
         self.position += self.direction * self.speed
         self.age += 1
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
         self.rect.center = self.position
         if self.age >= self.lifetime:
             self.kill()
 
     def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
         screen_rect = camera.get_screen_rect(self.rect)
         if not screen_rect.colliderect((0, 0, camera.width, camera.height)):
             return
@@ -68,8 +76,9 @@ class Projectile(pg.sprite.Sprite):
 
         scaled_length = int(self.length * camera.zoom)
         scaled_width = int(self.width * camera.zoom)
-        if scaled_length > 0 and scaled_width > 0:
-            scaled_image = pg.transform.smoothscale(self.image, (scaled_length, scaled_width))
-            rotated_image = pg.transform.rotate(scaled_image, -math.degrees(self.angle))
-            rot_rect = rotated_image.get_rect(center=screen_pos)
-            surface.blit(rotated_image, rot_rect.topleft)
+        if self.image is not None:  # TODO: type guard - not sure why needed
+            if scaled_length > 0 and scaled_width > 0:
+                scaled_image = pg.transform.smoothscale(self.image, (scaled_length, scaled_width))
+                rotated_image = pg.transform.rotate(scaled_image, -math.degrees(self.angle))
+                rot_rect = rotated_image.get_rect(center=screen_pos)
+                surface.blit(rotated_image, rot_rect.topleft)
