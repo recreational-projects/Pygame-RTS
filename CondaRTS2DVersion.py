@@ -534,7 +534,7 @@ class Unit(GameObject2d):
         projectiles.add(proj)
         self.last_shot_time = self.current_weapon.cooldown
         self.turret_angle = math.atan2(direction.y, direction.x)
-        create_explosion_2d(self.position, pg.sprite.Group(), self.team, 3)
+        create_explosion_2d(position=self.position, particles=pg.sprite.Group(), team=self.team, count=3)
 
 
 # =============================================================================
@@ -1585,7 +1585,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         for e in enemy_units + enemy_buildings:
             if check_collision_2d(e, projectile):
                 if e.take_damage(projectile.damage):
-                    create_explosion_2d(e.position, particles, e.team)
+                    create_explosion_2d(position=e.position, particles=particles, team=e.team)
                     attacker_hq = g.hqs[projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:

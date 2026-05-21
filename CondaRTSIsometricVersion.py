@@ -1210,7 +1210,7 @@ class Unit(GameObjectIso):
         proj = Projectile(self.position, direction, weapon["damage"], self.team, weapon)
         projectiles.add(proj)  # FIXME: crash here: AttributeError: 'NoneType' object has no attribute 'add'
         self.last_shot_time = weapon["cooldown"]
-        create_explosion_iso(self.position, pg.sprite.Group(), self.team, 3)
+        create_explosion_iso(position=self.position, particles=pg.sprite.Group(), team=self.team, count=3)
         if hasattr(self, "sound") and self.sound:
             self.sound.play()
 
@@ -2986,7 +2986,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         for e in enemy_units + enemy_buildings:
             if check_collision(e, projectile):
                 if e.take_damage(projectile.damage):
-                    create_explosion_iso(e.position, particles, e.team)
+                    create_explosion_iso(position=e.position, particles=particles, team=e.team)
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:

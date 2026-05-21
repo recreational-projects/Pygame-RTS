@@ -25,6 +25,7 @@ PARTICLES_PER_EXPLOSION_2D = 20
 
 
 def create_explosion_2d(
+    *,
     position: Point,
     particles: pg.sprite.Group[_Particle],
     team: Team,
@@ -48,6 +49,7 @@ def create_explosion_2d(
 
 
 def create_explosion_iso(
+    *,
     position: Point,
     particles: pg.sprite.Group[_Particle],
     team: Team,
