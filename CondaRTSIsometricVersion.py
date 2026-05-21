@@ -332,7 +332,7 @@ def is_valid_building_position(
     has_nearby_friendly = False
     for building in buildings:
         if building.team == team and building.health > 0:
-            e_size = building.size
+            e_size = UNIT_CLASSES[building.unit_type]["size"]
             half_w_e, half_h_e = e_size[0] / 2, e_size[1] / 2
             min_dist = max(half_w_n + half_w_e, half_h_n + half_h_e) + margin
             dist = math.hypot(proposed_center[0] - building.position.x, proposed_center[1] - building.position.y)
@@ -1297,10 +1297,9 @@ class Headquarters(Unit):
             building.map_height = self.map_height
             if unit_type in ["WarFactory", "Barracks", "Hangar"]:
                 building.parent_hq = self
-
             all_buildings.add(building)
             self.stats["buildings_constructed"] += 1
-            self.credits -= building.cost
+            self.credits -= UNIT_CLASSES[unit_type]["cost"]
             self.pending_building = None
 
 
@@ -3294,7 +3293,7 @@ class GameManager:
                                 building_to_sell = result[1]
                                 if building_to_sell in g["global_buildings"]:
                                     g["global_buildings"].remove(building_to_sell)
-                                    g["player_hq"].credits += building_to_sell.cost // 2
+                                    g["player_hq"].credits += UNIT_CLASSES[building_to_sell.unit_type]["cost"] // 2
                                     if g["selected_building"] == building_to_sell:
                                         g["selected_building"] = None
                                         g["interface"].update_producer(g["player_hq"])
