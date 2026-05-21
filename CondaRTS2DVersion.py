@@ -383,7 +383,6 @@ class Unit(GameObject2d):
                 self.turret_angle = math.atan2(dir_to_enemy.y, dir_to_enemy.x)
                 if dist <= self.attack_range:
                     # Stop moving and fight
-                    original_move_target = self.move_target
                     self.move_target = None
                     # Face the enemy
                     self.body_angle = self.turret_angle
@@ -809,14 +808,13 @@ class AI:
         self.preferred_build_direction = build_dir
         self.build_bias_strength = 0.3
 
-    def assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings) -> None:
+    def assess_situation(self, *, friendly_units, friendly_buildings, enemy_units) -> None:
         """
         Evaluates economy, military, threats to adjust priorities dynamically.
 
         :param friendly_units: List of friendly units.
         :param friendly_buildings: List of friendly buildings.
         :param enemy_units: List of enemy units.
-        :param enemy_buildings: List of enemy buildings.
         """
         # Evaluates economy, military, threats to adjust priorities dynamically.
         self.military_strength = len([u for u in friendly_units if u.health > 0])
@@ -1207,7 +1205,9 @@ class AI:
         :param map_height: Map height.
         """
         # Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
-        self.assess_situation(friendly_units, friendly_buildings, enemy_units, enemy_buildings)
+        self.assess_situation(
+            friendly_units=friendly_units, friendly_buildings=friendly_buildings, enemy_units=enemy_units
+        )
         self.action_timer += 1
 
         # Apply offset and multiplier for desync
@@ -1426,13 +1426,11 @@ class ProductionInterface:
             rect = pg.Rect(self.MARGIN_X, y + i * self.ITEM_HEIGHT, self._BUTTON_WIDTH, self.ITEM_BUTTON_HEIGHT)
             self.item_rects[item] = rect
 
-    def draw(self, surface_: pg.Surface, own_buildings, all_buildings) -> None:
+    def draw(self, surface_: pg.Surface) -> None:
         """
         Renders sidebar: credits/power, buttons, queue with progress.
 
         :param surface_: Main screen surface.
-        :param own_buildings: Player's buildings.
-        :param all_buildings: Global buildings.
         """
         self.surface.fill(self.FILL_COLOR)
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
@@ -1752,7 +1750,6 @@ class GameManager:
 
         alliances = {}
         player_side_set = set(player_side)
-        enemy_side_set = set(enemy_side)
         for team in teams_list:
             if team in player_side_set:
                 alliances[team] = frozenset(player_side)
@@ -1933,10 +1930,8 @@ class GameManager:
                 building_team = building.team
                 friendly_units_for_build = g.unit_groups.get(building_team, pg.sprite.Group())
                 allies = g.alliances[building_team]
-                enemy_units_for_build = [u for u in g.global_units.sprites() if u.team not in allies and u.health > 0]
-                enemy_buildings_for_build = [
-                    b for b in g.global_buildings.sprites() if b.team not in allies and b.health > 0
-                ]
+                enemy_units_for_build = [u for u in g.global_units if u.team not in allies and u.health > 0]
+                enemy_buildings_for_build = [b for b in g.global_buildings if b.team not in allies and b.health > 0]
                 building.update(
                     particles=g.particles,
                     friendly_units=friendly_units_for_build,
@@ -2005,10 +2000,10 @@ class GameManager:
 
             if not g.spectator_mode:
                 ally_units = [u for team in g.player_allies for u in g.unit_groups[team].sprites()]
-                ally_buildings = [b for b in g.global_buildings.sprites() if b.team in g.player_allies]
-                g.fog_of_war.update_visibility(ally_units, ally_buildings, g.global_buildings.sprites())
+                ally_buildings = [b for b in g.global_buildings if b.team in g.player_allies]
+                g.fog_of_war.update_visibility(ally_units, ally_buildings, g.global_buildings)
             else:
-                g.fog_of_war.update_visibility([], [], g.global_buildings.sprites())
+                g.fog_of_war.update_visibility([], [], g.global_buildings)
 
             alive_hqs = [hq for hq in g.hqs.values() if hq.health > 0]
             all_stats = {team_to_name[team]: hq.game_stats for team, hq in g.hqs.items()}
@@ -2127,11 +2122,7 @@ class GameManager:
                 particle.draw_2d(self.screen, g.camera)
 
             if g.interface and not g.spectator_mode:
-                g.interface.draw(
-                    self.screen,
-                    [b for b in g.global_buildings if b.team == g.player_team],
-                    g.global_buildings,
-                )
+                g.interface.draw(self.screen)
 
             if not g.spectator_mode and g.selecting and g.select_rect:
                 pg.draw.rect(self.screen, (255, 255, 255), g.select_rect, 2)
