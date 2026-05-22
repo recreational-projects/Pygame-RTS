@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from modules.data_2d import PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
-from modules.game_object.game_object import _GameObject
+from modules.game_object.game_object import GameObject
 from modules.particles import PlasmaBurnParticle
 from modules.team import team_to_color
 from modules.typing import ensure_rect, is_rect
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class GameObject2d(_GameObject, ABC):
+class GameObject2d(GameObject, ABC):
     """Abstract base for 2d entities."""
 
     def __init__(self, position: Point, team: Team) -> None:

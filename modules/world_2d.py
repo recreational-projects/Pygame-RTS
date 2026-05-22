@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from pygame.typing import IntPoint, Point
 
-    from modules.game_data import GameData
+    from modules.game_data_2d import GameData
     from modules.spatial_hash import SpatialHash2d
     from modules.team import Team
 
@@ -52,7 +52,7 @@ def is_valid_building_position(
     width, height = _size
     temp_rect = pg.Rect(position[0] - width / 2, position[1] - height / 2, width, height)
     if not (
-        0 <= temp_rect.left and temp_rect.right <= map_width and 0 <= temp_rect.top and temp_rect.bottom <= map_height
+        temp_rect.left >= 0 and temp_rect.right <= map_width and temp_rect.top >= 0 and temp_rect.bottom <= map_height
     ):
         return False
 
@@ -119,7 +119,7 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHash2d) -> None:
     :param unit_hash: SpatialHash2d for nearby queries.
     """
     # Resolves overlaps between ground units using simple repulsion.
-    for i, unit in enumerate(all_units):
+    for unit in all_units:
         if unit.health <= 0 or unit.is_air:
             continue
 
@@ -199,16 +199,8 @@ def handle_attacks(
     """
     # For a team, finds targets in sight range and shoots if in attack range; handles chasing.
     unit_allies = alliances[team]
-    armed_entities = []
-    # Mobile units
-    for u in all_units:
-        if u.team == team and u.weapons and u.health > 0:
-            armed_entities.append(u)
-
-    # Buildings
-    for b in all_buildings:
-        if b.team == team and b.weapons and b.health > 0:
-            armed_entities.append(b)
+    armed_entities = [u for u in all_units if u.team == team and u.health > 0]
+    armed_entities.extend(b for b in all_buildings if b.team == team and b.weapons and b.health > 0)
 
     for entity in armed_entities:
         if entity.last_shot_time != 0:
@@ -237,9 +229,8 @@ def handle_attacks(
                         if not obj.is_building:  # unit
                             if dist < min_unit_dist_in_range:
                                 closest_unit_in_range, min_unit_dist_in_range = obj, dist
-                        else:  # building
-                            if dist < min_building_dist_in_range:
-                                closest_building_in_range, min_building_dist_in_range = obj, dist
+                        elif dist < min_building_dist_in_range:  # building
+                            closest_building_in_range, min_building_dist_in_range = obj, dist
 
         if closest_unit_in_range:
             closest_target = closest_unit_in_range
@@ -261,14 +252,13 @@ def handle_attacks(
             # Shoot if in range
             if dist_to_target <= entity.attack_range:
                 entity.shoot(closest_target, projectiles)
-            else:
-                if not entity.is_building:
-                    # Chase the target
-                    if closest_target.is_building:
-                        chase_pos = entity.get_chase_position_for_building(closest_target)
-                        entity.move_target = chase_pos if chase_pos is not None else None
-                    else:
-                        entity.move_target = closest_target.position
+            elif not entity.is_building:
+                # Chase the target
+                if closest_target.is_building:
+                    chase_pos = entity.get_chase_position_for_building(closest_target)
+                    entity.move_target = chase_pos if chase_pos is not None else None
+                else:
+                    entity.move_target = closest_target.position
 
 
 def cleanup_dead_entities(game_data: GameData) -> None:
@@ -305,7 +295,7 @@ def cleanup_dead_entities(game_data: GameData) -> None:
             d.plasma_burn_particles = []
 
     # Cleanup unit groups
-    for team, ug in game_data.unit_groups.items():
+    for ug in game_data.unit_groups.values():
         dead = [u for u in ug if hasattr(u, "health") and u.health <= 0]
         for d in dead:
             ug.remove(d)
@@ -350,7 +340,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
                     if e in all_units:
                         all_units.remove(e)
                         # if isinstance(e, Unit2d):
-                        for team, ug in g.unit_groups.items():
+                        for ug in g.unit_groups.values():
                             if e in ug:
                                 ug.remove(e)
 

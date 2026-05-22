@@ -29,7 +29,6 @@ class Projectile(pg.sprite.Sprite):
 
         :param pos: Starting position (x, y).
         :param direction: Normalized direction Vector2.
-        :param damage: Damage value.
         :param team: Firing team.
         :param weapon: Weapon dict with projectile params.
         """

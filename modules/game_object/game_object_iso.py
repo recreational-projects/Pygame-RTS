@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pygame as pg
 
 from modules.data_iso import MAP_HEIGHT, MAP_WIDTH, PLASMA_BURN_DURATION, PLASMA_BURN_PARTICLE_COUNT
-from modules.game_object.game_object import _GameObject
+from modules.game_object.game_object import GameObject
 from modules.particles import PlasmaBurnParticle
 from modules.team import team_to_color
 from modules.typing import ensure_rect, is_rect
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class GameObjectIso(_GameObject, ABC):
+class GameObjectIso(GameObject, ABC):
     """Abstract base for isometric entities."""
 
     def __init__(self, position: Point, team: Team) -> None:

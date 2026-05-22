@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from pygame.typing import Point
 
-    from modules.game_object.game_object import _GameObject
+    from modules.game_object.game_object import GameObject
 
 
 class Camera2d(_Camera):
@@ -87,7 +87,7 @@ class Camera2d(_Camera):
     @override
     def update(
         self,
-        selected_units: Sequence[_GameObject],
+        selected_units: Sequence[GameObject],
         mouse_pos: Point,
         interface_rect: pg.Rect,
         keys=None,  # pyrefly: ignore[implicit-any-parameter]
