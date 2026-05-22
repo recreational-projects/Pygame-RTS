@@ -146,8 +146,6 @@ class ProductionInterface:
         Renders sidebar: credits/power, buttons, queue with progress.
 
         :param surface_: Main screen surface.
-        :param own_buildings: Player's buildings.
-        :param all_buildings: Global buildings.
         """
         self.surface.fill(self.FILL_COLOR)
         pg.draw.rect(self.surface, self.LINE_COLOR, self.surface.get_rect(), width=2)
@@ -184,7 +182,7 @@ class ProductionInterface:
             label_surf = FONT_MEDIUM.render(label, True, pg.Color("white"))
             label_rect = label_surf.get_rect(x=rect.x + 5, y=rect.y + 5)
             self.surface.blit(label_surf, label_rect)
-            cost_surf = FONT_MEDIUM.render(f"({cost})", True, pg.Color("white"))  # noqa: FBT003
+            cost_surf = FONT_MEDIUM.render(f"({cost})", True, pg.Color("white"))
             cost_rect = cost_surf.get_rect(x=rect.x + 5, y=rect.y + 25)
             self.surface.blit(cost_surf, cost_rect)
 
@@ -233,7 +231,6 @@ class ProductionInterface:
         Handles clicks on buttons: repair, sell, queue items, start placement.
 
         :param screen_pos: Mouse position.
-        :param own_buildings: Player's buildings.
         :return: True if handled, or tuple ('sell', building) for sell action.
         """
         # Handles clicks on buttons: repair, sell, queue items, start placement.
@@ -252,7 +249,7 @@ class ProductionInterface:
 
                 elif label == "Sell":
                     if self.producer != self.hq:
-                        return ("sell", self.producer)
+                        return "sell", self.producer
 
                 elif label == "Map":
                     pass

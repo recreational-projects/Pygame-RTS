@@ -113,7 +113,9 @@ class AI:
         :param map_height: Map height.
         """
         # Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
-        self._assess_situation(friendly_units, friendly_buildings, enemy_units, enemy_buildings)
+        self._assess_situation(
+            friendly_units=friendly_units, friendly_buildings=friendly_buildings, enemy_units=enemy_units
+        )
         self.action_timer += 1
 
         # Apply offset and multiplier for desync
@@ -150,10 +152,7 @@ class AI:
                     cls = OilDerrick
                 elif self.resource_count < 2 and self.hq.credits >= get_unit_cost("Refinery"):
                     built_ref = any(isinstance(b, Refinery) for b in friendly_buildings if b.health > 0)
-                    if not built_ref:
-                        cls = Refinery
-                    else:
-                        cls = random.choice([ShaleFracker, BlackMarket])
+                    cls = Refinery if not built_ref else random.choice([ShaleFracker, BlackMarket])
                 elif self.power_shortage and self.economy_level > 0 and self.hq.credits >= get_unit_cost("PowerPlant"):
                     cls = PowerPlant
                 elif self.military_prod_count < max(1, self.resource_count // 2 + 1):
@@ -175,7 +174,9 @@ class AI:
                     elif rand < 0.7:
                         cls = random.choice([OilDerrick, Refinery, ShaleFracker, BlackMarket])
                     else:
-                        all_possible = [PowerPlant, Turret] + [
+                        all_possible = [
+                            PowerPlant,
+                            Turret,
                             OilDerrick,
                             Refinery,
                             ShaleFracker,
@@ -221,14 +222,13 @@ class AI:
         )
         self._strategize_attacks(friendly_units, enemy_hq, enemy_buildings, enemy_units)
 
-    def _assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings) -> None:  # noqa: ANN001
+    def _assess_situation(self, *, friendly_units, friendly_buildings, enemy_units) -> None:  # noqa: ANN001
         """
         Evaluates economy, military, threats to adjust priorities dynamically.
 
         :param friendly_units: List of friendly units.
         :param friendly_buildings: List of friendly buildings.
         :param enemy_units: List of enemy units.
-        :param enemy_buildings: List of enemy buildings.
         """
         # Evaluates economy, military, threats to adjust priorities dynamically.
         self.military_strength = len([u for u in friendly_units if u.health > 0])
@@ -325,23 +325,16 @@ class AI:
             if hangar_list:
                 hangar = hangar_list[self.hangar_index % len(hangar_list)]
                 self.hangar_index += 1
-                if len(hangar.production_queue) < 2 and self.economy_level >= 2:
-                    if random.random() < 0.2:
-                        hangar.production_queue.append({"unit_type": "AttackHelicopter", "repeat": False})
-                        self.hq.credits -= get_unit_cost("AttackHelicopter")
+                if len(hangar.production_queue) < 2 <= self.economy_level and random.random() < 0.2:
+                    hangar.production_queue.append({"unit_type": "AttackHelicopter", "repeat": False})
+                    self.hq.credits -= get_unit_cost("AttackHelicopter")
 
     def _find_build_position(
         self,
         *,
-        building_cls: type[Barracks]
-        | type[BlackMarket]
-        | type[Hangar]
-        | type[OilDerrick]
-        | type[PowerPlant]
-        | type[Refinery]
-        | type[ShaleFracker]
-        | type[Turret]
-        | type[WarFactory],
+        building_cls: type[
+            Barracks | BlackMarket | Hangar | OilDerrick | PowerPlant | Refinery | ShaleFracker | Turret | WarFactory
+        ],
         all_buildings,  # noqa: ANN001
         map_width: int,
         map_height: int,
@@ -470,16 +463,17 @@ class AI:
                             unit.move_target = chase_pos if chase_pos is not None else None
                         else:
                             unit.move_target = primary_target.position
-                    else:
-                        if enemy_hq:
-                            unit.attack_target = enemy_hq
-                            if enemy_hq.is_building:
-                                chase_pos = unit.get_chase_position_for_building(enemy_hq)
-                                unit.move_target = chase_pos if chase_pos is not None else None
-                            else:
-                                unit.move_target = enemy_hq.position
+
+                    elif enemy_hq:
+                        unit.attack_target = enemy_hq
+                        if enemy_hq.is_building:
+                            chase_pos = unit.get_chase_position_for_building(enemy_hq)
+                            unit.move_target = chase_pos if chase_pos is not None else None
                         else:
-                            unit.move_target = None
+                            unit.move_target = enemy_hq.position
+                    else:
+                        unit.move_target = None
+
             self.attack_timer = random.randint(0, attack_interval // 2)
 
         # Aggressive push: Scale by personality
@@ -498,16 +492,17 @@ class AI:
                             unit.move_target = chase_pos if chase_pos is not None else None
                         else:
                             unit.move_target = primary_target.position
-                    else:
-                        if enemy_hq:
-                            unit.attack_target = enemy_hq
-                            if enemy_hq.is_building:
-                                chase_pos = unit.get_chase_position_for_building(enemy_hq)
-                                unit.move_target = chase_pos if chase_pos is not None else None
-                            else:
-                                unit.move_target = enemy_hq.position
+
+                    elif enemy_hq:
+                        unit.attack_target = enemy_hq
+                        if enemy_hq.is_building:
+                            chase_pos = unit.get_chase_position_for_building(enemy_hq)
+                            unit.move_target = chase_pos if chase_pos is not None else None
                         else:
-                            unit.move_target = None
+                            unit.move_target = enemy_hq.position
+
+                    else:
+                        unit.move_target = None
 
     def _get_nearest_enemy_target(self, enemy_buildings, enemy_units, from_pos) -> Unit2d | None:  # noqa: ANN001
         """
@@ -519,10 +514,9 @@ class AI:
         :return: Nearest target or None.
         """
         # Prioritizes buildings over units for targeting.
+        building_target = None
         if enemy_buildings:
             building_target = self._get_nearest_enemy_building(enemy_buildings, from_pos)
-        else:
-            building_target = None
 
         if enemy_units:
             unit_target = min(
@@ -542,12 +536,15 @@ class AI:
         if building_target and unit_target:
             if building_target.distance_to(from_pos) < unit_target.distance_to(from_pos):
                 return building_target
-            else:
-                return unit_target
-        elif building_target:
-            return building_target
-        elif unit_target:
+
             return unit_target
+
+        if building_target:
+            return building_target
+
+        if unit_target:
+            return unit_target
+
         return None
 
     @staticmethod

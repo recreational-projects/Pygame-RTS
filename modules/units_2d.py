@@ -189,26 +189,12 @@ class Unit2d(GameObject2d):
     def is_military_producer_building(self) -> bool:
         return isinstance(self, Barracks | WarFactory | Hangar)
 
-    def update(
-        self,
-        particles=None,  # noqa:ANN001
-        friendly_units=None,  # noqa:ANN001
-        all_units=None,  # noqa:ANN001
-        global_buildings=None,  # noqa:ANN001
-        projectiles=None,  # noqa:ANN001
-        enemy_units=None,  # noqa:ANN001
-        enemy_buildings=None,  # noqa:ANN001
-    ) -> None:
+    def update(self, *, friendly_units=None, all_units=None) -> None:  # noqa:ANN001
         """
         Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
 
-        :param particles: Particle group.
         :param friendly_units: Friendly unit group.
         :param all_units: Global unit group.
-        :param global_buildings: Global building group.
-        :param projectiles: Projectile group.
-        :param enemy_units: Enemy units list.
-        :param enemy_buildings: Enemy buildings list.
         """
         # Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
         self.under_attack_timer = max(0, self.under_attack_timer - 1)
@@ -218,53 +204,52 @@ class Unit2d(GameObject2d):
             self.last_shot_time -= 1
 
         # Clear invalid attack target
-        if self.attack_target:
-            if not hasattr(self.attack_target, "health") or self.attack_target.health <= 0:
-                if self.move_target == self.attack_target.position:
-                    self.move_target = None
-                self.attack_target = None
-            elif self.distance_to(self.attack_target.position) > self.sight_range:
-                if self.move_target == self.attack_target.position:
-                    self.move_target = None
-                self.attack_target = None
+        if self.attack_target and (
+            not hasattr(self.attack_target, "health")
+            or self.attack_target.health <= 0
+            or self.distance_to(self.attack_target.position) > self.sight_range
+        ):
+            if self.move_target == self.attack_target.position:
+                self.move_target = None
+            self.attack_target = None
 
-        if not self.is_building:
-            if self.attack_target and self.attack_target.health > 0:
-                if self.attack_target.is_building:
-                    closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
-                    dir_to_closest = Vector2(closest) - self.position
-                    dist = dir_to_closest.length()
-                else:
-                    dist = self.distance_to(self.attack_target.position)
-                if self.attack_target.is_building:
-                    closest_enemy = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
-                    dir_to_enemy = Vector2(closest_enemy) - self.position
-                else:
-                    dir_to_enemy = Vector2(self.attack_target.position) - self.position
-                if dir_to_enemy.length() > 0:
-                    dir_to_enemy = dir_to_enemy.normalize()
-                self.turret_angle = math.atan2(dir_to_enemy.y, dir_to_enemy.x)
-                if dist <= self.attack_range:
-                    # Stop moving and fight
-                    self.move_target = None
-                    # Face the enemy
-                    self.body_angle = self.turret_angle
-                    # Small random movement to avoid clustering
-                    if not self.attack_target.is_building and random.random() < 0.1:
-                        self.position += dir_to_enemy.rotate_rad(random.uniform(-0.5, 0.5)) * self.speed * 0.2
-                        # Restore move_target after combat if needed, but for now,
-                        # stay stopped until enemy dead or out of sight
+        if not self.is_building and self.attack_target and self.attack_target.health > 0:
+            if self.attack_target.is_building:
+                closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
+                dir_to_closest = Vector2(closest) - self.position
+                dist = dir_to_closest.length()
+            else:
+                dist = self.distance_to(self.attack_target.position)
+            if self.attack_target.is_building:
+                closest_enemy = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
+                dir_to_enemy = Vector2(closest_enemy) - self.position
+            else:
+                dir_to_enemy = Vector2(self.attack_target.position) - self.position
+            if dir_to_enemy.length() > 0:
+                dir_to_enemy = dir_to_enemy.normalize()
+            self.turret_angle = math.atan2(dir_to_enemy.y, dir_to_enemy.x)
+            if dist <= self.attack_range:
+                # Stop moving and fight
+                self.move_target = None
+                # Face the enemy
+                self.body_angle = self.turret_angle
+                # Small random movement to avoid clustering
+                if not self.attack_target.is_building and random.random() < 0.1:
+                    self.position += dir_to_enemy.rotate_rad(random.uniform(-0.5, 0.5)) * self.speed * 0.2
+                    # Restore move_target after combat if needed, but for now,
+                    # stay stopped until enemy dead or out of sight
+
+            # Chase the target
+            elif self.attack_target.is_building:
+                chase_pos = self.get_chase_position_for_building(self.attack_target)
+                if chase_pos is not None:
+                    self.move_target = chase_pos
 
                 else:
-                    # Chase the target
-                    if self.attack_target.is_building:
-                        chase_pos = self.get_chase_position_for_building(self.attack_target)
-                        if chase_pos is not None:
-                            self.move_target = chase_pos
-                        else:
-                            self.move_target = None
-                    else:
-                        self.move_target = self.attack_target.position
+                    self.move_target = None
+
+            else:
+                self.move_target = self.attack_target.position
 
         if not self.attack_target:
             self.turret_angle = self.body_angle
@@ -300,7 +285,6 @@ class Unit2d(GameObject2d):
             raise TypeError("Unit has unexpected `rect` type")
 
         self.rect.center = self.position
-
         self.plasma_burn_particles = [p for p in self.plasma_burn_particles if p.alive()]
 
     def get_chase_position_for_building(self, target_building) -> Vector2 | None:  # noqa:ANN001

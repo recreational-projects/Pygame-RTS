@@ -27,11 +27,9 @@ class GameConsole:
 
         :param event: Pygame event.
         """
-        pass
 
     def draw(self, surface: pg.Surface) -> None:
         """Draws console (placeholder).
 
         :param surface: Surface to draw on.
         """
-        pass

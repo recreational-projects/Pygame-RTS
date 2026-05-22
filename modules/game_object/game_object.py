@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class _GameObject(pg.sprite.Sprite, ABC):
+class GameObject(pg.sprite.Sprite, ABC):
     """Abstract base for all entities.
 
     :param position: Initial position (x, y).

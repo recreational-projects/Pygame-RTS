@@ -8,11 +8,12 @@ if TYPE_CHECKING:
     from pygame.sprite import Group
     from pygame.typing import IntPoint
 
-    from CondaRTS2DVersion import Headquarters, ProductionInterface
     from modules.camera.camera_2d import Camera2d
     from modules.fog_of_war import FogOfWar2d
     from modules.game_console import GameConsole
+    from modules.production_interface_2d import ProductionInterface
     from modules.team import Team
+    from modules.units_2d import Headquarters
 
 
 @dataclass(kw_only=True)

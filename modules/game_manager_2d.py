@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pygame as pg
 from pygame.math import Vector2
 
-from modules.ai import AI
+from modules.ai_2d import AI
 from modules.camera.camera_2d import Camera2d
 from modules.data import Palette
 from modules.data_2d import (
@@ -27,10 +27,10 @@ from modules.data_2d import (
 from modules.draw_2d import draw_mini_map
 from modules.fog_of_war import FogOfWar2d
 from modules.game_console import GameConsole
-from modules.game_data import GameData
+from modules.game_data_2d import GameData
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
-from modules.production_interface import ProductionInterface
+from modules.production_interface_2d import ProductionInterface
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_name
@@ -50,11 +50,6 @@ if TYPE_CHECKING:
     from pygame.typing import IntPoint, Point
 
     from modules.units_2d import Unit2d
-
-# =============================================================================
-# Group: Game Orchestrator
-# =============================================================================
-# GameManager orchestrates state machine, initializes game data, runs loops.
 
 
 @dataclass(kw_only=True)
@@ -238,13 +233,12 @@ class GameManager:
                                 unit.selected = True
                                 g.selected_units.add(unit)
 
-                elif event.type == pg.KEYDOWN:
-                    if event.key == pg.K_ESCAPE:
-                        if g.interface and g.interface.placing_cls is not None:
-                            g.interface.placing_cls = None
-                        else:
-                            self.state = GameState.MENU
-                            return
+                elif event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
+                    if g.interface and g.interface.placing_cls is not None:
+                        g.interface.placing_cls = None
+                    else:
+                        self.state = GameState.MENU
+                        return
 
             g.camera.update(
                 g.selected_units.sprites() if not g.spectator_mode else [],
@@ -267,20 +261,7 @@ class GameManager:
             for building in building_list:
                 building_team = building.team
                 friendly_units_for_build = g.unit_groups.get(building_team, pg.sprite.Group())
-                allies = g.alliances[building_team]
-                enemy_units_for_build = [u for u in g.global_units.sprites() if u.team not in allies and u.health > 0]
-                enemy_buildings_for_build = [
-                    b for b in g.global_buildings.sprites() if b.team not in allies and b.health > 0
-                ]
-                building.update(
-                    particles=g.particles,
-                    friendly_units=friendly_units_for_build,
-                    all_units=g.global_units,
-                    global_buildings=g.global_buildings,
-                    projectiles=g.projectiles,
-                    enemy_units=enemy_units_for_build,
-                    enemy_buildings=enemy_buildings_for_build,
-                )
+                building.update(friendly_units=friendly_units_for_build, all_units=g.global_units)
 
             g.projectiles.update()
             g.particles.update()
@@ -361,10 +342,7 @@ class GameManager:
                     self.state = GameState.VICTORY if g.spectator_mode else GameState.DEFEAT
                 else:
                     last_hq = alive_hqs[0]
-                    if g.spectator_mode:
-                        is_player_victory = None
-                    else:
-                        is_player_victory = last_hq == g.player_hq
+                    is_player_victory = None if g.spectator_mode else last_hq == g.player_hq
                     self.state = GameState.VICTORY if is_player_victory else GameState.DEFEAT
 
                 self.victory_screen = VictoryScreen(
@@ -664,7 +642,6 @@ class GameManager:
         map_width = int(base_width * scale)
         map_height = int(base_height * scale)
 
-        player_units = pg.sprite.Group()
         ai_units = pg.sprite.Group()
         global_units = pg.sprite.Group()
         global_buildings = pg.sprite.Group()
@@ -722,7 +699,7 @@ class GameManager:
             hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
             hqs[team] = hq
             units = pg.sprite.Group()
-            for j in range(3):
+            for _ in range(3):
                 offset = find_free_spawn_position(
                     target_pos=pos, global_buildings=global_buildings.sprites(), global_units=global_units.sprites()
                 )

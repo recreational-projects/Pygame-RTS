@@ -14,7 +14,7 @@ dev = [
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
     "pytest>=9.0.3",
-    "ruff>=0.15.13",
+    "ruff>=0.15.14",
 ]
 
 [tool.ruff]
@@ -37,6 +37,7 @@ ignore = [
     "D203", "D213", # format choices
     "EM", # flake8-errmsg
     "FIX",
+    "S311",  # suspicious-non-cryptographic-random-usage
     "TD",
     "TRY", # tryceratops
 ]
@@ -62,7 +63,7 @@ extend-safe-fixes = [
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument: keys
 ]
-"modules/production_interface.py" = [
+"modules/production_interface_2d.py" = [
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/screens.py" = [
@@ -71,6 +72,7 @@ extend-safe-fixes = [
 ]
 "tests/*.py" = [
     "D",
+    "S101",  # assert
 ]
 
 [tool.pyrefly]
