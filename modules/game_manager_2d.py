@@ -26,7 +26,6 @@ from modules.data_2d import (
 )
 from modules.draw_2d import draw_mini_map
 from modules.fog_of_war import FogOfWar2d
-from modules.game_console import GameConsole
 from modules.game_data_2d import GameData
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
@@ -310,13 +309,13 @@ class GameManager:
                 ]
                 enemy_buildings_list = [b for b in building_list if b.team not in ai.allies]
                 ai.update(
-                    friendly_units_list,
-                    friendly_buildings_list,
-                    enemy_units_list,
-                    enemy_buildings_list,
-                    g.global_buildings,
-                    g.map_width,
-                    g.map_height,
+                    friendly_units=friendly_units_list,
+                    friendly_buildings=friendly_buildings_list,
+                    enemy_units=enemy_units_list,
+                    enemy_buildings=enemy_buildings_list,
+                    all_buildings=g.global_buildings,
+                    map_width=g.map_width,
+                    map_height=g.map_height,
                 )
 
             if not g.spectator_mode:
@@ -756,7 +755,7 @@ class GameManager:
             center_y = map_height / 2
             build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
             random.seed(team.value * 12345)  # Seed per team for consistent "personality" across runs
-            ai = AI(hq=hqs[team], console=GameConsole(), build_dir=build_dir, allies=alliances[team])
+            ai = AI(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
             ais.append(ai)
 
         self.game_data = GameData(
@@ -774,7 +773,6 @@ class GameManager:
             player_allies=player_allies,
             alliances=alliances,
             interface=interface,
-            console=GameConsole(),
             fog_of_war=FogOfWar2d(
                 map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectator_mode
             ),

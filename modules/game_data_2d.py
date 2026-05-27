@@ -8,9 +8,9 @@ if TYPE_CHECKING:
     from pygame.sprite import Group
     from pygame.typing import IntPoint
 
+    from modules.ai_2d import AI
     from modules.camera.camera_2d import Camera2d
     from modules.fog_of_war import FogOfWar2d
-    from modules.game_console import GameConsole
     from modules.production_interface_2d import ProductionInterface
     from modules.team import Team
     from modules.units_2d import Headquarters
@@ -32,14 +32,13 @@ class GameData:
     player_team: Team | None
     player_allies: frozenset[Team] = field(default_factory=frozenset)
     alliances: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]
-    console: GameConsole
     fog_of_war: FogOfWar2d
     camera: Camera2d
     map_color: pg.Color
     map_width: int
     map_height: int
     game_mode: str
-    ais: list[Any] = field(default_factory=list)
+    ais: list[AI] = field(default_factory=list)
     interface_rect: pg.Rect
     teams: list[Team] = field(default_factory=list)
     # optional:

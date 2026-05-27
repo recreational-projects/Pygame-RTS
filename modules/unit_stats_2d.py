@@ -1,18 +1,18 @@
-"""Structures data in `modules.data_2d.UNIT_CLASSES`."""
+"""Structures data from `modules.data_2d.UNIT_CLASSES`."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Self
+from typing import TYPE_CHECKING, Any, Self
 
-from dataclass_wizard import fromdict  # handles structuring from nested dicts
-from dataclass_wizard.serial_json import JSONWizard
+from pydantic import BaseModel, Field
 
 from modules.data_2d import UNIT_CLASSES
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
-@dataclass(kw_only=True, frozen=True)
-class WeaponStats:
+
+class WeaponStats(BaseModel, frozen=True):
     """Static unit stats for a weapon."""
 
     name: str
@@ -36,12 +36,8 @@ def get_unit_size(unit_cls_str: str) -> tuple[int, int]:
     return unit_stats.size
 
 
-@dataclass(kw_only=True, frozen=True)
-class UnitStats(JSONWizard):
-    """Static unit stats.
-
-    Inherits from JSONWizard to allow structuring from nested dicts.
-    """
+class UnitStats(BaseModel, frozen=True):
+    """Static unit stats."""
 
     cost: int
     hp: int
@@ -52,7 +48,7 @@ class UnitStats(JSONWizard):
     size: tuple[int, int]  # TODO: ideally would use IntPoint here, but needs custom structuring
     # optional:
     is_building: bool = False
-    air: bool = False
+    is_air: bool = Field(alias="air", default=False)
     income: int | None = None
     income_interval: int = 300
     fly_height: int | None = None
@@ -61,18 +57,25 @@ class UnitStats(JSONWizard):
     half_door_offset: int = 15
     door_color: tuple[int, int, int] = (60, 60, 60)
     # TODO: ideally would use ColorLike here, but needs custom structuring
-    weapons: list[WeaponStats] = field(default_factory=list)
-    producible: list[str] = field(default_factory=list)
+    weapons: list[WeaponStats] = Field(default_factory=list)
+    producible: list[str] = Field(default_factory=list)
+    turret_offset: tuple[int, int] = (0, -3)  # TODO: ideally would use IntPoint here
+    barrel_offset: tuple[int, int] = (10, 0)  # TODO: ideally would use IntPoint here
+
+    def __post_init__(self) -> None:
+        if self.is_air and (self.fly_height is None or self.fly_height <= 0):
+            raise ValueError("`air` units must have a `fly_height` > 0")
+
+        if not self.is_building and self.producible:
+            raise ValueError("Non `is-building` units cannot have non-empty `producible`")
+
+        if not self.is_building and self.income is not None:
+            raise ValueError("Non `is-building` units cannot have non-`None` `income`")
 
     @classmethod
     def from_data(cls, unit_type_str: str) -> Self:
-        return cls._from_dict(UNIT_CLASSES[unit_type_str])
+        return cls._from_mapping(UNIT_CLASSES[unit_type_str])
 
     @classmethod
-    # pyrefly: ignore [implicit-any-type-argument]
-    def _from_dict(cls, o: dict) -> Self:
-        instance = fromdict(cls, o)
-        if instance.air and (instance.fly_height is None or instance.fly_height <= 0):
-            raise ValueError("`air` units must have a `fly_height` > 0")
-
-        return instance
+    def _from_mapping(cls, mapping: Mapping[str, Any]) -> Self:
+        return cls.model_validate(mapping, strict=True, extra="forbid")

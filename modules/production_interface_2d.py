@@ -36,22 +36,6 @@ class ProductionInterface:
     Manages the right-hand UI panel for building/production.
     """
 
-    _BUILDING_PRODUCIBLE_ITEMS: ClassVar = {
-        Barracks: ["Infantry", "Grenadier"],
-        WarFactory: ["Tank", "MachineGunVehicle", "RocketArtillery"],
-        Hangar: ["AttackHelicopter"],
-        Headquarters: [
-            "Barracks",
-            "WarFactory",
-            "Hangar",
-            "PowerPlant",
-            "Turret",
-            "OilDerrick",
-            "Refinery",
-            "ShaleFracker",
-            "BlackMarket",
-        ],
-    }  # Don't move to data for now as it contains class references
     _STR_TO_BUILDING_CLASS: ClassVar = {
         "Barracks": Barracks,
         "WarFactory": WarFactory,
@@ -133,7 +117,7 @@ class ProductionInterface:
         else:
             self.producer = self.hq
 
-        self.producible_items = self._BUILDING_PRODUCIBLE_ITEMS.get(self.producer.__class__, [])
+        self.producible_items = building.producible_items
 
         self.item_rects = {}
         y = self.PROD_ITEMS_START_Y
