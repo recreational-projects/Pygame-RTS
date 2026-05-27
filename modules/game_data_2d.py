@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from pygame.sprite import Group
     from pygame.typing import IntPoint
 
+    from modules.ai_2d import AI
     from modules.camera.camera_2d import Camera2d
     from modules.fog_of_war import FogOfWar2d
     from modules.production_interface_2d import ProductionInterface
@@ -37,7 +38,7 @@ class GameData:
     map_width: int
     map_height: int
     game_mode: str
-    ais: list[Any] = field(default_factory=list)
+    ais: list[AI] = field(default_factory=list)
     interface_rect: pg.Rect
     teams: list[Team] = field(default_factory=list)
     # optional:
