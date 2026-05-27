@@ -238,15 +238,13 @@ class AI:
         nearby_enemies = [u for u in enemy_units if u.health > 0 and u.distance_to(hq_pos) < 600]
         self.threat_level = len(nearby_enemies) / max(1, self.enemy_strength) if self.enemy_strength > 0 else 0
 
-        self.resource_buildings = [b for b in friendly_buildings if b.is_resource_building]
+        self.resource_buildings = [b for b in friendly_buildings if b.is_resource]
         self.economy_level = min(3, len(self.resource_buildings) // 2)
 
-        self.resource_count = len([b for b in friendly_buildings if b.is_resource_building and b.health > 0])
+        self.resource_count = len([b for b in friendly_buildings if b.is_resource and b.health > 0])
         self.turret_count = len([b for b in friendly_buildings if isinstance(b, Turret) and b.health > 0])
 
-        self.military_prod_count = len(
-            [b for b in friendly_buildings if b.is_military_producer_building and b.health > 0]
-        )
+        self.military_prod_count = len([b for b in friendly_buildings if b.is_producer and b.health > 0])
         _power_count = len([b for b in friendly_buildings if isinstance(b, PowerPlant) and b.health > 0])
         self.total_buildings = sum((self.military_prod_count, self.resource_count, _power_count, self.turret_count))
 

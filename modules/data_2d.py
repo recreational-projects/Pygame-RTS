@@ -81,6 +81,7 @@ UNIT_CLASSES = {
         "size": (30, 20),
         "air": False,
         "is_building": False,
+        "barrel_offset": (8, 0),
     },
     "Grenadier": {
         "cost": 300,
@@ -123,6 +124,7 @@ UNIT_CLASSES = {
         "size": (35, 25),
         "air": False,
         "is_building": False,
+        "barrel_offset": (10, 0),
     },
     "RocketArtillery": {
         "cost": 800,
@@ -144,6 +146,7 @@ UNIT_CLASSES = {
         "size": (40, 25),
         "air": False,
         "is_building": False,
+        "barrel_offset": (15, 0),
     },
     "AttackHelicopter": {
         "cost": 1200,
@@ -166,6 +169,8 @@ UNIT_CLASSES = {
         "air": True,
         "fly_height": 10,
         "is_building": False,
+        "turret_offset": (12, 0),
+        "barrel_offset": (6, 0),
     },
     "Headquarters": {
         "cost": 1000,
@@ -176,6 +181,17 @@ UNIT_CLASSES = {
         "sight_range": 200,
         # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
+        "producible": [
+            "Barracks",
+            "WarFactory",
+            "Hangar",
+            "PowerPlant",
+            "Turret",
+            "OilDerrick",
+            "Refinery",
+            "ShaleFracker",
+            "BlackMarket",
+        ],
         "size": (40, 40),
         "air": False,
         "is_building": True,
@@ -319,5 +335,6 @@ UNIT_CLASSES = {
         "size": (24, 24),
         "air": False,
         "is_building": True,
+        "turret_offset": (0, -15),
     },
 }

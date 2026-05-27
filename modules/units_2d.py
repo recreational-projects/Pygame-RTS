@@ -30,36 +30,31 @@ class Unit2d(GameObject2d):
     Extends GameObject with movement, combat, production, income.
     """
 
-    def __init__(self, *, position: Point, team: Team, unit_type_str: str, hq: Headquarters | None = None) -> None:
+    def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         """
         Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
 
         :param position: Initial position.
         :param team: Team enum.
-        :param unit_type_str: String key from UNIT_CLASSES.
         :param hq: Optional Headquarters reference.
         """
-        # Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
         super().__init__(position=position, team=team)
         self.hq = hq
-        self._stats = UnitStats.from_data(unit_type_str)
+        self._stats = UnitStats.from_data(self.__class__.__name__)  # read-only
         self.health: int = self._stats.hp
         self.max_health: int = self._stats.hp
-
         self.current_weapon_index = 0
         self.attack_target = None
         self.last_shot_time = 0
         self.move_target = None
         self.formation_target = None
         self.player_ordered = False
-        self.random_offset_angle = random.uniform(-0.5, 0.5)
         self.turret_angle: float = 0
         self.body_angle: float = 0
-        self.team_color = team_to_color[team]
-        if self.income:
+        if self.is_resource:
             self.collection_timer = 0
 
-        if self.producible:
+        if self.is_producer:
             self.rally_point = Vector2(position[0] + 80, position[1])
             self.production_queue = []
             self.production_timer = None
@@ -74,13 +69,11 @@ class Unit2d(GameObject2d):
         self._setup_drawing()
 
     def _setup_drawing(self) -> None:
-        """
-        Sets up image or complex draw method based on type.
-        """
+        """Sets up image or complex draw method based on type."""
 
         unit_type_str = self.__class__.__name__
         if unit_type_str in SIMPLE_DRAW_RECIPES:
-            self.image = SIMPLE_DRAW_RECIPES[unit_type_str](self.size, self.team)
+            self.image = SIMPLE_DRAW_RECIPES[unit_type_str](self.size, team_to_color[self.team])
 
         if not self.image:  # TODO: type guard - not sure why needed
             raise TypeError("Unit has no `image`")
@@ -91,20 +84,6 @@ class Unit2d(GameObject2d):
         elif unit_type_str in COMPLEX_DRAW_RECIPES:
             create_surfaces, draw_func = COMPLEX_DRAW_RECIPES[unit_type_str]
             self.body_surf, self.turret_surf, self.barrel_surf = create_surfaces(self.team)
-            if unit_type_str == "AttackHelicopter":
-                self.turret_offset = Vector2(12, 0)
-                self.barrel_offset = Vector2(6, 0)
-            else:
-                self.turret_offset = Vector2(0, -3) if unit_type_str != "Turret" else Vector2(0, -15)
-                self.barrel_offset = (
-                    Vector2(8, 0)
-                    if unit_type_str == "Tank"
-                    else Vector2(10, 0)
-                    if unit_type_str == "MachineGunVehicle"
-                    else Vector2(15, 0)
-                    if unit_type_str == "RocketArtillery"
-                    else Vector2(10, 0)
-                )
             self.draw = draw_func.__get__(self, self.__class__)
 
         elif self.is_building and unit_type_str in BUILDING_DRAW_RECIPES:
@@ -112,7 +91,7 @@ class Unit2d(GameObject2d):
 
         else:
             # Fallback
-            self.image.fill(self.team_color)
+            self.image.fill(team_to_color[self.team])
 
         if not self.image:  # TODO: type guard
             raise TypeError("Unit has no `image`")
@@ -145,7 +124,7 @@ class Unit2d(GameObject2d):
 
     @property
     def is_air(self) -> bool:
-        return self._stats.air
+        return self._stats.is_air
 
     @property
     def income(self) -> int | None:
@@ -178,16 +157,24 @@ class Unit2d(GameObject2d):
         return self.weapons[self.current_weapon_index]
 
     @property
-    def producible(self) -> list[str]:
+    def producible_items(self) -> list[str]:
         return self._stats.producible
 
     @property
-    def is_resource_building(self) -> bool:
-        return isinstance(self, OilDerrick | Refinery | ShaleFracker | BlackMarket)
+    def is_producer(self) -> bool:
+        return bool(self.producible_items)
 
     @property
-    def is_military_producer_building(self) -> bool:
-        return isinstance(self, Barracks | WarFactory | Hangar)
+    def is_resource(self) -> bool:
+        return self.income is not None
+
+    @property
+    def turret_offset(self) -> Vector2:
+        return Vector2(self._stats.turret_offset)
+
+    @property
+    def barrel_offset(self) -> Vector2:
+        return Vector2(self._stats.barrel_offset)
 
     def update(self, *, friendly_units=None, all_units=None) -> None:  # noqa:ANN001
         """
@@ -196,7 +183,6 @@ class Unit2d(GameObject2d):
         :param friendly_units: Friendly unit group.
         :param all_units: Global unit group.
         """
-        # Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
         self.under_attack_timer = max(0, self.under_attack_timer - 1)
         self.under_attack = self.under_attack_timer > 0
 
@@ -205,12 +191,11 @@ class Unit2d(GameObject2d):
 
         # Clear invalid attack target
         if self.attack_target and (
-            not hasattr(self.attack_target, "health")
-            or self.attack_target.health <= 0
-            or self.distance_to(self.attack_target.position) > self.sight_range
+            self.attack_target.health <= 0 or self.distance_to(self.attack_target.position) > self.sight_range
         ):
             if self.move_target == self.attack_target.position:
                 self.move_target = None
+
             self.attack_target = None
 
         if not self.is_building and self.attack_target and self.attack_target.health > 0:
@@ -265,7 +250,7 @@ class Unit2d(GameObject2d):
             else:
                 self.move_target = None
 
-        if self.producible and friendly_units is not None and all_units is not None:
+        if self.is_producer and friendly_units is not None and all_units is not None:
             self._update_production(friendly_units, all_units)
 
         if hasattr(self, "collection_timer"):
@@ -295,8 +280,6 @@ class Unit2d(GameObject2d):
         :param target_building: Target building.
         :return: Chase position or None if already in range.
         """
-        # Computes the position to move to so that the distance to the closest edge of the building
-        # is exactly attack_range.
         closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
         dir_to_closest = Vector2(closest) - self.position
         dist_to_closest = dir_to_closest.length()
@@ -321,7 +304,6 @@ class Unit2d(GameObject2d):
         :param friendly_units: Group to add new units to.
         :param all_units: Global group to add new units to.
         """
-        # Advances production queue, spawns units at gate, opens gate animation.
         if self.gate_open:
             self.gate_timer -= 1
             if self.gate_timer <= 0:
@@ -371,7 +353,6 @@ class Unit2d(GameObject2d):
         :param camera: Camera2d for transformation.
         :param mouse_pos: Mouse position for hover.
         """
-        # Overridden draw for units: handles air height, rotation, rally point, gate animation.
         if self.health <= 0:
             return
 
@@ -488,72 +469,52 @@ class Unit2d(GameObject2d):
 
 # Subclasses now lean, relying on base Unit for drawing setup
 class Infantry(Unit2d):
-    """
-    Infantry unit class.
-    """
+    """Infantry unit class."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Infantry", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class Tank(Unit2d):
-    """
-    Tank unit class.
-    """
+    """Tank unit class."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Tank", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class Grenadier(Unit2d):
-    """
-    Grenadier unit class.
-    """
+    """Grenadier unit class."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Grenadier", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class MachineGunVehicle(Unit2d):
-    """
-    Machine Gun Vehicle unit class.
-    """
+    """Machine Gun Vehicle unit class."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="MachineGunVehicle", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class RocketArtillery(Unit2d):
-    """
-    Rocket Artillery unit class.
-    """
+    """Rocket Artillery unit class."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="RocketArtillery", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class AttackHelicopter(Unit2d):
-    """
-    Attack Helicopter unit class.
-    """
+    """Attack Helicopter unit class."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="AttackHelicopter", hq=hq)
-
-
-# =============================================================================
-# Group: Building Drawing & Creation + Specific Building Classes + Turret
-# =============================================================================
-# Building classes inherit from Unit; add specific logic like income or production.
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class Headquarters(Unit2d):
-    """
-    Headquarters building: main base with credits, power management, building placement.
-    """
+    """Headquarters building: main base with credits, power management, building placement."""
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Headquarters", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         # HQ-specific: starts with credits, manages power, building placement queue.
         self.credits = self._stats.starting_credits
         self.power_output = 100
@@ -583,7 +544,6 @@ class Headquarters(Unit2d):
         :param unit_cls: Building class.
         :param all_buildings: Global building group.
         """
-        # Instantiates and places a building if valid, deducts cost.
         all_buildings_list = list(all_buildings)
         if is_valid_building_position(
             position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list
@@ -599,85 +559,67 @@ class Headquarters(Unit2d):
 
 
 class Barracks(Unit2d):
-    """
-    Barracks building: produces infantry units.
-    """
+    """Barracks building: produces infantry units."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Barracks", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.parent_hq = None
 
 
 class WarFactory(Unit2d):
-    """
-    War Factory building: produces ground vehicles.
-    """
+    """War Factory building: produces ground vehicles."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="WarFactory", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.parent_hq = None
 
 
 class Hangar(Unit2d):
-    """
-    Hangar building: produces air units.
-    """
+    """Hangar building: produces air units."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Hangar", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.parent_hq = None
 
 
 class PowerPlant(Unit2d):
-    """
-    Power Plant building: provides power.
-    """
+    """Power Plant building: provides power."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="PowerPlant", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class OilDerrick(Unit2d):
-    """
-    Oil Derrick building: generates income from oil.
-    """
+    """Oil Derrick building: generates income from oil."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="OilDerrick", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class Refinery(Unit2d):
-    """
-    Refinery building: processes oil for income.
-    """
+    """Refinery building: processes oil for income."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Refinery", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.radius = 60
 
 
 class ShaleFracker(Unit2d):
-    """
-    Shale Fracker building: extracts shale for income.
-    """
+    """Shale Fracker building: extracts shale for income."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="ShaleFracker", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class BlackMarket(Unit2d):
-    """
-    Black Market building: illicit income source.
-    """
+    """Black Market building: illicit income source."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="BlackMarket", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
 class Turret(Unit2d):
-    """
-    Defensive turret building: auto-fires on enemies.
-    """
+    """Defensive turret building: auto-fires on enemies."""
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        super().__init__(position=position, team=team, unit_type_str="Turret", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)

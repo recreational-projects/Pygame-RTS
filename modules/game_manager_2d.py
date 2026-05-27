@@ -26,7 +26,6 @@ from modules.data_2d import (
 )
 from modules.draw_2d import draw_mini_map
 from modules.fog_of_war import FogOfWar2d
-from modules.game_console import GameConsole
 from modules.game_data_2d import GameData
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
@@ -774,7 +773,6 @@ class GameManager:
             player_allies=player_allies,
             alliances=alliances,
             interface=interface,
-            console=GameConsole(),
             fog_of_war=FogOfWar2d(
                 map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectator_mode
             ),

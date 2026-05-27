@@ -12,23 +12,22 @@ from modules.data_2d import MINI_MAP_HEIGHT, MINI_MAP_WIDTH, SCREEN_HEIGHT, SCRE
 from modules.team import team_to_color
 
 if TYPE_CHECKING:
-    from pygame.typing import Point
+    from pygame.typing import ColorLike, Point
 
     from modules.camera.camera_2d import Camera2d
     from modules.fog_of_war import FogOfWar2d
     from modules.team import Team
 
 
-def _create_infantry_image(size: Point, team: Team) -> pg.Surface:
+def _create_infantry_image(size: Point, team_color: ColorLike) -> pg.Surface:
     """Creates a simple pixel-art style image for an Infantry unit.
+
+    Draws head, eyes, helmet, body, arms, legs, and weapon using basic shapes.
 
     :param size: Tuple of (width, height) for the surface.
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn infantry image.
     """
-    # Creates a simple pixel-art style image for an Infantry unit.
-    # Draws head, eyes, helmet, body, arms, legs, and weapon using basic shapes.
-    team_color = team_to_color[team]
     image = pg.Surface(size, pg.SRCALPHA)
     pg.draw.circle(image, (150, 150, 150), (8, 4), 4)  # Head
     pg.draw.circle(image, (0, 0, 0), (7, 3), 1)  # Left eye
@@ -44,15 +43,15 @@ def _create_infantry_image(size: Point, team: Team) -> pg.Surface:
     return image
 
 
-def _create_grenadier_image(size: Point, team: Team) -> pg.Surface:
+def _create_grenadier_image(size: Point, team_color: ColorLike) -> pg.Surface:
     """Creates a simple pixel-art style image for a Grenadier unit.
+
+    Similar to Infantry but with grenade launcher details.
 
     :param size: Tuple of (width, height) for the surface.
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn grenadier image.
     """
-    # Similar to Infantry but with grenade launcher details.
-    team_color = team_to_color[team]
     image = pg.Surface(size, pg.SRCALPHA)
     pg.draw.circle(image, (150, 150, 150), (8, 4), 4)  # Head
     pg.draw.circle(image, (0, 0, 0), (7, 3), 1)  # Left eye
@@ -75,19 +74,18 @@ def _create_tank_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surfac
     :param team: The team enum for color selection.
     :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
     """
-    # Creates separate surfaces for tank body, turret, and barrel for modular rotation.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     body_surf = pg.Surface((30, 20), pg.SRCALPHA)
     pg.draw.rect(body_surf, (50, 50, 50), (0, 0, 30, 3), width=2)  # Top track
     pg.draw.rect(body_surf, (50, 50, 50), (0, 17, 30, 3), width=2)  # Bottom track
-    pg.draw.rect(body_surf, team_color, (2, 3, 26, 14), width=2)  # Hull outline
-    pg.draw.line(body_surf, team_color, (0, 3), (30, 3), width=2)  # Hull top
+    pg.draw.rect(body_surf, _team_color, (2, 3, 26, 14), width=2)  # Hull outline
+    pg.draw.line(body_surf, _team_color, (0, 3), (30, 3), width=2)  # Hull top
     pg.draw.circle(body_surf, (60, 60, 60), (5, 10), 1, width=1)  # Left wheel hub
     pg.draw.circle(body_surf, (60, 60, 60), (25, 10), 1, width=1)  # Right wheel hub
     turret_surf = pg.Surface((12, 12), pg.SRCALPHA)
-    pg.draw.circle(turret_surf, team_color, (6, 6), 6, width=2)  # Turret circle
+    pg.draw.circle(turret_surf, _team_color, (6, 6), 6, width=2)  # Turret circle
     barrel_surf = pg.Surface((20, 6), pg.SRCALPHA)
-    pg.draw.line(barrel_surf, team_color, (0, 3), (20, 3), width=3)  # Barrel
+    pg.draw.line(barrel_surf, _team_color, (0, 3), (20, 3), width=3)  # Barrel
     pg.draw.line(barrel_surf, (90, 90, 90), (20, 2), (20, 4), width=1)  # Muzzle brake
     return body_surf, turret_surf, barrel_surf
 
@@ -106,8 +104,6 @@ def _draw_tank(
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
-    # Custom draw method for Tank: scales, rotates, and blits body, turret, and barrel independently.
-    # Handles selection circle and health bar.
     if obj.health <= 0:
         return
     screen_pos = camera.world_to_screen(obj.position)
@@ -150,22 +146,21 @@ def _create_machinegunvehicle_surfaces(team: Team) -> tuple[pg.Surface, pg.Surfa
     :param team: The team enum for color selection.
     :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
     """
-    # Creates surfaces for MachineGunVehicle: body with wheels, turret, and MG barrel.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     body_surf = pg.Surface((35, 25), pg.SRCALPHA)
-    pg.draw.rect(body_surf, team_color, (0, 5, 35, 15), width=2)  # Hull
+    pg.draw.rect(body_surf, _team_color, (0, 5, 35, 15), width=2)  # Hull
     wheel_positions = [5, 15, 25]
     for px in wheel_positions:
         pg.draw.circle(body_surf, (50, 50, 50), (px, 5), 3, width=2)  # Top wheels
         pg.draw.circle(body_surf, (50, 50, 50), (px, 20), 3, width=2)  # Bottom wheels
-    pg.draw.line(body_surf, team_color, (0, 5), (35, 5), width=2)  # Hull top
+    pg.draw.line(body_surf, _team_color, (0, 5), (35, 5), width=2)  # Hull top
     for px in wheel_positions:
         pg.draw.circle(body_surf, (40, 40, 40), (px, 5), 1, width=1)  # Wheel hubs top
         pg.draw.circle(body_surf, (40, 40, 40), (px, 20), 1, width=1)  # Wheel hubs bottom
     turret_surf = pg.Surface((8, 8), pg.SRCALPHA)
-    pg.draw.rect(turret_surf, team_color, (0, 0, 8, 8), width=2)  # Turret
+    pg.draw.rect(turret_surf, _team_color, (0, 0, 8, 8), width=2)  # Turret
     barrel_surf = pg.Surface((25, 2), pg.SRCALPHA)
-    pg.draw.line(barrel_surf, team_color, (0, 1), (25, 1), width=2)  # MG barrel
+    pg.draw.line(barrel_surf, _team_color, (0, 1), (25, 1), width=2)  # MG barrel
     return body_surf, turret_surf, barrel_surf
 
 
@@ -182,7 +177,6 @@ def _draw_machinegunvehicle(
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
-    # Custom draw for MachineGunVehicle, similar to Tank.
     if obj.health <= 0:
         return
     screen_pos = camera.world_to_screen(obj.position)
@@ -225,20 +219,19 @@ def _create_rocketartillery_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface
     :param team: The team enum for color selection.
     :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
     """
-    # Surfaces for RocketArtillery: body with tracks, rectangular turret, triple rocket barrels.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     body_surf = pg.Surface((40, 25), pg.SRCALPHA)
-    pg.draw.rect(body_surf, team_color, (0, 5, 40, 15), width=2)  # Hull
+    pg.draw.rect(body_surf, _team_color, (0, 5, 40, 15), width=2)  # Hull
     pg.draw.rect(body_surf, (50, 50, 50), (0, 0, 40, 5), width=2)  # Top track
     pg.draw.rect(body_surf, (50, 50, 50), (0, 20, 40, 5), width=2)  # Bottom track
-    pg.draw.line(body_surf, team_color, (0, 5), (40, 5), width=2)  # Hull top
+    pg.draw.line(body_surf, _team_color, (0, 5), (40, 5), width=2)  # Hull top
     pg.draw.circle(body_surf, (40, 40, 40), (8, 12.5), 3, width=2)  # Left wheel
     pg.draw.circle(body_surf, (40, 40, 40), (32, 12.5), 3, width=2)  # Right wheel
     turret_surf = pg.Surface((12, 12), pg.SRCALPHA)
-    pg.draw.rect(turret_surf, team_color, (0, 0, 12, 12), width=2)  # Turret
+    pg.draw.rect(turret_surf, _team_color, (0, 0, 12, 12), width=2)  # Turret
     barrel_surf = pg.Surface((30, 8), pg.SRCALPHA)
     for i in range(3):
-        pg.draw.line(barrel_surf, team_color, (i * 10, 4), (i * 10 + 20, 4), width=2)  # Three rocket tubes
+        pg.draw.line(barrel_surf, _team_color, (i * 10, 4), (i * 10 + 20, 4), width=2)  # Three rocket tubes
     return body_surf, turret_surf, barrel_surf
 
 
@@ -255,7 +248,6 @@ def _draw_rocketartillery(
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
-    # Custom draw for RocketArtillery, analogous to previous vehicle draws.
     if obj.health <= 0:
         return
     screen_pos = camera.world_to_screen(obj.position)
@@ -298,22 +290,21 @@ def _create_attackhelicopter_surfaces(team: Team) -> tuple[pg.Surface, pg.Surfac
     :param team: The team enum for color selection.
     :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
     """
-    # Surfaces for AttackHelicopter: fuselage, cockpit, tail rotor, skids, turret, and missile pod.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     body_surf = pg.Surface((25, 15), pg.SRCALPHA)
-    pg.draw.ellipse(body_surf, team_color, (0, 2, 25, 11), width=2)  # Fuselage outline
+    pg.draw.ellipse(body_surf, _team_color, (0, 2, 25, 11), width=2)  # Fuselage outline
     pg.draw.ellipse(body_surf, (80, 80, 80), (2, 4, 21, 7), width=2)  # Cockpit
     pg.draw.ellipse(body_surf, (150, 200, 255), (18, 3, 6, 5), width=2)  # Canopy
     pg.draw.line(body_surf, (90, 90, 90), (0, 7), (-5, 7), width=2)  # Tail boom
-    pg.draw.circle(body_surf, team_color, (-5, 7), 2, width=2)  # Tail rotor
+    pg.draw.circle(body_surf, _team_color, (-5, 7), 2, width=2)  # Tail rotor
     pg.draw.circle(body_surf, (60, 60, 60), (12, 7), 3, width=2)  # Main rotor hub
-    pg.draw.line(body_surf, team_color, (0, 0), (25, 0), width=2)  # Rotor spine
-    pg.draw.line(body_surf, team_color, (5, 12), (9, 12), width=2)  # Left skid
-    pg.draw.line(body_surf, team_color, (16, 12), (20, 12), width=2)  # Right skid
+    pg.draw.line(body_surf, _team_color, (0, 0), (25, 0), width=2)  # Rotor spine
+    pg.draw.line(body_surf, _team_color, (5, 12), (9, 12), width=2)  # Left skid
+    pg.draw.line(body_surf, _team_color, (16, 12), (20, 12), width=2)  # Right skid
     turret_surf = pg.Surface((8, 6), pg.SRCALPHA)
-    pg.draw.rect(turret_surf, team_color, (0, 0, 8, 6), width=2)  # Turret
+    pg.draw.rect(turret_surf, _team_color, (0, 0, 8, 6), width=2)  # Turret
     barrel_surf = pg.Surface((12, 2), pg.SRCALPHA)
-    pg.draw.line(barrel_surf, team_color, (0, 1), (12, 1), width=2)  # Missile pod
+    pg.draw.line(barrel_surf, _team_color, (0, 1), (12, 1), width=2)  # Missile pod
     return body_surf, turret_surf, barrel_surf
 
 
@@ -330,9 +321,9 @@ def _draw_attackhelicopter(
     :param camera: The Camera2d instance for world-to-screen transformation.
     :param mouse_pos: Optional mouse position for hover effects.
     """
-    # Custom draw for AttackHelicopter: adjusts Y for fly_height, draws main rotor blades.
     if obj.health <= 0:
         return
+    _team_color = team_to_color[obj.team]
     fly_screen_pos = camera.world_to_screen((obj.position.x, obj.position.y - obj.fly_height))
     zoom = camera.zoom
     body_scaled = pg.transform.smoothscale(obj.body_surf, (int(25 * zoom), int(15 * zoom)))
@@ -356,7 +347,7 @@ def _draw_attackhelicopter(
     rotor_size = int(20 * zoom)
     pg.draw.circle(
         surface,
-        obj.team_color,
+        _team_color,
         (int(fly_screen_pos[0]), int(fly_screen_pos[1])),
         rotor_size // 2,
         int(2 * zoom),
@@ -382,8 +373,7 @@ def _create_headquarters_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn headquarters image.
     """
-    # Static building image for Headquarters: multi-story with windows, antenna, flag.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -400,7 +390,7 @@ def _create_headquarters_image(size: Point, team: Team) -> pg.Surface:
     )  # Main structure
     pg.draw.rect(
         image,
-        team_color,
+        _team_color,
         (
             int(5 * scale_factor),
             int(5 * scale_factor),
@@ -443,13 +433,13 @@ def _create_headquarters_image(size: Point, team: Team) -> pg.Surface:
     )  # Antenna base
     pg.draw.line(
         image,
-        team_color,
+        _team_color,
         (int(25 * scale_factor), int(5 * scale_factor)),
         (int(25 * scale_factor), 0),
         int(1 * scale_factor),
     )  # Flagpole
     pg.draw.circle(
-        image, team_color, (int(25 * scale_factor), int(25 * scale_factor)), int(5 * scale_factor)
+        image, _team_color, (int(25 * scale_factor), int(25 * scale_factor)), int(5 * scale_factor)
     )  # Central emblem
     pg.draw.arc(
         image,
@@ -494,8 +484,7 @@ def _create_barracks_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn barracks image.
     """
-    # Barracks: sloped roof, windows, door with gate details.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -578,7 +567,7 @@ def _create_barracks_image(size: Point, team: Team) -> pg.Surface:
     )  # Chimney smoke
     pg.draw.line(
         image,
-        team_color,
+        _team_color,
         (int(2.5 * scale_factor), int(2.5 * scale_factor)),
         (0, 0),
         int(1.5 * scale_factor),
@@ -593,8 +582,7 @@ def _create_warfactory_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn war factory image.
     """
-    # WarFactory: industrial building with smokestack, windows, conveyor details.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -685,7 +673,7 @@ def _create_warfactory_image(size: Point, team: Team) -> pg.Surface:
     )  # Conveyor belt
     pg.draw.rect(
         image,
-        team_color,
+        _team_color,
         (
             int(2.5 * scale_factor),
             int(2.5 * scale_factor),
@@ -703,8 +691,7 @@ def _create_hangar_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn hangar image.
     """
-    # Hangar: arched roof, control tower, doors for aircraft.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -771,7 +758,7 @@ def _create_hangar_image(size: Point, team: Team) -> pg.Surface:
     )  # Tower light
     pg.draw.rect(
         image,
-        team_color,
+        _team_color,
         (
             int(2.5 * scale_factor),
             int(2.5 * scale_factor),
@@ -789,8 +776,7 @@ def _create_powerplant_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn power plant image.
     """
-    # PowerPlant: cooling towers, windows, exhaust pipes.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -896,7 +882,7 @@ def _create_powerplant_image(size: Point, team: Team) -> pg.Surface:
         (int(40 * scale_factor), int(25 * scale_factor)),
         int(1.5 * scale_factor),
     )  # Right pipe
-    pg.draw.rect(image, team_color, (0, 0, int(40 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
+    pg.draw.rect(image, _team_color, (0, 0, int(40 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
     return image
 
 
@@ -907,8 +893,7 @@ def _create_oilderrick_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn oil derrick image.
     """
-    # OilDerrick: derrick structure, platform, pump jack.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -955,7 +940,7 @@ def _create_oilderrick_image(size: Point, team: Team) -> pg.Surface:
     )  # Pump base
     pg.draw.rect(
         image,
-        team_color,
+        _team_color,
         (
             int(12.5 * scale_factor),
             int(37.5 * scale_factor),
@@ -997,8 +982,7 @@ def _create_refinery_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn refinery image.
     """
-    # Refinery: tanks, pipes, distillation tower.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -1079,7 +1063,7 @@ def _create_refinery_image(size: Point, team: Team) -> pg.Surface:
         (int(50 * scale_factor), int(25 * scale_factor)),
         int(2 * scale_factor),
     )  # Bottom pipe
-    pg.draw.rect(image, team_color, (0, 0, int(60 * scale_factor), int(2.5 * scale_factor)))  # Team stripe
+    pg.draw.rect(image, _team_color, (0, 0, int(60 * scale_factor), int(2.5 * scale_factor)))  # Team stripe
     return image
 
 
@@ -1090,8 +1074,7 @@ def _create_shalefracker_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn shale fracker image.
     """
-    # ShaleFracker: drilling rig with piston and wellhead.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -1148,7 +1131,7 @@ def _create_shalefracker_image(size: Point, team: Team) -> pg.Surface:
     )  # Right leg
     pg.draw.rect(
         image,
-        team_color,
+        _team_color,
         (
             int(2.5 * scale_factor),
             int(2.5 * scale_factor),
@@ -1166,8 +1149,7 @@ def _create_blackmarket_image(size: Point, team: Team) -> pg.Surface:
     :param team: The team enum for color selection.
     :return: A Pygame Surface with the drawn black market image.
     """
-    # BlackMarket: tent-like structure with stalls and signage.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     scaled_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
     image = pg.Surface(scaled_size)
@@ -1248,7 +1230,7 @@ def _create_blackmarket_image(size: Point, team: Team) -> pg.Surface:
             int(7.5 * scale_factor),
         ),
     )  # Counter
-    pg.draw.rect(image, team_color, (0, 0, int(45 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
+    pg.draw.rect(image, _team_color, (0, 0, int(45 * scale_factor), int(1.5 * scale_factor)))  # Team stripe
     return image
 
 
@@ -1258,8 +1240,7 @@ def _create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surf
     :param team: The team enum for color selection.
     :return: Tuple of (body_surf, turret_surf, barrel_surf) Pygame Surfaces.
     """
-    # Turret: base platform, rotating turret, gun barrel.
-    team_color = team_to_color[team]
+    _team_color = team_to_color[team]
     scale_factor = 0.8
     body_surf = pg.Surface((int(30 * scale_factor), int(30 * scale_factor)), pg.SRCALPHA)
     pg.draw.rect(
@@ -1307,7 +1288,7 @@ def _create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surf
     turret_surf = pg.Surface((int(10 * scale_factor), int(10 * scale_factor)), pg.SRCALPHA)
     pg.draw.circle(
         turret_surf,
-        team_color,
+        _team_color,
         (int(5 * scale_factor), int(5 * scale_factor)),
         int(5 * scale_factor),
     )  # Turret outer
@@ -1324,7 +1305,7 @@ def _create_turret_surfaces(team: Team) -> tuple[pg.Surface, pg.Surface, pg.Surf
         int(1 * scale_factor),
     )  # Sight
     barrel_surf = pg.Surface((int(10 * scale_factor), int(2.5 * scale_factor)), pg.SRCALPHA)
-    pg.draw.rect(barrel_surf, team_color, (0, 0, int(10 * scale_factor), int(2.5 * scale_factor)))  # Barrel
+    pg.draw.rect(barrel_surf, _team_color, (0, 0, int(10 * scale_factor), int(2.5 * scale_factor)))  # Barrel
     pg.draw.rect(
         barrel_surf,
         (90, 90, 90),
