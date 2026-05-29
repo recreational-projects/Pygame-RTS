@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.projectile_2d import Projectile
+    from modules.units_2d import Unit2d
 
 
 def snap_to_grid(*, pos: Point, grid_size: int) -> tuple[int, int]:
@@ -22,7 +23,6 @@ def snap_to_grid(*, pos: Point, grid_size: int) -> tuple[int, int]:
     :param grid_size: Size of the grid cell.
     :return: Snapped position tuple.
     """
-    # Rounds a world position to the nearest grid cell for aligned building placement.
     return round(pos[0] / grid_size) * grid_size, round(pos[1] / grid_size) * grid_size
 
 
@@ -33,7 +33,6 @@ def calculate_formation_positions_2d(*, center: Point, num_units: int) -> list[t
     :param num_units: Number of units in the formation.
     :return: List of position tuples for the formation.
     """
-    # Computes a grid formation around a center point for group movement.
     if num_units == 0:
         return []
 
@@ -99,7 +98,6 @@ def get_starting_positions(
     :param edge_dist: Distance from the edge.
     :return: List of starting position tuples.
     """
-    # Generates balanced starting positions around the map edges for multiple players.
     half_w = map_width / 2
     half_h = map_height / 2
 
@@ -130,22 +128,17 @@ def absolute_world_to_iso(*, world_pos: Point, zoom: float) -> tuple[float, floa
     return iso_x, iso_y
 
 
-def closest_point_on_rect(*, rect: pg.Rect, pos: Point) -> tuple[float, float]:
+def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[float, float]:
     """Computes the closest point on the rect to the position.
 
     :param rect: Pygame Rect.
     :param pos: Position.
     :return: Closest point on rect.
     """
-    # Computes the closest point on the rect to the position.
     return max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom))
 
 
-def check_collision_2d(
-    # pyrefly: ignore [implicit-any-parameter]
-    entity,  # noqa: ANN001
-    projectile: Projectile,
-) -> bool:
+def check_collision_2d(entity: Unit2d, projectile: Projectile) -> bool:
     """
     Detects collision between entity and projectile using rect or radius approximation.
 
@@ -153,7 +146,6 @@ def check_collision_2d(
     :param projectile: Projectile to check.
     :return: True if collision detected.
     """
-    # Detects collision between entity and projectile using rect or radius approximation.
     proj_rect = pg.Rect(
         projectile.position.x - projectile.length / 2,
         projectile.position.y - projectile.width / 2,
@@ -164,4 +156,5 @@ def check_collision_2d(
         dist = entity.distance_to(projectile.position)
         return dist < (entity.radius + max(projectile.length, projectile.width) / 2)
 
+    # pyrefly: ignore [missing-attribute]
     return entity.rect.colliderect(proj_rect)

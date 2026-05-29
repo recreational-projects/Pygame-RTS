@@ -74,14 +74,13 @@ class ProductionInterface:
     _BUTTON_WIDTH = WIDTH - 2 * MARGIN_X
 
     hq: Headquarters
-    all_buildings = None
     surface: pg.Surface = field(init=False)
-    top_rects: dict = field(init=False, default_factory=dict)
-    item_rects: dict = field(init=False, default_factory=dict)
+    top_rects: dict[str, pg.Rect] = field(init=False, default_factory=dict)
+    item_rects: dict[str, pg.Rect] = field(init=False, default_factory=dict)
     placing_cls: type | None = field(init=False, default=None)
     producer: Barracks | WarFactory | Hangar | Headquarters = field(init=False)
     """Current (selected) producing building. Defaults to HQ."""
-    producible_items: list = field(default_factory=list)
+    producible_items: list[str] = field(default_factory=list)
     """Currently producible items based on `producer` class."""
     production_timer: float | None = field(init=False, default=None)
 
@@ -210,7 +209,7 @@ class ProductionInterface:
 
         surface_.blit(self.surface, (SCREEN_WIDTH - self.WIDTH, 0))
 
-    def handle_click(self, screen_pos: Point) -> bool | tuple:
+    def handle_click(self, screen_pos: Point) -> bool | tuple[str, Unit2d]:
         """
         Handles clicks on buttons: repair, sell, queue items, start placement.
 
