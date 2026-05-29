@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_2d import Camera2d
     from modules.team import Team
-    from modules.unit_stats_2d import WeaponStats
+    from modules.unit_stats.unit_stats import WeaponStats
 
 
 class Projectile(pg.sprite.Sprite):

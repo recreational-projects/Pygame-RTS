@@ -33,7 +33,7 @@ from modules.production_interface_2d import ProductionInterface
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_name
-from modules.unit_stats_2d import get_unit_cost, get_unit_size
+from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
 from modules.units_2d import Headquarters, Infantry
 from modules.world_2d import (
     cleanup_dead_entities,

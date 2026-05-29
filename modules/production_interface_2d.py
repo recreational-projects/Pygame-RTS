@@ -8,7 +8,7 @@ import pygame as pg
 from modules.data import UNIT_BUTTON_LABELS
 from modules.data_2d import CONSOLE_HEIGHT, SCREEN_HEIGHT, SCREEN_WIDTH
 from modules.fonts import FONT_MEDIUM
-from modules.unit_stats_2d import get_unit_cost
+from modules.unit_stats.unit_stats_2d import get_unit_cost
 from modules.units_2d import (
     Barracks,
     BlackMarket,

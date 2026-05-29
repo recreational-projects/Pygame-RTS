@@ -19,7 +19,7 @@ class GameObject(pg.sprite.Sprite, ABC):
     :param team: Team enum.
     """
 
-    def __init__(self, position: Point, team: Team) -> None:
+    def __init__(self, *, position: Point, team: Team) -> None:
         super().__init__()
         self.position = Vector2(position)
         self.team = team

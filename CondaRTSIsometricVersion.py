@@ -23,7 +23,6 @@ from modules.data_iso import (
     SCREEN_WIDTH,
     STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
-    UNIT_CLASSES,
 )
 from modules.fog_of_war import FogOfWarIso
 from modules.fonts import FONT_MEDIUM
@@ -42,9 +41,12 @@ from modules.projectile_iso import Projectile
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_color, team_to_name
+from modules.unit_stats.unit_stats_iso import UnitStatsIso, get_unit_cost, get_unit_size
 
 if TYPE_CHECKING:
     from pygame.typing import Point
+
+    from modules.unit_stats.unit_stats import WeaponStats
 
 
 def heuristic(a: Point, b: Point) -> float:
@@ -322,7 +324,7 @@ def is_valid_building_position(
     building_range: int = 200,
     margin: int = 60,
 ) -> bool:
-    width, height = UNIT_CLASSES[new_building_cls.__name__]["size"]
+    width, height = get_unit_size(new_building_cls.__name__)
     half_w_n, half_h_n = width / 2, height / 2
     temp_rect = pg.Rect(position[0] - half_w_n, position[1] - half_h_n, width, height)
     if not (
@@ -333,8 +335,7 @@ def is_valid_building_position(
     has_nearby_friendly = False
     for building in buildings:
         if building.team == team and building.health > 0:
-            e_size = UNIT_CLASSES[building.unit_type]["size"]
-            half_w_e, half_h_e = e_size[0] / 2, e_size[1] / 2
+            half_w_e, half_h_e = building.size[0] / 2, building.size[1] / 2
             min_dist = max(half_w_n + half_w_e, half_h_n + half_h_e) + margin
             dist = math.hypot(proposed_center[0] - building.position.x, proposed_center[1] - building.position.y)
             if dist < min_dist:
@@ -362,7 +363,7 @@ def find_free_spawn_position(
         pos_y = max(0, min(target_pos[1] + offset_y, map_height))
         unit_rect = pg.Rect(pos_x - unit_size[0] / 2, pos_y - unit_size[1] / 2, unit_size[0], unit_size[1])
         overlaps_building = any(b.rect.colliderect(unit_rect) for b in global_buildings if b.health > 0)
-        overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.air)
+        overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.is_air)
         if not overlaps_building and not overlaps_unit:
             return (pos_x, pos_y)
     return (max(0, min(target_pos[0], map_width)), max(0, min(target_pos[1], map_height)))
@@ -382,69 +383,111 @@ def check_collision(entity, projectile):
         return entity.rect.colliderect(proj_rect)
 
 
-class Unit(GameObjectIso):
-    def __init__(self, position: Point, team: Team, unit_type: str, hq=None) -> None:
-        super().__init__(position, team)
-        self.team_color = team_to_color[team]
+class UnitIso(GameObjectIso):
+    def __init__(self, *, position: Point, team: Team, hq=None) -> None:
+        super().__init__(position=position, team=team)
         self.hq = hq
-        stats = UNIT_CLASSES[unit_type]
-        self.stats = stats.copy()
-        self.unit_type = unit_type
-        self.health = stats["hp"]
-        self.max_health = stats["hp"]
-        self.speed = stats["speed"]
-        self.sight_range = stats["sight_range"]
-        self.attack_range = stats["attack_range"]
-        self.weapons = stats["weapons"]
-        self.is_building = stats["is_building"]
-        self.is_vehicle = unit_type in [
-            "Tank",
-            "HeavyTank",
-            "TankDestroyer",
-            "MachineGunVehicle",
-            "RocketArtillery",
-            "AttackHelicopter",
-        ]
+        self.current_weapon_index = 0
         self.attack_target = None
         self.last_shot_time = 0
         self.move_target = None
+        self.formation_target = None
+        self.turret_angle: float = 0
+        self.body_angle: float = 0
+
+        self._stats = UnitStatsIso.from_data(self.__class__.__name__)  # read-only
+        self.health = self._stats.hp
+        self.max_health = self._stats.hp
+        self.size = self._stats.size
+        self.cost = self._stats.cost
+        self.attack_range = self._stats.attack_range
+        self.sight_range = self._stats.sight_range
+        self.speed = self._stats.speed
+        self.producible_items = self._stats.producible
+        self.weapons = self._stats.weapons
+        self.income = self._stats.income
+        self.income_interval = self._stats.income_interval
+
+        if self.is_resource:
+            self.collection_timer = 0
+
         self.path = []
         self.path_index = 0
         self.path_recompute_cooldown = 0
-        self.formation_target = None
-        self.turret_angle = 0
-        self.body_angle = 0
         self.target_body_angle = 0.0
         self.target_turret_angle = 0.0
-        self.hull_rotation_speed = stats.get("hull_rotation_speed", float("inf"))
-        self.turret_rotation_speed = stats.get("turret_rotation_speed", float("inf"))
-        self.air = stats["air"]
-        self.fly_height = stats.get("fly_height", 0)
-        self.size = stats["size"]
-        self.rect = pg.Rect(self.position.x - self.size[0] / 2, self.position.y - self.size[1] / 2, *self.size)
-        if "income" in stats:
-            self.income = stats["income"]
-            self.collection_timer = 0
-        if "producible" in stats:
+
+        self.height = self._stats.height
+        self.rifle_length = self._stats.rifle_length
+        self.rifle_thickness = self._stats.rifle_thickness
+        self.hull_rotation_speed = self._stats.hull_rotation_speed
+        self.turret_rotation_speed = self._stats.turret_rotation_speed
+
+        if self.is_producer:
             self.rally_point = Vector2(position[0] + 80, position[1])
             self.production_queue = []
             self.production_timer = None
-        self._setup_drawing(unit_type)
-        if "weapons" in stats and stats["weapons"]:
-            sound_file = f"{unit_type.lower()}.mp3"
+
+        self.rect = pg.Rect(self.position.x - self.size[0] / 2, self.position.y - self.size[1] / 2, *self.size)
+        self._setup_drawing()
+        _unit_type_str = self.__class__.__name__
+        if self.weapons:
+            sound_file = f"{_unit_type_str.lower()}.mp3"
             try:
                 self.sound = pg.mixer.Sound(sound_file)
             except:
                 self.sound = None
 
-    def draw_static(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
+    @property
+    def is_building(self) -> bool:
+        return self._stats.is_building
+
+    @property
+    def is_air(self) -> bool:
+        return self._stats.is_air
+
+    @property
+    def fly_height(self) -> int:
+        if not self.is_air:
+            raise ValueError("`fly_height` is only available for air units.")
+
+        if self._stats.fly_height is None:
+            raise ValueError("`fly_height` is `None`.")
+
+        return self._stats.fly_height
+
+    @property
+    def production_time(self) -> int | None:
+        return self._stats.production_time
+
+    @property
+    def current_weapon(self) -> WeaponStats:
+        return self.weapons[self.current_weapon_index]
+
+    @property
+    def is_producer(self) -> bool:
+        return bool(self.producible_items)
+
+    @property
+    def is_resource(self) -> bool:
+        return self.income is not None
+
+    @property
+    def is_vehicle(self) -> bool:
+        return isinstance(
+            self, Tank | HeavyTank | TankDestroyer | MachineGunVehicle | RocketArtillery | AttackHelicopter
+        )
+
+    def _draw_static(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color[self.team]
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
-        base_z = self.fly_height if self.air else 0
+        base_z = self.fly_height if self.is_air else 0
         top_z = base_z + h
         bfl = (pos.x - w / 2, pos.y - d / 2, base_z)
         bfr = (pos.x + w / 2, pos.y - d / 2, base_z)
@@ -464,8 +507,8 @@ class Unit(GameObjectIso):
         p_tbl = camera.world_to_iso_3d(*tbl, zoom)
         base_points = [p_bfl, p_bfr, p_bbr, p_bbl]
         front_points = [p_bfl, p_bfr, p_tfr, p_tfl]
-        pg.draw.polygon(surface, self.team_color, front_points)
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        pg.draw.polygon(surface, _team_color, front_points)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         pg.draw.polygon(surface, side_color, [p_bfr, p_bbr, p_tbr, p_tfr])
         pg.draw.polygon(surface, side_color, [p_bbr, p_bbl, p_tbl, p_tbr])
         pg.draw.polygon(surface, side_color, [p_bbl, p_bfl, p_tfl, p_tbl])
@@ -487,23 +530,26 @@ class Unit(GameObjectIso):
                     pg.draw.line(surface, outline_color, edge[i], edge[i + 1], int(2 * zoom))
             else:
                 pg.draw.line(surface, outline_color, edge[0], edge[1], int(2 * zoom))
+
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), base_points, int(2 * zoom))
+
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
-    def draw_humanoid(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
+    def _draw_humanoid(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color[self.hq.team]
         zoom = camera.zoom
         pos = self.position
         angle = self.body_angle
         cos_a = math.cos(angle)
         sin_a = math.sin(angle)
-        team_color = self.team_color
-        side_color = tuple(max(0, c - 50) for c in team_color)
-        highlight_color = tuple(min(255, c + 30) for c in team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
+        highlight_color = tuple(min(255, c + 30) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         shadow_color = pg.Color(50, 50, 50, 100)
         shadow_offset = (2 * zoom, 2 * zoom)
@@ -523,35 +569,35 @@ class Unit(GameObjectIso):
         torso_d = 0.7
         torso_h = 2.8
         torso_base_z = 2.0
-        self.draw_rotated_box(
-            surface,
-            camera,
-            torso_w * 0.9,
-            torso_d * 0.9,
-            torso_h * 0.3,
-            angle,
-            torso_base_z + torso_h * 0.7,
-            highlight_color,
-            side_color,
-            highlight_color,
-            outline_color,
-            zoom,
-            False,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=torso_w * 0.9,
+            d=torso_d * 0.9,
+            h=torso_h * 0.3,
+            angle=angle,
+            base_z=torso_base_z + torso_h * 0.7,
+            team_color=highlight_color,
+            side_color=side_color,
+            roof_color=highlight_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
         )
-        self.draw_rotated_box(
-            surface,
-            camera,
-            torso_w,
-            torso_d,
-            torso_h,
-            angle,
-            torso_base_z,
-            team_color,
-            side_color,
-            team_color,
-            outline_color,
-            zoom,
-            False,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=torso_w,
+            d=torso_d,
+            h=torso_h,
+            angle=angle,
+            base_z=torso_base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
         )
         head_base_z = torso_base_z + torso_h
         head_offset_x = 0.0 * cos_a - 0.0 * sin_a
@@ -563,7 +609,7 @@ class Unit(GameObjectIso):
         head_screen = camera.world_to_iso_3d(*head_center_3d, zoom)
         scaled_head_r = int(head_r_world * zoom * 2)
         if scaled_head_r > 0:
-            pg.draw.circle(surface, team_color, (int(head_screen[0]), int(head_screen[1])), scaled_head_r)
+            pg.draw.circle(surface, _team_color, (int(head_screen[0]), int(head_screen[1])), scaled_head_r)
             eye_offset = int(0.3 * scaled_head_r)
             eye_size = int(0.1 * scaled_head_r)
             pg.draw.circle(
@@ -597,14 +643,14 @@ class Unit(GameObjectIso):
         elbow_l_y = arm_l_start_y - arm_upper_length * sin_a
         p_l_start = camera.world_to_iso_3d(arm_l_start_x, arm_l_start_y, arm_start_z, zoom)
         p_l_elbow = camera.world_to_iso_3d(elbow_l_x, elbow_l_y, arm_start_z - 0.1, zoom)
-        pg.draw.line(surface, team_color, p_l_start, p_l_elbow, arm_thickness)
+        pg.draw.line(surface, _team_color, p_l_start, p_l_elbow, arm_thickness)
         pg.draw.line(surface, outline_color, p_l_start, p_l_elbow, 1)
         hand_l_x = elbow_l_x - arm_lower_length * cos_a
         hand_l_y = elbow_l_y - arm_lower_length * sin_a
         p_l_hand = camera.world_to_iso_3d(hand_l_x, hand_l_y, arm_start_z - 0.2, zoom)
-        pg.draw.line(surface, team_color, p_l_elbow, p_l_hand, arm_thickness - 1)
+        pg.draw.line(surface, _team_color, p_l_elbow, p_l_hand, arm_thickness - 1)
         pg.draw.line(surface, outline_color, p_l_elbow, p_l_hand, 1)
-        pg.draw.circle(surface, team_color, (int(p_l_hand[0]), int(p_l_hand[1])), int(0.15 * zoom * 2), 0)
+        pg.draw.circle(surface, _team_color, (int(p_l_hand[0]), int(p_l_hand[1])), int(0.15 * zoom * 2), 0)
         pg.draw.circle(surface, outline_color, (int(p_l_hand[0]), int(p_l_hand[1])), int(0.15 * zoom * 2), 1)
         right_offset_x = 0.55 * cos_a - 0.35 * sin_a
         right_offset_y = 0.55 * sin_a + 0.35 * cos_a
@@ -614,14 +660,14 @@ class Unit(GameObjectIso):
         elbow_r_y = arm_r_start_y + arm_upper_length * sin_a
         p_r_start = camera.world_to_iso_3d(arm_r_start_x, arm_r_start_y, arm_start_z, zoom)
         p_r_elbow = camera.world_to_iso_3d(elbow_r_x, elbow_r_y, arm_start_z - 0.1, zoom)
-        pg.draw.line(surface, team_color, p_r_start, p_r_elbow, arm_thickness)
+        pg.draw.line(surface, _team_color, p_r_start, p_r_elbow, arm_thickness)
         pg.draw.line(surface, outline_color, p_r_start, p_r_elbow, 1)
         hand_r_x = elbow_r_x + arm_lower_length * cos_a
         hand_r_y = elbow_r_y + arm_lower_length * sin_a
         p_r_hand = camera.world_to_iso_3d(hand_r_x, hand_r_y, arm_start_z - 0.2, zoom)
-        pg.draw.line(surface, team_color, p_r_elbow, p_r_hand, arm_thickness - 1)
+        pg.draw.line(surface, _team_color, p_r_elbow, p_r_hand, arm_thickness - 1)
         pg.draw.line(surface, outline_color, p_r_elbow, p_r_hand, 1)
-        pg.draw.circle(surface, team_color, (int(p_r_hand[0]), int(p_r_hand[1])), int(0.15 * zoom * 2), 0)
+        pg.draw.circle(surface, _team_color, (int(p_r_hand[0]), int(p_r_hand[1])), int(0.15 * zoom * 2), 0)
         pg.draw.circle(surface, outline_color, (int(p_r_hand[0]), int(p_r_hand[1])), int(0.15 * zoom * 2), 1)
         leg_thigh_length = 1.0
         leg_shin_length = 1.0
@@ -635,18 +681,18 @@ class Unit(GameObjectIso):
         knee_l_y = leg_l_start_y + leg_thigh_length * cos_a
         p_leg_l_start = camera.world_to_iso_3d(leg_l_start_x, leg_l_start_y, leg_start_z, zoom)
         p_leg_l_knee = camera.world_to_iso_3d(knee_l_x, knee_l_y, leg_start_z + 0.1, zoom)
-        pg.draw.line(surface, team_color, p_leg_l_start, p_leg_l_knee, leg_thickness)
+        pg.draw.line(surface, _team_color, p_leg_l_start, p_leg_l_knee, leg_thickness)
         pg.draw.line(surface, outline_color, p_leg_l_start, p_leg_l_knee, 1)
         foot_l_x = knee_l_x - leg_shin_length * sin_a
         foot_l_y = knee_l_y + leg_shin_length * cos_a
         p_leg_l_foot = camera.world_to_iso_3d(foot_l_x, foot_l_y, leg_start_z, zoom)
-        pg.draw.line(surface, team_color, p_leg_l_knee, p_leg_l_foot, leg_thickness - 1)
+        pg.draw.line(surface, _team_color, p_leg_l_knee, p_leg_l_foot, leg_thickness - 1)
         pg.draw.line(surface, outline_color, p_leg_l_knee, p_leg_l_foot, 1)
         foot_w = int(0.4 * zoom * 2)
         foot_h = int(0.2 * zoom * 2)
         pg.draw.ellipse(
             surface,
-            team_color,
+            _team_color,
             (
                 int(p_leg_l_foot[0] - foot_w // 2),
                 int(p_leg_l_foot[1] - foot_h // 2),
@@ -673,16 +719,16 @@ class Unit(GameObjectIso):
         knee_r_y = leg_r_start_y - leg_thigh_length * cos_a
         p_leg_r_start = camera.world_to_iso_3d(leg_r_start_x, leg_r_start_y, leg_start_z, zoom)
         p_leg_r_knee = camera.world_to_iso_3d(knee_r_x, knee_r_y, leg_start_z + 0.1, zoom)
-        pg.draw.line(surface, team_color, p_leg_r_start, p_leg_r_knee, leg_thickness)
+        pg.draw.line(surface, _team_color, p_leg_r_start, p_leg_r_knee, leg_thickness)
         pg.draw.line(surface, outline_color, p_leg_r_start, p_leg_r_knee, 1)
         foot_r_x = knee_r_x + leg_shin_length * sin_a
         foot_r_y = knee_r_y - leg_shin_length * cos_a
         p_leg_r_foot = camera.world_to_iso_3d(foot_r_x, foot_r_y, leg_start_z, zoom)
-        pg.draw.line(surface, team_color, p_leg_r_knee, p_leg_r_foot, leg_thickness - 1)
+        pg.draw.line(surface, _team_color, p_leg_r_knee, p_leg_r_foot, leg_thickness - 1)
         pg.draw.line(surface, outline_color, p_leg_r_knee, p_leg_r_foot, 1)
         pg.draw.ellipse(
             surface,
-            team_color,
+            _team_color,
             (
                 int(p_leg_r_foot[0] - foot_w // 2),
                 int(p_leg_r_foot[1] - foot_h // 2),
@@ -703,30 +749,28 @@ class Unit(GameObjectIso):
         )
         weapon_z = arm_start_z - 0.1
         arm_r_end_x, arm_r_end_y = hand_r_x, hand_r_y
-        if self.unit_type in ["Infantry", "Grenadier", "Marksman"]:
-            rifle_length = self.stats.get("rifle_length", 2.0)
-            rifle_thickness = self.stats.get("rifle_thickness", 0.4)
+        if isinstance(self, Infantry | Grenadier | Marksman):
             rifle_start_x = arm_r_end_x + 0.3 * cos_a
             rifle_start_y = arm_r_end_y + 0.3 * sin_a
-            rifle_end_x = rifle_start_x + rifle_length * cos_a
-            rifle_end_y = rifle_start_y + rifle_length * sin_a
+            rifle_end_x = rifle_start_x + self.rifle_length * cos_a
+            rifle_end_y = rifle_start_y + self.rifle_length * sin_a
             p_rifle_start = camera.world_to_iso_3d(rifle_start_x, rifle_start_y, weapon_z, zoom)
             p_rifle_end = camera.world_to_iso_3d(rifle_end_x, rifle_end_y, weapon_z, zoom)
-            team_grey = tuple(int(c * 0.6) for c in team_color)
+            team_grey = tuple(int(c * 0.6) for c in _team_color)
             barrel_color = team_grey
             stock_color = (139, 69, 19)
             highlight_color = (200, 200, 200)
-            rifle_width = int(rifle_thickness * zoom)
+            rifle_width = int(self.rifle_thickness * zoom)
             pg.draw.line(surface, barrel_color, p_rifle_start, p_rifle_end, rifle_width)
             pg.draw.line(surface, outline_color, p_rifle_start, p_rifle_end, 1)
-            stock_length = int(0.4 * zoom * 2) if self.unit_type != "Marksman" else int(0.6 * zoom * 2)
+            stock_length = int(0.4 * zoom * 2) if isinstance(self, Marksman) else int(0.6 * zoom * 2)
             stock_end_x = p_rifle_start[0] - stock_length * sin_a / zoom
             stock_end_y = p_rifle_start[1] + stock_length * cos_a / zoom
             pg.draw.line(surface, stock_color, p_rifle_start, (stock_end_x, stock_end_y), int(2 * zoom))
             muzzle_r = int(0.8 * zoom)
             pg.draw.circle(surface, highlight_color, (int(p_rifle_end[0]), int(p_rifle_end[1])), muzzle_r)
             pg.draw.circle(surface, outline_color, (int(p_rifle_end[0]), int(p_rifle_end[1])), muzzle_r, 1)
-            if self.unit_type == "Marksman":
+            if isinstance(self, Marksman):
                 scope_pos = (
                     (p_rifle_start[0] + p_rifle_end[0]) / 2,
                     (p_rifle_start[1] + p_rifle_end[1]) / 2,
@@ -734,20 +778,20 @@ class Unit(GameObjectIso):
                 scope_r = int(1.2 * zoom)
                 pg.draw.circle(surface, (120, 120, 120), (int(scope_pos[0]), int(scope_pos[1])), scope_r)
                 pg.draw.circle(surface, highlight_color, (int(scope_pos[0]), int(scope_pos[1])), scope_r - 1)
-        elif self.unit_type == "RocketSoldier":
-            rocket_length = self.stats["rocket_length"]
-            rocket_width = int(self.stats["rocket_thickness"] * zoom)
+
+        elif isinstance(self, RocketSoldier):
+            _rocket_width = int(self._stats.rocket_thickness * zoom)
             shoulder_offset_x = 0.7 * cos_a - 0.5 * sin_a
             shoulder_offset_y = 0.7 * sin_a + 0.5 * cos_a
             rocket_start_x = pos.x + shoulder_offset_x
             rocket_start_y = pos.y + shoulder_offset_y
-            rocket_end_x = rocket_start_x + rocket_length * sin_a
-            rocket_end_y = rocket_start_y - rocket_length * cos_a
+            rocket_end_x = rocket_start_x + self._stats.rocket_length * sin_a
+            rocket_end_y = rocket_start_y - self._stats.rocket_length * cos_a
             p_rocket_start = camera.world_to_iso_3d(rocket_start_x, rocket_start_y, weapon_z, zoom)
             p_rocket_end = camera.world_to_iso_3d(rocket_end_x, rocket_end_y, weapon_z, zoom)
-            tube_color = tuple(int(c * 0.7) for c in team_color)
+            tube_color = tuple(int(c * 0.7) for c in _team_color)
             warhead_color = (200, 50, 50)
-            pg.draw.line(surface, tube_color, p_rocket_start, p_rocket_end, rocket_width)
+            pg.draw.line(surface, tube_color, p_rocket_start, p_rocket_end, _rocket_width)
             pg.draw.line(surface, outline_color, p_rocket_start, p_rocket_end, 2)
             grip_length = int(0.1 * zoom * 2)
             grip_dir_perp_x = rocket_end_x - rocket_start_x
@@ -784,8 +828,9 @@ class Unit(GameObjectIso):
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
-    def draw_rotated_box(
+    def _draw_rotated_box(
         self,
+        *,
         surface: pg.Surface,
         camera: CameraIso,
         w: float,
@@ -834,6 +879,7 @@ class Unit(GameObjectIso):
                 full_top[widx[3]][1],
             ]
             avg_ys.append(sum(ys) / 4)
+
         front_idx = avg_ys.index(min(avg_ys))
         for i, widx in enumerate(wall_indices):
             points = [
@@ -844,6 +890,7 @@ class Unit(GameObjectIso):
             ]
             color = team_color if i == front_idx else side_color
             pg.draw.polygon(surface, color, points)
+
         pg.draw.polygon(surface, roof_color, p_top)
         all_points = p_bottom_local + p_top
         bottom_edge = [0, 1, 2, 3, 0]
@@ -864,61 +911,64 @@ class Unit(GameObjectIso):
             else:
                 pg.draw.line(surface, outline_color, all_points[edge[0]], all_points[edge[1]], line_width)
 
-    def draw_vehicle(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
+    def _draw_vehicle(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color[self.hq.team]
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
-        base_z = self.fly_height if self.air else 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        base_z = self.fly_height if self.is_air else 0
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         roof_color = pg.Color(100, 100, 100)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
-        self.draw_rotated_box(
-            surface,
-            camera,
-            w,
-            d,
-            h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            roof_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=w,
+            d=d,
+            h=h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=roof_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        turret_w = self.stats["turret_width"]
-        turret_d = self.stats["turret_depth"]
-        turret_h = self.stats["turret_height"]
+
+        turret_w = self._stats.turret_width
+        turret_d = self._stats.turret_depth
+        turret_h = self._stats.turret_height
         turret_base_z = base_z + h
-        self.draw_rotated_box(
-            surface,
-            camera,
-            turret_w,
-            turret_d,
-            turret_h,
-            self.turret_angle,
-            turret_base_z,
-            self.team_color,
-            side_color,
-            roof_color,
-            outline_color,
-            zoom,
-            True,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=turret_w,
+            d=turret_d,
+            h=turret_h,
+            angle=self.turret_angle,
+            base_z=turret_base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=roof_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=True,
         )
-        if self.unit_type in ["Tank", "HeavyTank", "TankDestroyer"]:
-            barrel_length = self.stats["barrel_length"]
-            barrel_width = self.stats["barrel_width"]
-            barrel_height = self.stats["barrel_height"]
-            turret_center_x = pos.x + self.stats["turret_offset_x"]
-            turret_center_y = pos.y + self.stats["turret_offset_y"]
+        if isinstance(self, Tank | HeavyTank | TankDestroyer):
+            barrel_length = self._stats.barrel_length
+            barrel_width = self._stats.barrel_width
+            barrel_height = self._stats.barrel_height
+            turret_center_x = pos.x + self._stats.turret_offset_x
+            turret_center_y = pos.y + self._stats.turret_offset_y
             turret_center_z = turret_base_z + turret_h / 2
             cos_t = math.cos(self.turret_angle)
             sin_t = math.sin(self.turret_angle)
@@ -955,12 +1005,13 @@ class Unit(GameObjectIso):
             p_b2 = camera.world_to_iso_3d(*b2, zoom)
             p_b3 = camera.world_to_iso_3d(*b3, zoom)
             p_b4 = camera.world_to_iso_3d(*b4, zoom)
-            barrel_color = tuple(min(255, c + 20) for c in self.team_color)
+            barrel_color = tuple(min(255, c + 20) for c in _team_color)
             pg.draw.polygon(surface, barrel_color, [p_b1, p_b2, p_b3, p_b4])
             pg.draw.line(surface, outline_color, p_b1, p_b2, int(1 * zoom))
             pg.draw.line(surface, outline_color, p_b2, p_b3, int(1 * zoom))
             pg.draw.line(surface, outline_color, p_b3, p_b4, int(1 * zoom))
             pg.draw.line(surface, outline_color, p_b4, p_b1, int(1 * zoom))
+
         self.draw_health_bar(surface, camera, mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
@@ -989,19 +1040,21 @@ class Unit(GameObjectIso):
         target_pos.y = max(0, min(target_pos.y, self.map_height))
         return target_pos
 
-    def _setup_drawing(self, unit_type: str) -> None:
-        self.height = self.stats.get("height", 0)
-        if unit_type in ["Infantry", "Grenadier", "RocketSoldier", "Marksman"]:
-            self.draw = self.draw_humanoid
+    def _setup_drawing(self) -> None:
+        if isinstance(self, Infantry | Grenadier | RocketSoldier | Marksman):
+            self.draw = self._draw_humanoid
+        elif not self.is_vehicle:
+            self.draw = self._draw_static
         else:
-            self.draw = self.draw_static if not self.is_vehicle else self.draw_vehicle
+            self.draw = self._draw_vehicle
 
-    def _update_production(self, friendly_units, all_units) -> None:
+    def _update_production(self, *, friendly_units, all_units) -> None:
         if self.production_queue:
             current_unit_count = len(friendly_units)
             if current_unit_count < 100:
                 if self.production_timer is None:
-                    self.production_timer = self.stats["production_time"]
+                    self.production_timer = self.production_time
+
                 self.production_timer -= 1
                 if self.production_timer <= 0:
                     item = self.production_queue.pop(0)
@@ -1012,6 +1065,7 @@ class Unit(GameObjectIso):
                         new_unit = globals()[unit_type](spawn_pos, self.team, hq=self.hq)
                     except KeyError:
                         new_unit = globals()["Infantry"](spawn_pos, self.team, hq=self.hq)
+
                     new_unit.map_width = self.map_width
                     new_unit.map_height = self.map_height
                     self.hq.stats["units_created"] += 1
@@ -1038,6 +1092,7 @@ class Unit(GameObjectIso):
         self.under_attack = self.under_attack_timer > 0
         if self.last_shot_time > 0:
             self.last_shot_time -= 1
+
         if self.attack_target:
             if (
                 not hasattr(self.attack_target, "health")
@@ -1047,6 +1102,7 @@ class Unit(GameObjectIso):
                 self.attack_target = None
                 if self.move_target == getattr(self.attack_target, "position", None):
                     self.move_target = None
+
         if not self.is_building:
             if self.move_target:
                 half_w = self.rect.width / 2
@@ -1076,6 +1132,7 @@ class Unit(GameObjectIso):
                         for tx in range(min_tx, max_tx):
                             for ty in range(min_ty, max_ty):
                                 blocked.add((tx, ty))
+
                     self.path = astar(
                         self.position,
                         Vector2(self.move_target),
@@ -1086,6 +1143,7 @@ class Unit(GameObjectIso):
                     )
                     self.path_index = 0
                     self.path_recompute_cooldown = 12 + random.randint(0, 8)
+
                 self.path_recompute_cooldown -= 1
                 if self.path and self.path_index < len(self.path):
                     next_wp = self.path[self.path_index]
@@ -1101,9 +1159,11 @@ class Unit(GameObjectIso):
                         if self.path_index >= len(self.path):
                             self.path = []
                             self.move_target = None
+
                 else:
                     self.path = []
                     self.move_target = None
+
             if self.attack_target and self.attack_target.health > 0:
                 if self.attack_target.is_building:
                     closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
@@ -1137,20 +1197,17 @@ class Unit(GameObjectIso):
             self.target_turret_angle = self.body_angle
         self.position.x = max(self.rect.width / 2, min(self.position.x, self.map_width - self.rect.width / 2))
         self.position.y = max(self.rect.height / 2, min(self.position.y, self.map_height - self.rect.height / 2))
-        if (
-            hasattr(self, "stats")
-            and "producible" in self.stats
-            and friendly_units is not None
-            and all_units is not None
-        ):
-            self._update_production(friendly_units, all_units)
-        if hasattr(self, "collection_timer"):
+        if self.is_producer and friendly_units is not None and all_units is not None:
+            self._update_production(friendly_units=friendly_units, all_units=all_units)
+
+        if self.is_resource:
             self.collection_timer += 1
-            if self.collection_timer >= self.stats.get("income_interval", 300):
-                income = self.stats["income"]
+            if self.collection_timer >= self.income_interval:
+                income = self.income
                 self.hq.credits += income
-                self.hq.stats["credits_earned"] += income
+                self.hq.game_stats["credits_earned"] += income
                 self.collection_timer = 0
+
         angle_diff = (self.target_body_angle - self.body_angle + math.pi) % (2 * math.pi) - math.pi
         rot_step = min(self.hull_rotation_speed, abs(angle_diff))
         if angle_diff > 0:
@@ -1182,94 +1239,94 @@ class Unit(GameObjectIso):
             if dist <= self.attack_range:
                 self.shoot(aim_target, projectiles)
 
-    def get_attack_range(self) -> float:
-        return self.attack_range
-
     def shoot(self, target, projectiles: pg.sprite.Group) -> None:
         if not self.weapons or self.last_shot_time > 0:
             return
-        weapon = self.weapons[0]
+
         if target.is_building:
             closest = closest_point_on_rect(rect=target.rect, pos=self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
         else:
             dist = self.distance_to(target.position)
-            time_to_target = dist / weapon["projectile_speed"]
+            time_to_target = dist / self.current_weapon.projectile_speed
             target_vel = Vector2(
                 target.speed * math.cos(getattr(target, "body_angle", 0)) if hasattr(target, "speed") else 0,
                 target.speed * math.sin(getattr(target, "body_angle", 0)) if hasattr(target, "speed") else 0,
             )
             predicted_pos = target.position + target_vel * time_to_target
             aim_pos = predicted_pos
-        if dist > self.get_attack_range():
+
+        if dist > self.attack_range:
             return
+
         vec = aim_pos - self.position
         if vec.length() == 0:
             return
+
         direction = vec.normalize()
-        proj = Projectile(self.position, direction, weapon["damage"], self.team, weapon)
+        proj = Projectile(self.position, direction, self.current_weapon.damage, self.team, self.current_weapon)
         projectiles.add(proj)  # FIXME: crash here: AttributeError: 'NoneType' object has no attribute 'add'
-        self.last_shot_time = weapon["cooldown"]
+        self.last_shot_time = self.current_weapon.cooldown
         create_explosion_iso(self.position, pg.sprite.Group(), self.team, 3)
         if hasattr(self, "sound") and self.sound:
             self.sound.play()
 
 
-class Infantry(Unit):
+class Infantry(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Infantry", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class Marksman(Unit):
+class Marksman(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Marksman", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class RocketSoldier(Unit):
+class RocketSoldier(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "RocketSoldier", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class Tank(Unit):
+class Tank(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Tank", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class HeavyTank(Unit):
+class HeavyTank(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "HeavyTank", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class TankDestroyer(Unit):
+class TankDestroyer(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "TankDestroyer", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class Grenadier(Unit):
+class Grenadier(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Grenadier", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class MachineGunVehicle(Unit):
+class MachineGunVehicle(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "MachineGunVehicle", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class RocketArtillery(Unit):
+class RocketArtillery(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "RocketArtillery", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class AttackHelicopter(Unit):
+class AttackHelicopter(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "AttackHelicopter", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
 
-class Headquarters(Unit):
+class Headquarters(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Headquarters", hq=hq)
-        self.credits = self.stats["starting_credits"]
+        super().__init__(position=position, team=team, hq=hq)
+        self.credits = self._stats.starting_credits
         self.power_output = 100
         self.power_usage = 50
         self.has_enough_power = True
@@ -1279,7 +1336,7 @@ class Headquarters(Unit):
         self.pending_building_pos = None
         self.rally_point = Vector2(position[0] + (100 if team == Team.GREEN else position[0] - 100), position[1])
         self.radius = 50
-        self.stats = {
+        self.game_stats = {
             "units_created": 0,
             "units_lost": 0,
             "units_destroyed": 0,
@@ -1292,31 +1349,33 @@ class Headquarters(Unit):
     def place_building(self, position: Point, unit_cls: type, all_buildings) -> None:
         all_buildings_list = list(all_buildings)
         if is_valid_building_position(position, self.team, unit_cls, all_buildings_list):
-            unit_type = unit_cls.__name__
             building = unit_cls(position, self.team, hq=self)
             building.map_width = self.map_width
             building.map_height = self.map_height
-            if unit_type in ["WarFactory", "Barracks", "Hangar"]:
+            if isinstance(building, WarFactory | Barracks | Hangar):
                 building.parent_hq = self
+
             all_buildings.add(building)
-            self.stats["buildings_constructed"] += 1
-            self.credits -= UNIT_CLASSES[unit_type]["cost"]
+            self.game_stats["buildings_constructed"] += 1
+            self.credits -= building.cost
             self.pending_building = None
 
 
-class PowerPlant(Unit):
+class PowerPlant(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "PowerPlant", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
     def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color(self.team)
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
         base_z = 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
         cos = math.cos(self.body_angle)
@@ -1324,21 +1383,21 @@ class PowerPlant(Unit):
         main_w = w * 1.2
         main_d = d * 1.2
         main_h = h * 0.5
-        self.draw_rotated_box(
-            surface,
-            camera,
-            main_w,
-            main_d,
-            main_h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            self.team_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=main_w,
+            d=main_d,
+            h=main_h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         for offset in [-w * 0.3, w * 0.3]:
             stack_x = pos.x + offset * cos
@@ -1358,20 +1417,20 @@ class PowerPlant(Unit):
         tower_d = d * 0.8
         tower_h = h * 0.7
         tower_base_z = base_z
-        self.draw_rotated_box(
-            surface,
-            camera,
-            tower_w,
-            tower_d,
-            tower_h,
-            self.body_angle,
-            tower_base_z,
-            pg.Color(150, 150, 150),
-            side_color,
-            pg.Color(150, 150, 150),
-            outline_color,
-            zoom,
-            False,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=tower_w,
+            d=tower_d,
+            h=tower_h,
+            angle=self.body_angle,
+            base_z=tower_base_z,
+            team_color=pg.Color(150, 150, 150),
+            side_color=side_color,
+            roof_color=pg.Color(150, 150, 150),
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
         )
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
@@ -1380,20 +1439,22 @@ class PowerPlant(Unit):
             particle.draw_iso(surface, camera)
 
 
-class Refinery(Unit):
+class Refinery(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Refinery", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.radius = 60
 
     def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color(self.team)
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
         base_z = 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
         cos = math.cos(self.body_angle)
@@ -1401,21 +1462,21 @@ class Refinery(Unit):
         main_w = w * 1.0
         main_d = d * 1.0
         main_h = h * 0.4
-        self.draw_rotated_box(
-            surface,
-            camera,
-            main_w,
-            main_d,
-            main_h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            self.team_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=main_w,
+            d=main_d,
+            h=main_h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         for i, offset in enumerate([-w * 0.4, 0, w * 0.4]):
             tank_x = pos.x + offset * cos
@@ -1464,19 +1525,21 @@ class Refinery(Unit):
             particle.draw_iso(surface, camera)
 
 
-class Turret(Unit):
+class Turret(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Turret", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
 
     def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color(self.team)
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
         base_z = 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
         cos = math.cos(self.body_angle)
@@ -1484,40 +1547,40 @@ class Turret(Unit):
         base_w = w * 1.0
         base_d = d * 1.0
         base_h = h * 0.4
-        self.draw_rotated_box(
-            surface,
-            camera,
-            base_w,
-            base_d,
-            base_h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            self.team_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=base_w,
+            d=base_d,
+            h=base_h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         mount_w = w * 0.6
         mount_d = d * 0.6
         mount_h = h * 0.2
         mount_base_z = base_z + base_h
-        self.draw_rotated_box(
-            surface,
-            camera,
-            mount_w,
-            mount_d,
-            mount_h,
-            self.turret_angle,
-            mount_base_z,
-            self.team_color,
-            side_color,
-            pg.Color(120, 120, 120),
-            outline_color,
-            zoom,
-            True,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=mount_w,
+            d=mount_d,
+            h=mount_h,
+            angle=self.turret_angle,
+            base_z=mount_base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=pg.Color(120, 120, 120),
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=True,
         )
         barrel_length = w * 1.5
         barrel_base_z = mount_base_z + mount_h / 2
@@ -1529,7 +1592,7 @@ class Turret(Unit):
         barrel_end_y = barrel_start_y + barrel_length * sin_t
         p_barrel_start = camera.world_to_iso_3d(barrel_start_x, barrel_start_y, barrel_base_z, zoom)
         p_barrel_end = camera.world_to_iso_3d(barrel_end_x, barrel_end_y, barrel_base_z, zoom)
-        barrel_color = tuple(min(255, c + 40) for c in self.team_color)
+        barrel_color = tuple(min(255, c + 40) for c in _team_color)
         pg.draw.line(surface, barrel_color, p_barrel_start, p_barrel_end, int(4 * zoom))
         pg.draw.circle(
             surface,
@@ -1558,20 +1621,22 @@ class Turret(Unit):
             particle.draw_iso(surface, camera)
 
 
-class Barracks(Unit):
+class Barracks(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Barracks", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.parent_hq = None
 
     def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color(self.team)
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
         base_z = 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
         cos = math.cos(self.body_angle)
@@ -1579,21 +1644,21 @@ class Barracks(Unit):
         main_w = w * 1.4
         main_d = d * 0.8
         main_h = h * 0.6
-        self.draw_rotated_box(
-            surface,
-            camera,
-            main_w,
-            main_d,
-            main_h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            self.team_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=main_w,
+            d=main_d,
+            h=main_h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         roof_h = h * 0.2
         roof_base_z = base_z + main_h
@@ -1663,7 +1728,7 @@ class Barracks(Unit):
         flag_end_x = flag_x + w * 0.2 * cos
         flag_end_y = flag_y + w * 0.2 * sin
         p_flag_end = camera.world_to_iso_3d(flag_end_x, flag_end_y, flag_top_z, zoom)
-        pg.draw.line(surface, self.team_color, p_flag_top, p_flag_end, int(4 * zoom))
+        pg.draw.line(surface, _team_color, p_flag_top, p_flag_end, int(4 * zoom))
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
         self.draw_health_bar(surface, camera, mouse_pos)
@@ -1671,20 +1736,22 @@ class Barracks(Unit):
             particle.draw_iso(surface, camera)
 
 
-class WarFactory(Unit):
+class WarFactory(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "WarFactory", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.parent_hq = None
 
     def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color(self.team)
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
         base_z = 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
         cos = math.cos(self.body_angle)
@@ -1692,40 +1759,40 @@ class WarFactory(Unit):
         main_w = w * 1.3
         main_d = d * 1.2
         main_h = h * 0.5
-        self.draw_rotated_box(
-            surface,
-            camera,
-            main_w,
-            main_d,
-            main_h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            self.team_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=main_w,
+            d=main_d,
+            h=main_h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         for off in [-1, 1]:
             attach_x = pos.x + off * (main_w * 0.3) * cos
             attach_y = pos.y + off * (main_w * 0.3) * sin
             attach_base = (attach_x, attach_y, base_z + main_h * 0.2)
-            self.draw_rotated_box(
-                surface,
-                camera,
-                w * 0.4,
-                d * 0.6,
-                h * 0.3,
-                self.body_angle,
-                attach_base[2],
-                pg.Color(90, 90, 90),
-                side_color,
-                pg.Color(90, 90, 90),
-                outline_color,
-                zoom,
-                False,
+            self._draw_rotated_box(
+                surface=surface,
+                camera=camera,
+                w=w * 0.4,
+                d=d * 0.6,
+                h=h * 0.3,
+                angle=self.body_angle,
+                base_z=attach_base[2],
+                team_color=pg.Color(90, 90, 90),
+                side_color=side_color,
+                roof_color=pg.Color(90, 90, 90),
+                outline_color=outline_color,
+                zoom=zoom,
+                is_turret=False,
             )
         for off in [-w * 0.2, w * 0.2]:
             stack_x = pos.x + off * cos
@@ -1781,20 +1848,22 @@ class WarFactory(Unit):
             particle.draw_iso(surface, camera)
 
 
-class Hangar(Unit):
+class Hangar(UnitIso):
     def __init__(self, position: Point, team: Team, hq=None) -> None:
-        super().__init__(position, team, "Hangar", hq=hq)
+        super().__init__(position=position, team=team, hq=hq)
         self.parent_hq = None
 
     def draw(self, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
+
+        _team_color = team_to_color(self.team)
         zoom = camera.zoom
         w, d = self.size
         h = self.height
         pos = self.position
         base_z = 0
-        side_color = tuple(max(0, c - 50) for c in self.team_color)
+        side_color = tuple(max(0, c - 50) for c in _team_color)
         outline_color = pg.Color(0, 0, 0)
         p_bottom = []
         cos = math.cos(self.body_angle)
@@ -1802,21 +1871,21 @@ class Hangar(Unit):
         hangar_w = w * 1.6
         hangar_d = d * 1.4
         hangar_h = h * 0.3
-        self.draw_rotated_box(
-            surface,
-            camera,
-            hangar_w,
-            hangar_d,
-            hangar_h,
-            self.body_angle,
-            base_z,
-            self.team_color,
-            side_color,
-            self.team_color,
-            outline_color,
-            zoom,
-            False,
-            p_bottom,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=hangar_w,
+            d=hangar_d,
+            h=hangar_h,
+            angle=self.body_angle,
+            base_z=base_z,
+            team_color=_team_color,
+            side_color=side_color,
+            roof_color=_team_color,
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
+            p_bottom=p_bottom,
         )
         roof_h = h * 0.4
         roof_base_z = base_z + hangar_h
@@ -1869,20 +1938,20 @@ class Hangar(Unit):
         tower_x = pos.x + w * 0.7 * cos
         tower_y = pos.y + w * 0.7 * sin
         tower_base = (tower_x, tower_y, base_z)
-        self.draw_rotated_box(
-            surface,
-            camera,
-            w * 0.3,
-            d * 0.3,
-            h * 0.6,
-            self.body_angle,
-            tower_base[2],
-            pg.Color(100, 80, 60),
-            side_color,
-            pg.Color(100, 80, 60),
-            outline_color,
-            zoom,
-            False,
+        self._draw_rotated_box(
+            surface=surface,
+            camera=camera,
+            w=w * 0.3,
+            d=d * 0.3,
+            h=h * 0.6,
+            angle=self.body_angle,
+            base_z=tower_base[2],
+            team_color=pg.Color(100, 80, 60),
+            side_color=side_color,
+            roof_color=pg.Color(100, 80, 60),
+            outline_color=outline_color,
+            zoom=zoom,
+            is_turret=False,
         )
         apron_center = camera.world_to_iso_3d(pos.x, pos.y, base_z + hangar_h * 0.5, zoom)
         pg.draw.circle(
@@ -2032,16 +2101,16 @@ class AI:
         nearby_enemies = [u for u in enemy_units if u.health > 0 and u.distance_to(hq_pos) < 600]
         self.threat_level = len(nearby_enemies) / max(1, self.enemy_strength) if self.enemy_strength > 0 else 0
         self.nearby_enemies = nearby_enemies
-        resource_buildings = [b for b in friendly_buildings if b.unit_type in ["Refinery"]]
+        resource_buildings = [b for b in friendly_buildings if isinstance(b, Refinery)]
         self.economy_level = len(resource_buildings) // 2
-        self.resource_count = len([b for b in friendly_buildings if b.unit_type in ["Refinery"] and b.health > 0])
-        self.turret_count = len([b for b in friendly_buildings if b.unit_type == "Turret" and b.health > 0])
+        self.resource_count = len([b for b in friendly_buildings if isinstance(b, Refinery) and b.health > 0])
+        self.turret_count = len([b for b in friendly_buildings if isinstance(b, Turret) and b.health > 0])
         self.military_prod_count = len(
-            [b for b in friendly_buildings if b.unit_type in ["Barracks", "WarFactory", "Hangar"] and b.health > 0]
+            [b for b in friendly_buildings if isinstance(b, Barracks | WarFactory | Hangar) and b.health > 0]
         )
-        self.power_count = len([b for b in friendly_buildings if b.unit_type == "PowerPlant" and b.health > 0])
+        self.power_count = len([b for b in friendly_buildings if isinstance(b, PowerPlant) and b.health > 0])
         self.total_buildings = self.military_prod_count + self.resource_count + self.power_count + self.turret_count
-        power_plants = len([b for b in friendly_buildings if b.unit_type == "PowerPlant"])
+        power_plants = len([b for b in friendly_buildings if isinstance(b, PowerPlant)])
         self.power_shortage = power_plants < self.economy_level + 1
         time_factor = max(1.0, (self.action_timer / 3600) ** 0.5)
         self.expansion_factor = time_factor * (1 + self.economy_bias)
@@ -2053,14 +2122,14 @@ class AI:
         self.power_target = max(2, int((self.resource_target + self.military_target) * 0.4 * self.expansion_factor))
         self.defense_target = max(2, int(self.total_buildings * 0.15 * self.expansion_factor))
         enemy_hq = min(
-            (b for b in enemy_buildings if b.unit_type == "Headquarters" and b.health > 0),
+            (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
             key=lambda b: self.hq.distance_to(b.position),
             default=None,
         )
         if enemy_hq:
             self.known_enemy_pos = enemy_hq.position
         self.unit_counts = {
-            unit: sum(1 for u in friendly_units if u.unit_type == unit and u.health > 0)
+            unit: sum(1 for u in friendly_units if type(u) == unit and u.health > 0)
             for unit in self.base_priorities.keys()
         }
         total_units = sum(self.unit_counts.values())
@@ -2167,7 +2236,7 @@ class AI:
             building_target = None
         if enemy_units:
             unit_target = min(
-                (u for u in enemy_units if u.health > 0 and u.unit_type in ["Infantry", "Grenadier"]),
+                (u for u in enemy_units if u.health > 0 and isinstance(u, Infantry | Grenadier)),
                 key=lambda u: u.distance_to(from_pos),
                 default=None,
             )
@@ -2207,10 +2276,8 @@ class AI:
         map_area = map_width * map_height
         scale = math.sqrt(map_area / default_area)
         hq_pos = self.hq.position
-        half_w, half_h = (
-            UNIT_CLASSES[building_cls.__name__]["size"][0] / 2,
-            UNIT_CLASSES[building_cls.__name__]["size"][1] / 2,
-        )
+        _size = get_unit_size(building_cls.__name__)
+        half_w, half_h = (_size[0] / 2, _size[1] / 2)
         max_attempts = 2000
         attempts = 0
         if building_cls.__name__ in ["PowerPlant", "Barracks", "WarFactory", "Hangar"]:
@@ -2278,29 +2345,33 @@ class AI:
                 self.barracks_index += 1
                 if len(barracks.production_queue) < max_queue_light:
                     if self.threat_level > 0.5:
-                        unit_type = random.choices(
+                        unit_type_str = random.choices(
                             list(self.production_priorities.keys()),
                             weights=[0.7, 0.2, 0.1, 0.0, 0, 0, 0, 0, 0, 0],
                         )[0]
                     else:
-                        unit_type = random.choices(
+                        unit_type_str = random.choices(
                             list(self.production_priorities.keys()),
                             weights=list(self.production_priorities.values()),
                         )[0]
-                    cost = UNIT_CLASSES[unit_type]["cost"]
+
+                    cost = get_unit_cost(unit_type_str)
                     if self.hq.credits >= cost:
                         for _ in range(batch_size):
                             if self.hq.credits < cost or len(barracks.production_queue) >= max_queue_light:
                                 break
-                            barracks.production_queue.append({"unit_type": unit_type, "repeat": False})
+
+                            barracks.production_queue.append({"unit_type": unit_type_str, "repeat": False})
                             self.hq.credits -= cost
-                        if random.random() < 0.4 and unit_type == "Infantry" and num_units < 10:
+
+                        if random.random() < 0.4 and unit_type_str == "Infantry" and num_units < 10:
                             barracks.production_queue[-1]["repeat"] = True
+
             if war_factory_list and self.economy_level > 1:
                 war_factory = war_factory_list[self.warfactory_index % len(war_factory_list)]
                 self.warfactory_index += 1
                 if len(war_factory.production_queue) < max_queue_heavy:
-                    heavy_unit = random.choice(
+                    unit_type_str = random.choice(
                         [
                             "Tank",
                             "HeavyTank",
@@ -2308,23 +2379,25 @@ class AI:
                             "MachineGunVehicle",
                             "RocketArtillery",
                         ]
-                    )
-                    cost = UNIT_CLASSES[heavy_unit]["cost"]
+                    )  # heavy units
+                    cost = get_unit_cost(unit_type_str)
                     if self.hq.credits >= cost and num_units < target_units * 0.7:
-                        war_factory.production_queue.append({"unit_type": heavy_unit, "repeat": False})
+                        war_factory.production_queue.append({"unit_type": unit_type_str, "repeat": False})
                         self.hq.credits -= cost
+
             if hangar_list and self.economy_level >= 2:
                 hangar = hangar_list[self.hangar_index % len(hangar_list)]
                 self.hangar_index += 1
                 if len(hangar.production_queue) < max_queue_heavy and random.random() < 0.2:
-                    hangar.production_queue.append({"unit_type": "AttackHelicopter", "repeat": False})
-                    self.hq.credits -= UNIT_CLASSES["AttackHelicopter"]["cost"]
+                    unit_type_str = "AttackHelicopter"
+                    hangar.production_queue.append({"unit_type": unit_type_str, "repeat": False})
+                    self.hq.credits -= get_unit_cost(unit_type_str)
 
     def build_defenses(self, all_buildings, map_width: int, map_height: int) -> None:
         if (
             self.threat_level > 0.2
             and self.turret_count < self.defense_target
-            and self.hq.credits >= UNIT_CLASSES["Turret"]["cost"]
+            and self.hq.credits >= get_unit_cost("Turret")
         ):
             pos = self.find_build_position(Turret, all_buildings, map_width, map_height, prefer_near_hq=True)
             if pos:
@@ -2448,13 +2521,13 @@ class AI:
         self.action_timer += 1
         effective_timer = (self.action_timer + self.timer_offset) * self.interval_multiplier
         if int(effective_timer) % int(60 * self.interval_multiplier) == 0:
-            barracks_list = [b for b in friendly_buildings if b.unit_type == "Barracks" and b.health > 0]
-            war_factory_list = [b for b in friendly_buildings if b.unit_type == "WarFactory" and b.health > 0]
-            hangar_list = [b for b in friendly_buildings if b.unit_type == "Hangar" and b.health > 0]
+            barracks_list = [b for b in friendly_buildings if isinstance(b, Barracks) and b.health > 0]
+            war_factory_list = [b for b in friendly_buildings if isinstance(b, WarFactory) and b.health > 0]
+            hangar_list = [b for b in friendly_buildings if isinstance(b, Hangar) and b.health > 0]
             self.queue_unit_production(barracks_list, war_factory_list, hangar_list, friendly_units)
         if int(effective_timer) % 120 == 0:
             enemy_hq = min(
-                (b for b in enemy_buildings if b.unit_type == "Headquarters" and b.health > 0),
+                (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
                 key=lambda b: self.hq.distance_to(b.position),
                 default=None,
             )
@@ -2485,16 +2558,16 @@ class AI:
                     priority_type = "defense"
             cls = None
             if priority_type == "resource":
-                if len([b for b in friendly_buildings if b.unit_type == "Refinery"]) < 2:
+                if len([b for b in friendly_buildings if isinstance(b, Refinery)]) < 2:
                     cls = Refinery
                 else:
                     cls = Refinery
             elif priority_type == "power":
                 cls = PowerPlant
             elif priority_type == "military":
-                built_barracks = len([b for b in friendly_buildings if b.unit_type == "Barracks"])
-                built_factory = len([b for b in friendly_buildings if b.unit_type == "WarFactory"])
-                built_hangar = len([b for b in friendly_buildings if b.unit_type == "Hangar"])
+                built_barracks = len([b for b in friendly_buildings if isinstance(b, Barracks)])
+                built_factory = len([b for b in friendly_buildings if isinstance(b, WarFactory)])
+                built_hangar = len([b for b in friendly_buildings if isinstance(b, Hangar)])
                 if built_barracks < max(2, self.resource_count // 3):
                     cls = Barracks
                 elif built_factory < max(1, self.resource_count // 4):
@@ -2508,10 +2581,12 @@ class AI:
                         cls = WarFactory
                     else:
                         cls = Hangar
+
             elif priority_type == "defense":
                 cls = Turret
+
             if cls:
-                cost = UNIT_CLASSES[cls.__name__]["cost"]
+                cost = get_unit_cost(cls.__name__)
                 if self.hq.credits >= cost:
                     prefer_near = random.random() > 0.2 or self.total_buildings < 10
                     pos = self.find_build_position(
@@ -2521,7 +2596,7 @@ class AI:
                         self.hq.place_building(pos, cls, all_buildings)
         self.build_defenses(all_buildings, map_width, map_height)
         enemy_hq = min(
-            (b for b in enemy_buildings if b.unit_type == "Headquarters" and b.health > 0),
+            (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
             key=lambda b: self.hq.distance_to(b.position),
             default=None,
         )
@@ -2645,8 +2720,9 @@ class ProductionInterface:
             text_surf = FONT_MEDIUM.render(label, True, pg.Color("white"))
             text_rect = text_surf.get_rect(center=rect.center)
             self.surface.blit(text_surf, text_rect)
+
         for item, rect in self.item_rects.items():
-            cost = UNIT_CLASSES[item]["cost"]
+            cost = get_unit_cost(item)
             label = UNIT_BUTTON_LABELS.get(item, item)
             can_produce = self.hq.credits >= cost
             color = self.ACTION_ALLOWED_COLOR if can_produce else self.ACTION_BLOCKED_COLOR
@@ -2711,7 +2787,7 @@ class ProductionInterface:
 
         for item, rect in self.item_rects.items():
             if rect.collidepoint(local_pos):
-                cost = UNIT_CLASSES[item]["cost"]
+                cost = get_unit_cost(item)
                 if self.hq.credits >= cost:
                     if isinstance(self.producer, Headquarters):
                         self.placing_cls = self._STR_TO_BUILDING_CLASS[item]
@@ -2861,11 +2937,12 @@ def draw_fitness_panel(screen: pg.Surface, g) -> None:
 
 def handle_unit_collisions(all_units: list, unit_hash: SpatialHashIso) -> None:
     for i, unit in enumerate(all_units):
-        if unit.health <= 0 or unit.air:
+        if unit.health <= 0 or unit.is_air:
             continue
+
         nearby = unit_hash.query(unit.position, max(unit.rect.width, unit.rect.height))
         for other in nearby:
-            if other is unit or other.health <= 0 or other.air or id(other) <= id(unit):
+            if other is unit or other.health <= 0 or other.is_air or id(other) <= id(unit):
                 continue
             if unit.rect.colliderect(other.rect):
                 dx = other.position.x - unit.position.x
@@ -2886,7 +2963,7 @@ def handle_unit_collisions(all_units: list, unit_hash: SpatialHashIso) -> None:
 
 
 def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHashIso) -> None:
-    for unit in [u for u in all_units if u.health > 0 and not u.air]:
+    for unit in [u for u in all_units if u.health > 0 and not u.is_air]:
         nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
         for building in [b for b in nearby_builds if b.health > 0]:
             if unit.rect.colliderect(building.rect):
@@ -2996,7 +3073,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
                             attacker_hq.stats["units_destroyed"] += 1
                     if e in all_units:
                         all_units.remove(e)
-                        if isinstance(e, Unit):
+                        if isinstance(e, UnitIso):
                             for team, ug in g["unit_groups"].items():
                                 if e in ug:
                                     ug.remove(e)
@@ -3112,7 +3189,7 @@ class GameManager:
         )
         for i, team in enumerate(teams_list):
             pos = positions[i]
-            hq = Headquarters(pos, team)
+            hq = Headquarters(position=pos, team=team)
             hq.map_width = map_width
             hq.map_height = map_height
             hq.stats = {
@@ -3136,7 +3213,7 @@ class GameManager:
                     map_width=map_width,
                     map_height=map_height,
                 )
-                unit = Infantry(offset, team, hq=hq)
+                unit = Infantry(position=offset, team=team, hq=hq)
                 unit.map_width = map_width
                 unit.map_height = map_height
                 units.add(unit)
@@ -3289,7 +3366,7 @@ class GameManager:
                                 building_to_sell = result[1]
                                 if building_to_sell in g["global_buildings"]:
                                     g["global_buildings"].remove(building_to_sell)
-                                    g["player_hq"].credits += UNIT_CLASSES[building_to_sell.unit_type]["cost"] // 2
+                                    g["player_hq"].credits += building_to_sell.cost // 2
                                     if g["selected_building"] == building_to_sell:
                                         g["selected_building"] = None
                                         g["interface"].update_producer(g["player_hq"])
@@ -3297,8 +3374,8 @@ class GameManager:
                         if g["interface"].placing_cls is not None and not g["interface_rect"].collidepoint(mouse_pos):
                             snapped = snap_to_grid(pos=world_pos, grid_size=TILE_SIZE)
                             buildings_list = list(g["global_buildings"])
-                            unit_type = g["interface"].placing_cls.__name__
-                            cost = UNIT_CLASSES[unit_type]["cost"]
+                            unit_type_str = g["interface"].placing_cls.__name__
+                            cost = get_unit_cost(unit_type_str)
                             if g["player_hq"].credits >= cost and is_valid_building_position(
                                 snapped,
                                 g["player_team"],
@@ -3640,7 +3717,7 @@ class GameManager:
                         g["map_width"],
                         g["map_height"],
                     )
-                    width, height = UNIT_CLASSES[unit_type]["size"]
+                    width, height = get_unit_size(unit_type)
                     half_w, half_h = width / 2, height / 2
                     temp_rect = pg.Rect(snapped[0] - half_w, snapped[1] - half_h, width, height)
                     screen_ghost = g["camera"].get_screen_rect(temp_rect)

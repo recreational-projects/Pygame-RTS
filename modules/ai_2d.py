@@ -9,7 +9,7 @@ from loguru import logger
 
 from modules.data_2d import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
 from modules.geometry import snap_to_grid
-from modules.unit_stats_2d import get_unit_cost, get_unit_size
+from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
 from modules.units_2d import (
     Barracks,
     BlackMarket,

@@ -11,7 +11,7 @@ from modules.data_2d import MAP_HEIGHT as MAP_HEIGHT_2D
 from modules.data_2d import MAP_WIDTH as MAP_WIDTH_2D
 from modules.geometry import check_collision_2d, closest_point_on_rect
 from modules.particles import create_explosion_2d
-from modules.unit_stats_2d import get_unit_size
+from modules.unit_stats.unit_stats_2d import get_unit_size
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

@@ -13,14 +13,14 @@ from modules.geometry import closest_point_on_rect
 from modules.particles import create_explosion_2d
 from modules.projectile_2d import Projectile
 from modules.team import Team, team_to_color
-from modules.unit_stats_2d import UnitStats
+from modules.unit_stats.unit_stats_2d import UnitStats2d
 from modules.world_2d import is_valid_building_position
 
 if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
-    from modules.unit_stats_2d import WeaponStats
+    from modules.unit_stats.unit_stats import WeaponStats
 
 
 class Unit2d(GameObject2d):
@@ -40,19 +40,30 @@ class Unit2d(GameObject2d):
         """
         super().__init__(position=position, team=team)
         self.hq = hq
-        self._stats = UnitStats.from_data(self.__class__.__name__)  # read-only
-        self.health: int = self._stats.hp
-        self.max_health: int = self._stats.hp
         self.current_weapon_index = 0
         self.attack_target = None
         self.last_shot_time = 0
         self.move_target = None
         self.formation_target = None
-        self.player_ordered = False
-        self.turret_angle: float = 0
-        self.body_angle: float = 0
+
+        self._stats = UnitStats2d.from_data(self.__class__.__name__)  # read-only
+        self.health = self._stats.hp
+        self.max_health = self._stats.hp
+        self.size = self._stats.size
+        self.cost = self._stats.cost
+        self.attack_range = self._stats.attack_range
+        self.sight_range = self._stats.sight_range
+        self.speed = self._stats.speed
+        self.producible_items = self._stats.producible
+        self.weapons = self._stats.weapons
+        self.income = self._stats.income
+        self.income_interval = self._stats.income_interval
+
         if self.is_resource:
             self.collection_timer = 0
+
+        self.body_angle: float = 0
+        self.player_ordered = False
 
         if self.is_producer:
             self.rally_point = Vector2(position[0] + 80, position[1])
@@ -99,40 +110,12 @@ class Unit2d(GameObject2d):
         self.rect = self.image.get_rect(center=self.position)
 
     @property
-    def cost(self) -> int:
-        return self._stats.cost
-
-    @property
-    def speed(self) -> float:
-        return self._stats.speed
-
-    @property
-    def attack_range(self) -> int:
-        return self._stats.attack_range
-
-    @property
-    def sight_range(self) -> int:
-        return self._stats.sight_range
-
-    @property
-    def size(self) -> tuple[int, int]:
-        return self._stats.size
-
-    @property
     def is_building(self) -> bool:
         return self._stats.is_building
 
     @property
     def is_air(self) -> bool:
         return self._stats.is_air
-
-    @property
-    def income(self) -> int | None:
-        return self._stats.income
-
-    @property
-    def income_interval(self) -> int:
-        return self._stats.income_interval
 
     @property
     def fly_height(self) -> int:
@@ -149,16 +132,8 @@ class Unit2d(GameObject2d):
         return self._stats.production_time
 
     @property
-    def weapons(self) -> list[WeaponStats]:
-        return self._stats.weapons
-
-    @property
     def current_weapon(self) -> WeaponStats:
         return self.weapons[self.current_weapon_index]
-
-    @property
-    def producible_items(self) -> list[str]:
-        return self._stats.producible
 
     @property
     def is_producer(self) -> bool:
@@ -253,7 +228,7 @@ class Unit2d(GameObject2d):
         if self.is_producer and friendly_units is not None and all_units is not None:
             self._update_production(friendly_units, all_units)
 
-        if hasattr(self, "collection_timer"):
+        if self.is_resource:
             self.collection_timer += 1
             if self.collection_timer >= self.income_interval:
                 income = self.income
