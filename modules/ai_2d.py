@@ -9,7 +9,7 @@ from loguru import logger
 
 from modules.data_2d import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
 from modules.geometry import snap_to_grid
-from modules.unit_stats_2d import get_unit_cost, get_unit_size
+from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
 from modules.units_2d import (
     Barracks,
     BlackMarket,
@@ -29,6 +29,7 @@ from modules.world_2d import is_valid_building_position
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
 
+    from pygame.sprite import Group
     from pygame.typing import Point
 
     from modules.team import Team
@@ -110,7 +111,7 @@ def _get_nearest_enemy_building(*, enemy_buildings: Iterable[Unit2d], from_pos: 
         BlackMarket: 0.4,
     }
 
-    def weighted_dist(b) -> float:  # noqa: ANN001
+    def weighted_dist(b: BuildingType) -> float:
         weight = building_weights.get(type(b), 1.0)
         dist = b.distance_to(from_pos)
         return dist / weight
@@ -155,7 +156,7 @@ class AI:
         friendly_buildings: Collection[Unit2d],
         enemy_units: Collection[Unit2d],
         enemy_buildings: Collection[Unit2d],
-        all_buildings: Collection[Unit2d],
+        all_buildings: Group[Unit2d],
         map_width: int = MAP_WIDTH,
         map_height: int = MAP_HEIGHT,
     ) -> None:

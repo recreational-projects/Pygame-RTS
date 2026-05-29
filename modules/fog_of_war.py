@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_2d import Camera2d
     from modules.camera.camera_iso import CameraIso
+    from modules.units_2d import Unit2d
 
 
 class FogOfWar2d:
@@ -28,7 +29,6 @@ class FogOfWar2d:
         :param tile_size: Size of each fog tile (default: TILE_SIZE).
         :param spectator: If True, reveals entire map.
         """
-        # Initializes 2D grids for explored and visible tiles.
         self.tile_size = tile_size
         num_tiles_x = map_width // tile_size
         num_tiles_y = map_height // tile_size
@@ -38,17 +38,18 @@ class FogOfWar2d:
             self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
             self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
 
-    # pyrefly: ignore [implicit-any-type-argument]
-    def update_visibility(self, ally_units: Iterable, ally_buildings: Iterable, global_buildings: Iterable) -> None:
+    def update_visibility(
+        self, ally_units: Iterable[Unit2d], ally_buildings: Iterable[Unit2d], global_buildings: Iterable[Unit2d]
+    ) -> None:
         """Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
 
         :param ally_units: Ally units for sight revelation.
         :param ally_buildings: Ally buildings for sight revelation.
         :param global_buildings: All buildings to update 'is_seen' flag.
         """
-        # Resets visible grid and reveals from ally sight ranges; marks buildings as seen if visible.
         if not ally_units and not ally_buildings:
             return
+
         num_tiles_x = len(self.visible)
         num_tiles_y = len(self.visible[0])
         self.visible = [[False] * num_tiles_y for _ in range(num_tiles_x)]
@@ -74,7 +75,6 @@ class FogOfWar2d:
         :param center: Center position (x, y) to reveal around.
         :param radius: Reveal radius in pixels.
         """
-        # Reveals tiles within radius of center as both explored and visible.
         cx, cy = center
         tile_x, tile_y = int(cx // self.tile_size), int(cy // self.tile_size)
         radius_tiles = radius // self.tile_size
@@ -92,7 +92,6 @@ class FogOfWar2d:
         :param pos: Position (x, y) to check.
         :return: True if visible.
         """
-        # Checks if a position's tile is currently visible.
         tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
         if 0 <= tx < len(self.visible) and 0 <= ty < len(self.visible[0]):
             return self.visible[tx][ty]
@@ -105,7 +104,6 @@ class FogOfWar2d:
         :param pos: Position (x, y) to check.
         :return: True if explored.
         """
-        # Checks if a position's tile has been explored (visible in the past).
         tx, ty = int(pos[0] // self.tile_size), int(pos[1] // self.tile_size)
         if 0 <= tx < len(self.explored) and 0 <= ty < len(self.explored[0]):
             return self.explored[tx][ty]
@@ -118,7 +116,6 @@ class FogOfWar2d:
         :param surface: Surface to draw fog on.
         :param camera: Camera2d for viewport culling.
         """
-        # Renders semi-transparent black overlay on non-visible tiles (full black if unexplored).
         start_tx = max(0, camera.rect.x // self.tile_size)
         start_ty = max(0, camera.rect.y // self.tile_size)
         end_tx = min(len(self.visible), start_tx + (camera.rect.width // self.tile_size) + 2)
@@ -158,8 +155,9 @@ class FogOfWarIso:
             self.explored = [[True] * num_tiles_y for _ in range(num_tiles_x)]
             self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
 
-    # pyrefly: ignore [implicit-any-type-argument]
-    def update_visibility(self, ally_units: Iterable, ally_buildings: Iterable, global_buildings: Iterable) -> None:
+    def update_visibility(
+        self, ally_units: Iterable[Unit2d], ally_buildings: Iterable[Unit2d], global_buildings: Iterable[Unit2d]
+    ) -> None:
         if not ally_units and not ally_buildings:
             return
 

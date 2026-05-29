@@ -33,7 +33,7 @@ from modules.production_interface_2d import ProductionInterface
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_name
-from modules.unit_stats_2d import get_unit_cost, get_unit_size
+from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
 from modules.units_2d import Headquarters, Infantry
 from modules.world_2d import (
     cleanup_dead_entities,
@@ -129,6 +129,9 @@ class GameManager:
                 self._run_game()
 
             elif self.state in (GameState.VICTORY, GameState.DEFEAT):
+                if self.victory_screen is None:
+                    raise ValueError("No victory screen")
+
                 self.victory_screen.update(pg.mouse.get_pos())
                 self.victory_screen.draw(self.screen)
 
@@ -401,6 +404,9 @@ class GameManager:
                     building.draw(self.screen, g.camera, mouse_pos)
 
             if g.interface and not g.spectator_mode:
+                if g.player_team is None:
+                    raise ValueError("`game_data.player_team` cannot be `None`")  # TODO: typeguard
+
                 if g.interface.placing_cls is not None:
                     mouse_pos = pg.mouse.get_pos()
                     ghost_pos = g.camera.screen_to_world(mouse_pos)
@@ -497,6 +503,9 @@ class GameManager:
 
         if g.player_hq is None:
             raise ValueError("`game_data.player_hq` cannot be `None`")  # TODO: typeguard
+
+        if g.player_team is None:
+            raise ValueError("`game_data.player_team` cannot be `None`")  # TODO: typeguard
 
         result = g.interface.handle_click(mouse_pos)
         if result:

@@ -10,17 +10,19 @@ from pygame.math import Vector2
 from modules.data_2d import MAP_HEIGHT as MAP_HEIGHT_2D
 from modules.data_2d import MAP_WIDTH as MAP_WIDTH_2D
 from modules.geometry import check_collision_2d, closest_point_on_rect
-from modules.particles import create_explosion_2d
-from modules.unit_stats_2d import get_unit_size
+from modules.particles import _Particle, create_explosion_2d
+from modules.unit_stats.unit_stats_2d import get_unit_size
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, MutableSequence
 
     from pygame.typing import IntPoint, Point
 
     from modules.game_data_2d import GameData
+    from modules.projectile_2d import Projectile
     from modules.spatial_hash import SpatialHash2d
     from modules.team import Team
+    from modules.units_2d import Unit2d
 
 
 def is_valid_building_position(
@@ -308,7 +310,13 @@ def cleanup_dead_entities(game_data: GameData) -> None:
                 d.plasma_burn_particles = []
 
 
-def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> None:  # noqa: ANN001
+def handle_projectiles(
+    projectiles: Iterable[Projectile],
+    all_units: MutableSequence[Unit2d],
+    all_buildings: MutableSequence[Unit2d],
+    particles: pg.sprite.Group[_Particle],
+    g: GameData,
+) -> None:
     """
     Updates projectiles, checks hits on enemies, applies damage/explosions.
 

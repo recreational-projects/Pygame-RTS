@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 class GameObjectIso(GameObject, ABC):
     """Abstract base for isometric entities."""
 
-    def __init__(self, position: Point, team: Team) -> None:
-        super().__init__(position, team)
+    def __init__(self, *, position: Point, team: Team) -> None:
+        super().__init__(position=position, team=team)
         # self.body_angle = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         self.map_width = MAP_WIDTH

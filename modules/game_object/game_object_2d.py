@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 class GameObject2d(GameObject, ABC):
     """Abstract base for 2d entities."""
 
-    def __init__(self, position: Point, team: Team) -> None:
-        super().__init__(position, team)
+    def __init__(self, *, position: Point, team: Team) -> None:
+        super().__init__(position=position, team=team)
         # self.body_angle: float = 0
         self.plasma_burn_particles: list[PlasmaBurnParticle] = []
         # pyrefly: ignore [missing-override-decorator]

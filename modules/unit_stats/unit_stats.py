@@ -1,12 +1,10 @@
-"""Structures data from `modules.data_2d.UNIT_CLASSES`."""
+"""Implements a generic data structure for unit stats."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, Field
-
-from modules.data_2d import UNIT_CLASSES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -24,29 +22,18 @@ class WeaponStats(BaseModel, frozen=True):
     cooldown: int = 0
 
 
-def get_unit_cost(unit_cls_str: str) -> int:
-    """Returns the cost of a unit before it is instantiated, e.g pre-purchase."""
-    unit_stats = UnitStats.from_data(unit_cls_str)
-    return unit_stats.cost
-
-
-def get_unit_size(unit_cls_str: str) -> tuple[int, int]:
-    """Returns the size of a unit before it is instantiated, e.g pre-purchase."""
-    unit_stats = UnitStats.from_data(unit_cls_str)
-    return unit_stats.size
-
-
 class UnitStats(BaseModel, frozen=True):
     """Static unit stats."""
 
     cost: int
     hp: int
-    starting_credits: int = 0  # HQ only?
     speed: float
     attack_range: int
     sight_range: int
     size: tuple[int, int]  # TODO: ideally would use IntPoint here, but needs custom structuring
+
     # optional:
+    starting_credits: int = 0  # HQ only?
     is_building: bool = False
     is_air: bool = Field(alias="air", default=False)
     income: int | None = None
@@ -71,10 +58,6 @@ class UnitStats(BaseModel, frozen=True):
 
         if not self.is_building and self.income is not None:
             raise ValueError("Non `is-building` units cannot have non-`None` `income`")
-
-    @classmethod
-    def from_data(cls, unit_type_str: str) -> Self:
-        return cls._from_mapping(UNIT_CLASSES[unit_type_str])
 
     @classmethod
     def _from_mapping(cls, mapping: Mapping[str, Any]) -> Self:

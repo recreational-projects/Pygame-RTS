@@ -12,11 +12,14 @@ from modules.data_2d import MINI_MAP_HEIGHT, MINI_MAP_WIDTH, SCREEN_HEIGHT, SCRE
 from modules.team import team_to_color
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from pygame.typing import ColorLike, Point
 
     from modules.camera.camera_2d import Camera2d
     from modules.fog_of_war import FogOfWar2d
     from modules.team import Team
+    from modules.units_2d import Unit2d
 
 
 def _create_infantry_image(size: Point, team_color: ColorLike) -> pg.Surface:
@@ -1399,8 +1402,8 @@ def draw_mini_map(
     map_width: int,
     map_height: int,
     map_color: pg.Color,
-    buildings,  # pyrefly: ignore [implicit-any-parameter]
-    all_units,  # pyrefly: ignore [implicit-any-parameter]
+    buildings: Iterable[Unit2d],
+    all_units: Iterable[Unit2d],
     player_allies: frozenset[Team],
 ) -> pg.Rect:
     """

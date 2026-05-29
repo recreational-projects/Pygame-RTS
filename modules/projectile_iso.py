@@ -15,20 +15,21 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_iso import CameraIso
     from modules.team import Team
+    from modules.unit_stats.unit_stats import WeaponStats
 
 
 class Projectile(pg.sprite.Sprite):
-    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: dict[str, Any]) -> None:
+    def __init__(self, pos: Point, direction: Vector2, damage: int, team: Team, weapon: WeaponStats) -> None:
         super().__init__()
         self.position = Vector2(pos)
         self.direction = direction.normalize() if direction.length() > 0 else Vector2(1, 0)
         self.damage = damage
         self.team = team
-        self.speed = weapon["projectile_speed"]
+        self.speed = weapon.projectile_speed
         self.lifetime = PROJECTILE_LIFETIME * 30
         self.age = 0
-        self.length = weapon["projectile_length"]
-        self.width = weapon["projectile_width"]
+        self.length = weapon.projectile_length
+        self.width = weapon.projectile_width
         self.angle = math.atan2(self.direction.y, self.direction.x)
         # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)

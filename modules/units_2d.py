@@ -13,14 +13,17 @@ from modules.geometry import closest_point_on_rect
 from modules.particles import create_explosion_2d
 from modules.projectile_2d import Projectile
 from modules.team import Team, team_to_color
-from modules.unit_stats_2d import UnitStats
+from modules.unit_stats.unit_stats_2d import UnitStats2d
 from modules.world_2d import is_valid_building_position
 
 if TYPE_CHECKING:
+    from collections.abc import MutableSet
+
+    from pygame.sprite import Group
     from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
-    from modules.unit_stats_2d import WeaponStats
+    from modules.unit_stats.unit_stats import WeaponStats
 
 
 class Unit2d(GameObject2d):
@@ -39,25 +42,36 @@ class Unit2d(GameObject2d):
         :param hq: Optional Headquarters reference.
         """
         super().__init__(position=position, team=team)
-        self.hq = hq
-        self._stats = UnitStats.from_data(self.__class__.__name__)  # read-only
-        self.health: int = self._stats.hp
-        self.max_health: int = self._stats.hp
+        self.hq: Headquarters | None = hq
         self.current_weapon_index = 0
-        self.attack_target = None
+        self.attack_target: Unit2d | None = None
         self.last_shot_time = 0
-        self.move_target = None
-        self.formation_target = None
-        self.player_ordered = False
-        self.turret_angle: float = 0
-        self.body_angle: float = 0
+        self.move_target: Point | None = None
+        self.formation_target: Point | None = None
+
+        self._stats = UnitStats2d.from_data(self.__class__.__name__)  # read-only
+        self.health = self._stats.hp
+        self.max_health = self._stats.hp
+        self.size = self._stats.size
+        self.cost = self._stats.cost
+        self.attack_range = self._stats.attack_range
+        self.sight_range = self._stats.sight_range
+        self.speed = self._stats.speed
+        self.producible_items = self._stats.producible
+        self.weapons = self._stats.weapons
+        self.income = self._stats.income
+        self.income_interval = self._stats.income_interval
+
         if self.is_resource:
             self.collection_timer = 0
+
+        self.body_angle: float = 0
+        self.player_ordered = False
 
         if self.is_producer:
             self.rally_point = Vector2(position[0] + 80, position[1])
             self.production_queue = []
-            self.production_timer = None
+            self.production_timer: int | None = None
             self.gate_open = False
             self.gate_timer = 0
 
@@ -99,40 +113,12 @@ class Unit2d(GameObject2d):
         self.rect = self.image.get_rect(center=self.position)
 
     @property
-    def cost(self) -> int:
-        return self._stats.cost
-
-    @property
-    def speed(self) -> float:
-        return self._stats.speed
-
-    @property
-    def attack_range(self) -> int:
-        return self._stats.attack_range
-
-    @property
-    def sight_range(self) -> int:
-        return self._stats.sight_range
-
-    @property
-    def size(self) -> tuple[int, int]:
-        return self._stats.size
-
-    @property
     def is_building(self) -> bool:
         return self._stats.is_building
 
     @property
     def is_air(self) -> bool:
         return self._stats.is_air
-
-    @property
-    def income(self) -> int | None:
-        return self._stats.income
-
-    @property
-    def income_interval(self) -> int:
-        return self._stats.income_interval
 
     @property
     def fly_height(self) -> int:
@@ -149,16 +135,8 @@ class Unit2d(GameObject2d):
         return self._stats.production_time
 
     @property
-    def weapons(self) -> list[WeaponStats]:
-        return self._stats.weapons
-
-    @property
     def current_weapon(self) -> WeaponStats:
         return self.weapons[self.current_weapon_index]
-
-    @property
-    def producible_items(self) -> list[str]:
-        return self._stats.producible
 
     @property
     def is_producer(self) -> bool:
@@ -176,7 +154,9 @@ class Unit2d(GameObject2d):
     def barrel_offset(self) -> Vector2:
         return Vector2(self._stats.barrel_offset)
 
-    def update(self, *, friendly_units=None, all_units=None) -> None:  # noqa:ANN001
+    def update(
+        self, *, friendly_units: MutableSet[Unit2d] | None = None, all_units: MutableSet[Unit2d] | None = None
+    ) -> None:
         """
         Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
 
@@ -200,12 +180,14 @@ class Unit2d(GameObject2d):
 
         if not self.is_building and self.attack_target and self.attack_target.health > 0:
             if self.attack_target.is_building:
+                # pyrefly: ignore [bad-argument-type]
                 closest = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                 dir_to_closest = Vector2(closest) - self.position
                 dist = dir_to_closest.length()
             else:
                 dist = self.distance_to(self.attack_target.position)
             if self.attack_target.is_building:
+                # pyrefly: ignore [bad-argument-type]
                 closest_enemy = closest_point_on_rect(rect=self.attack_target.rect, pos=self.position)
                 dir_to_enemy = Vector2(closest_enemy) - self.position
             else:
@@ -253,7 +235,7 @@ class Unit2d(GameObject2d):
         if self.is_producer and friendly_units is not None and all_units is not None:
             self._update_production(friendly_units, all_units)
 
-        if hasattr(self, "collection_timer"):
+        if self.is_resource:
             self.collection_timer += 1
             if self.collection_timer >= self.income_interval:
                 income = self.income
@@ -272,7 +254,7 @@ class Unit2d(GameObject2d):
         self.rect.center = self.position
         self.plasma_burn_particles = [p for p in self.plasma_burn_particles if p.alive()]
 
-    def get_chase_position_for_building(self, target_building) -> Vector2 | None:  # noqa:ANN001
+    def get_chase_position_for_building(self, target_building: Unit2d) -> Vector2 | None:
         """
         Computes the position to move to so that the distance to the closest edge of the building
         is exactly attack_range.
@@ -280,6 +262,7 @@ class Unit2d(GameObject2d):
         :param target_building: Target building.
         :return: Chase position or None if already in range.
         """
+        # pyrefly: ignore [bad-argument-type]
         closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
         dir_to_closest = Vector2(closest) - self.position
         dist_to_closest = dir_to_closest.length()
@@ -297,7 +280,7 @@ class Unit2d(GameObject2d):
         target_pos += perp_dir * spread_dist
         return target_pos
 
-    def _update_production(self, friendly_units, all_units) -> None:  # noqa:ANN001
+    def _update_production(self, friendly_units: MutableSet[Unit2d], all_units: MutableSet[Unit2d]) -> None:
         """
         Advances production queue, spawns units at gate, opens gate animation.
 
@@ -426,7 +409,7 @@ class Unit2d(GameObject2d):
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_left))
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_right))
 
-    def shoot(self, target, projectiles: pg.sprite.Group) -> None:  # noqa:ANN001
+    def shoot(self, target: Unit2d, projectiles: pg.sprite.Group[Projectile]) -> None:
         """
         Fires a projectile using current weapon at target, with lead prediction.
 
@@ -439,6 +422,7 @@ class Unit2d(GameObject2d):
             return
 
         if target.is_building:
+            # pyrefly: ignore [bad-argument-type]
             closest = closest_point_on_rect(rect=target.rect, pos=self.position)
             dist = Vector2(closest).distance_to(self.position)
             aim_pos = closest
@@ -521,9 +505,6 @@ class Headquarters(Unit2d):
         self.power_usage = 50
         self.has_enough_power = True
         self.production_queue: list[dict[str, Any]] = []
-        self.production_timer = None
-        self.pending_building = None
-        self.pending_building_pos = None
         self.rally_point = Vector2(position[0] + (100 if team == Team.GREEN else position[0] - 100), position[1])
         self.radius = 50
         self.game_stats = {
@@ -536,7 +517,7 @@ class Headquarters(Unit2d):
             "credits_earned": 0,
         }
 
-    def place_building(self, position: Point, unit_cls: type, all_buildings) -> None:  # noqa:ANN001
+    def place_building(self, position: Point, unit_cls: type, all_buildings: Group[Unit2d]) -> None:
         """
         Instantiates and places a building if valid, deducts cost.
 
@@ -552,10 +533,10 @@ class Headquarters(Unit2d):
             building = unit_cls(position, self.team, hq=self)
             if unit_type in ["WarFactory", "Barracks", "Hangar"]:
                 building.parent_hq = self
+
             all_buildings.add(building)
             self.game_stats["buildings_constructed"] += 1
             self.credits -= building.cost
-            self.pending_building = None
 
 
 class Barracks(Unit2d):

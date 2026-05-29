@@ -14,7 +14,7 @@ dev = [
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
     "pytest>=9.0.3",
-    "ruff>=0.15.14",
+    "ruff>=0.15.15",
 ]
 
 [tool.ruff]
