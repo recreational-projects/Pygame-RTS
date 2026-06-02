@@ -532,9 +532,8 @@ class Headquarters(Unit2d):
         if is_valid_building_position(
             position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list
         ):
-            unit_type = unit_cls.__name__
             building = unit_cls(position, self.team, hq=self)
-            if unit_type in ["WarFactory", "Barracks", "Hangar"]:
+            if isinstance(building, WarFactory | Barracks | Hangar):
                 building.parent_hq = self
 
             all_buildings.add(building)

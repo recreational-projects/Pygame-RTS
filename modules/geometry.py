@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
     from pygame.typing import Point
 
+    from CondaRTSIsometricVersion import UnitIso
     from modules.projectile_2d import Projectile
     from modules.units_2d import Unit2d
 
@@ -121,13 +122,6 @@ def get_starting_positions(
     return selected_positions
 
 
-def absolute_world_to_iso(*, world_pos: Point, zoom: float) -> tuple[float, float]:
-    dx, dy = world_pos
-    iso_x = (dx - dy) * (zoom / 2)
-    iso_y = (dx + dy) * (zoom / 2)
-    return iso_x, iso_y
-
-
 def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[float, float]:
     """Computes the closest point on the rect to the position.
 
@@ -138,7 +132,7 @@ def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[floa
     return max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom))
 
 
-def check_collision_2d(entity: Unit2d, projectile: Projectile) -> bool:
+def check_collision(*, entity: Unit2d | UnitIso, projectile: Projectile) -> bool:
     """
     Detects collision between entity and projectile using rect or radius approximation.
 
@@ -158,3 +152,20 @@ def check_collision_2d(entity: Unit2d, projectile: Projectile) -> bool:
 
     # pyrefly: ignore [missing-attribute]
     return entity.rect.colliderect(proj_rect)
+
+
+def get_iso_bounds(*, map_w: int, map_h: int, zoom: float = 1.0) -> tuple[float, float, float, float]:
+    corners = [(0, 0), (map_w, 0), (map_w, map_h), (0, map_h)]
+    isos = [absolute_world_to_iso(world_pos=c, zoom=zoom) for c in corners]
+    min_x = min(ix for ix, iy in isos)
+    max_x = max(ix for ix, iy in isos)
+    min_y = min(iy for ix, iy in isos)
+    max_y = max(iy for ix, iy in isos)
+    return min_x, max_x, min_y, max_y
+
+
+def absolute_world_to_iso(*, world_pos: Point, zoom: float) -> tuple[float, float]:
+    dx, dy = world_pos
+    iso_x = (dx - dy) * (zoom / 2)
+    iso_y = (dx + dy) * (zoom / 2)
+    return iso_x, iso_y

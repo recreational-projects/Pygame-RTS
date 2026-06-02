@@ -36,9 +36,10 @@ select = [
 ignore = [
     "COM812", # missing-trailing-comma: conflicts with formatter
     "D203", "D213", # format choices
-#    "EM", # flake8-errmsg
-#    "FIX",
-#    "S311",  # suspicious-non-cryptographic-random-usage
+    "E722", # bare-except
+    "EM", # flake8-errmsg
+    "FIX", # flake8-fixme
+    "S311",  # suspicious-non-cryptographic-random-usage
 #    "TD",
 #    "TRY", # tryceratops
 ]
@@ -52,8 +53,8 @@ extend-safe-fixes = [
     "D",
     "E",
     "E501", # line-too-long
-    "F841",
-    "FBT",
+    "F841", # unused-variable
+    "FBT", # flake8-boolean-trap
 ]
 "modules/*.py" = [
     "D",
