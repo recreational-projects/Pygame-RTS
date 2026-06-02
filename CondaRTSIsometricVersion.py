@@ -3701,7 +3701,8 @@ class GameManager:
             for building in building_list:
                 visible = building.team in draw_allies or fog.is_visible(building.position) or building.is_seen
                 if building.health > 0 and visible:
-                    building.draw(self.screen, g["camera"], mouse_pos)
+                    building.draw(surface=self.screen, camera=g["camera"], mouse_pos=mouse_pos)
+
             if g["interface"] and not g.get("spectator", False):
                 if g["interface"].placing_cls is not None:
                     mouse_pos = pg.mouse.get_pos()
@@ -3727,11 +3728,12 @@ class GameManager:
                 for unit in [u for u in unit_list if not u.is_building]:
                     visible = unit.team in draw_allies or fog.is_visible(unit.position)
                     if unit.health > 0 and visible:
-                        unit.draw(self.screen, g["camera"], mouse_pos)
+                        unit.draw(surface=self.screen, camera=g["camera"], mouse_pos=mouse_pos)
             else:
                 for unit in [u for u in unit_list if not u.is_building]:
                     if unit.health > 0:
-                        unit.draw(self.screen, g["camera"])
+                        unit.draw(surface=self.screen, camera=g["camera"])
+
             for projectile in g["projectiles"]:
                 projectile.draw(self.screen, g["camera"])
             for particle in g["particles"]:
