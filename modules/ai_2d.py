@@ -147,7 +147,7 @@ class AI:
 
     @property
     def aggression_bias(self) -> float:
-        return 1.2 if self.personality in ["aggressive", "rusher"] else 0.8 if self.personality == "defensive" else 1.0
+        return 1.2 if self.personality in ["AGGRESSIVE", "RUSHER"] else 0.8 if self.personality == "DEFENSIVE" else 1.0
 
     def update(
         self,
@@ -368,10 +368,10 @@ class AI:
 
     def _decide_building_type(self, live_friendly_buildings: Iterable[Unit2d]) -> BuildingType:
         # Tweak building choice with personality
-        if self.personality == "rusher" and self.resource_count == 0:  # Rush military over economy
+        if self.personality == "RUSHER" and self.resource_count == 0:  # Rush military over economy
             return Barracks
 
-        elif self.personality == "defensive" and self.turret_count < self.total_buildings // 3:
+        elif self.personality == "DEFENSIVE" and self.turret_count < self.total_buildings // 3:
             return Turret
         else:
             if (
@@ -469,7 +469,7 @@ class AI:
         num_samples_per_ring = 25  # Increased from 20: More attempts per ring for better spacing
         # Increase jitter for personality
         angle_jitter = (
-            math.pi * self.build_jitter * (1.5 if self.personality == "rusher" else 1.0)
+            math.pi * self.build_jitter * (1.5 if self.personality == "RUSHER" else 1.0)
         )  # Rushers spread out more
         for ring_dist in range(int(dist_min), int(dist_max + 100), int(ring_step)):
             for _ in range(num_samples_per_ring):
