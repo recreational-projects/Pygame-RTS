@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import heapq
 import math
 import random
 from dataclasses import dataclass
@@ -32,355 +31,27 @@ from modules.game_state import GameState
 from modules.geometry import (
     absolute_world_to_iso,
     calculate_formation_positions_iso,
+    check_collision,
     closest_point_on_rect,
+    get_iso_bounds,
     get_starting_positions,
     snap_to_grid,
 )
 from modules.particles import create_explosion_iso
+from modules.pathfinding_iso import astar
 from modules.projectile_iso import Projectile
 from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_color, team_to_name
+from modules.terrain_feature_iso import generate_terrain_features
 from modules.unit_stats.unit_stats_iso import UnitStatsIso, get_unit_cost, get_unit_size
+from modules.world import handle_unit_building_collisions, handle_unit_collisions
+from modules.world_iso import find_free_spawn_position, handle_attacks, is_valid_building_position
 
 if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.unit_stats.unit_stats import WeaponStats
-
-
-def heuristic(a: Point, b: Point) -> float:
-    return math.hypot(a[0] - b[0], a[1] - b[1])
-
-
-def astar(
-    start: Vector2,
-    goal: Vector2,
-    blocked: set,
-    tile_size: int = TILE_SIZE,
-    map_width: int = MAP_WIDTH,
-    map_height: int = MAP_HEIGHT,
-) -> list[Vector2]:
-    start_tile = (int(start.x // tile_size), int(start.y // tile_size))
-    goal_tile = (int(goal.x // tile_size), int(goal.y // tile_size))
-    num_tiles_x = map_width // tile_size
-    num_tiles_y = map_height // tile_size
-    open_set = []
-    heapq.heappush(open_set, (0, start_tile))
-    came_from = {}
-    g_score = {start_tile: 0}
-    f_score = {start_tile: heuristic(start_tile, goal_tile)}
-    while open_set:
-        _, current = heapq.heappop(open_set)
-        if current == goal_tile:
-            path = []
-            while current in came_from:
-                tile_center = Vector2(current[0] * tile_size + tile_size / 2, current[1] * tile_size + tile_size / 2)
-                path.append(tile_center)
-                current = came_from[current]
-            path.append(start)
-            path.reverse()
-            return path
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
-            neighbor = (current[0] + dx, current[1] + dy)
-            if neighbor in blocked or not (0 <= neighbor[0] < num_tiles_x and 0 <= neighbor[1] < num_tiles_y):
-                continue
-            tentative_g = g_score[current] + (1.414 if dx != 0 and dy != 0 else 1)
-            if neighbor not in g_score or tentative_g < g_score[neighbor]:
-                came_from[neighbor] = current
-                g_score[neighbor] = tentative_g
-                f_score[neighbor] = tentative_g + heuristic(neighbor, goal_tile)
-                heapq.heappush(open_set, (f_score[neighbor], neighbor))
-    return [start, goal]
-
-
-class TerrainFeature:
-    def __init__(self, position: Point, feature_type: str) -> None:
-        self.position = Vector2(position)
-        self.feature_type = feature_type
-        self.rect = pg.Rect(position[0] - 20, position[1] - 20, 40, 40)
-        if self.feature_type == "pebbles":
-            self.num_pebbles = random.randint(2, 6)
-            base_offsets = [(-6, -2), (-3, 0), (0, -4), (4, 1), (2, 5), (-1, 3), (5, -1)]
-            self.selected_offsets = random.sample(base_offsets, min(self.num_pebbles, len(base_offsets)))
-            self.pebbles = []
-            for dx, dy in self.selected_offsets:
-                pebble_size = random.uniform(4, 8)
-                aspect_ratio = random.uniform(0.5, 1.5)
-                pebble_width = pebble_size
-                pebble_height = pebble_size * aspect_ratio
-                outer_color = (
-                    random.randint(140, 160),
-                    random.randint(140, 160),
-                    random.randint(140, 160),
-                )
-                inner_color = (
-                    random.randint(100, 130),
-                    random.randint(100, 130),
-                    random.randint(100, 130),
-                )
-                self.pebbles.append(
-                    {
-                        "dx": dx,
-                        "dy": dy,
-                        "width": pebble_width,
-                        "height": pebble_height,
-                        "outer": outer_color,
-                        "inner": inner_color,
-                    }
-                )
-
-    def draw(self, surface: pg.Surface, camera: CameraIso) -> None:
-        screen_pos = camera.world_to_iso(self.position, camera.zoom)
-        zoom = camera.zoom
-        if self.feature_type == "tree":
-            trunk_width = int(8 * zoom)
-            trunk_height = int(20 * zoom)
-            trunk_rect = pg.Rect(screen_pos[0] - trunk_width // 2, screen_pos[1], trunk_width, trunk_height)
-            pg.draw.rect(surface, (139, 69, 19), trunk_rect)
-            foliage_radius = int(25 * zoom)
-            pg.draw.circle(
-                surface,
-                (0, 128, 0),
-                (int(screen_pos[0]), int(screen_pos[1] - 10 * zoom)),
-                foliage_radius,
-            )
-            pg.draw.circle(
-                surface,
-                (34, 139, 34),
-                (int(screen_pos[0] - 10 * zoom), int(screen_pos[1] - 5 * zoom)),
-                int(15 * zoom),
-            )
-            pg.draw.circle(
-                surface,
-                (34, 139, 34),
-                (int(screen_pos[0] + 10 * zoom), int(screen_pos[1] - 5 * zoom)),
-                int(15 * zoom),
-            )
-        elif self.feature_type == "boulder":
-            boulder_radius = int(25 * zoom)
-            pg.draw.ellipse(
-                surface,
-                (105, 105, 105),
-                (
-                    screen_pos[0] - boulder_radius,
-                    screen_pos[1] - boulder_radius // 2,
-                    boulder_radius * 2,
-                    boulder_radius,
-                ),
-            )
-            pg.draw.ellipse(
-                surface,
-                (70, 70, 70),
-                (
-                    screen_pos[0] - boulder_radius // 2,
-                    screen_pos[1] - boulder_radius // 2,
-                    boulder_radius,
-                    boulder_radius // 2,
-                ),
-            )
-        elif self.feature_type == "rock":
-            rock_width = int(15 * zoom)
-            rock_height = int(10 * zoom)
-            pg.draw.ellipse(
-                surface,
-                (128, 128, 128),
-                (
-                    screen_pos[0] - rock_width // 2,
-                    screen_pos[1] - rock_height // 2,
-                    rock_width,
-                    rock_height,
-                ),
-            )
-            pg.draw.ellipse(
-                surface,
-                (90, 90, 90),
-                (
-                    screen_pos[0] - rock_width // 4,
-                    screen_pos[1] - rock_height // 4,
-                    rock_width // 2,
-                    rock_height // 2,
-                ),
-            )
-        elif self.feature_type == "bush":
-            bush_radius = int(18 * zoom)
-            pg.draw.circle(surface, (0, 100, 0), (int(screen_pos[0]), int(screen_pos[1])), bush_radius)
-            pg.draw.circle(
-                surface,
-                (34, 139, 34),
-                (int(screen_pos[0] - 8 * zoom), int(screen_pos[1] - 5 * zoom)),
-                int(12 * zoom),
-            )
-            pg.draw.circle(
-                surface,
-                (0, 120, 0),
-                (int(screen_pos[0] + 6 * zoom), int(screen_pos[1] + 3 * zoom)),
-                int(10 * zoom),
-            )
-            pg.draw.line(
-                surface,
-                (139, 69, 19),
-                screen_pos,
-                (screen_pos[0], screen_pos[1] + 5 * zoom),
-                int(2 * zoom),
-            )
-        elif self.feature_type == "twigs":
-            twig_length = int(12 * zoom)
-            twig_width = int(2 * zoom)
-            pg.draw.line(
-                surface,
-                (101, 67, 33),
-                screen_pos,
-                (screen_pos[0] + twig_length, screen_pos[1]),
-                twig_width,
-            )
-            pg.draw.line(
-                surface,
-                (101, 67, 33),
-                (screen_pos[0] + twig_length // 2, screen_pos[1]),
-                (screen_pos[0] + twig_length // 2 - 5 * zoom, screen_pos[1] - 8 * zoom),
-                twig_width,
-            )
-            pg.draw.line(
-                surface,
-                (101, 67, 33),
-                (screen_pos[0] + twig_length // 2, screen_pos[1]),
-                (screen_pos[0] + twig_length // 2 + 6 * zoom, screen_pos[1] + 4 * zoom),
-                twig_width,
-            )
-            pg.draw.circle(
-                surface,
-                (0, 100, 0),
-                (int(screen_pos[0] + 3 * zoom), int(screen_pos[1] - 2 * zoom)),
-                int(3 * zoom),
-            )
-        elif self.feature_type == "pebbles":
-            for pebble in self.pebbles:
-                px = screen_pos[0] + pebble["dx"] * zoom
-                py = screen_pos[1] + pebble["dy"] * zoom
-                pebble_width = int(pebble["width"] * zoom)
-                pebble_height = int(pebble["height"] * zoom)
-                pg.draw.ellipse(
-                    surface,
-                    pebble["outer"],
-                    (px - pebble_width // 2, py - pebble_height // 2, pebble_width, pebble_height),
-                )
-                inner_width = pebble_width // 2
-                inner_height = pebble_height // 2
-                pg.draw.ellipse(
-                    surface,
-                    pebble["inner"],
-                    (px - inner_width // 2, py - inner_height // 2, inner_width, inner_height),
-                )
-
-
-def generate_terrain_features(map_name: str, map_width: int, map_height: int) -> list[TerrainFeature]:
-    features = []
-    num_tiles = (map_width // TILE_SIZE) * (map_height // TILE_SIZE)
-    tree_density = 0.02 if map_name == "Forest" else 0.005
-    boulder_density = 0.01
-    rock_density = 0.03
-    bush_density = 0.025 if "Forest" in map_name else 0.01
-    twig_density = 0.015 if "Forest" in map_name or "Woodland" in map_name else 0.005
-    pebble_density = 0.04 if "Desert" in map_name or "Riverbed" in map_name else 0.02
-    num_trees = int(num_tiles * tree_density)
-    num_boulders = int(num_tiles * boulder_density)
-    num_rocks = int(num_tiles * rock_density)
-    num_bushes = int(num_tiles * bush_density)
-    num_twigs = int(num_tiles * twig_density)
-    num_pebbles = int(num_tiles * pebble_density)
-
-    def add_feature(ftype: str, count: int, cluster=False) -> None:
-        for _ in range(count):
-            attempts = 0
-            while attempts < 10:
-                x = random.randint(0, map_width)
-                y = random.randint(0, map_height)
-                new_rect = pg.Rect(x - 20, y - 20, 40, 40)
-                if all(
-                    not new_rect.colliderect(f.rect.inflate(10, 10) if f.feature_type == ftype else f.rect)
-                    for f in features
-                ):
-                    features.append(TerrainFeature((x, y), ftype))
-                    break
-                attempts += 1
-
-    add_feature("tree", num_trees)
-    add_feature("boulder", num_boulders)
-    add_feature("rock", num_rocks)
-    add_feature("bush", num_bushes)
-    add_feature("twigs", num_twigs, cluster=True)
-    add_feature("pebbles", num_pebbles, cluster=True)
-    return features
-
-
-def is_valid_building_position(
-    position: Point,
-    team: Team,
-    new_building_cls: type,
-    buildings: list,
-    map_width: int = MAP_WIDTH,
-    map_height: int = MAP_HEIGHT,
-    building_range: int = 200,
-    margin: int = 60,
-) -> bool:
-    width, height = get_unit_size(new_building_cls.__name__)
-    half_w_n, half_h_n = width / 2, height / 2
-    temp_rect = pg.Rect(position[0] - half_w_n, position[1] - half_h_n, width, height)
-    if not (
-        0 <= temp_rect.left and temp_rect.right <= map_width and 0 <= temp_rect.top and temp_rect.bottom <= map_height
-    ):
-        return False
-    proposed_center = position
-    has_nearby_friendly = False
-    for building in buildings:
-        if building.team == team and building.health > 0:
-            half_w_e, half_h_e = building.size[0] / 2, building.size[1] / 2
-            min_dist = max(half_w_n + half_w_e, half_h_n + half_h_e) + margin
-            dist = math.hypot(proposed_center[0] - building.position.x, proposed_center[1] - building.position.y)
-            if dist < min_dist:
-                return False
-            if dist <= building_range:
-                has_nearby_friendly = True
-        if building.health > 0 and building.rect.colliderect(temp_rect):
-            return False
-    return has_nearby_friendly or new_building_cls.__name__ == "Headquarters"
-
-
-def find_free_spawn_position(
-    building_pos: Point,
-    target_pos: Point,
-    global_buildings,
-    global_units,
-    unit_size=(40, 40),
-    map_width=MAP_WIDTH,
-    map_height=MAP_HEIGHT,
-):
-    for _ in range(20):
-        offset_x = random.uniform(-60, 60)
-        offset_y = random.uniform(-60, 60)
-        pos_x = max(0, min(target_pos[0] + offset_x, map_width))
-        pos_y = max(0, min(target_pos[1] + offset_y, map_height))
-        unit_rect = pg.Rect(pos_x - unit_size[0] / 2, pos_y - unit_size[1] / 2, unit_size[0], unit_size[1])
-        overlaps_building = any(b.rect.colliderect(unit_rect) for b in global_buildings if b.health > 0)
-        overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.is_air)
-        if not overlaps_building and not overlaps_unit:
-            return (pos_x, pos_y)
-    return (max(0, min(target_pos[0], map_width)), max(0, min(target_pos[1], map_height)))
-
-
-def check_collision(entity, projectile):
-    proj_rect = pg.Rect(
-        projectile.position.x - projectile.length / 2,
-        projectile.position.y - projectile.width / 2,
-        projectile.length,
-        projectile.width,
-    )
-    if hasattr(entity, "radius"):
-        dist = entity.distance_to(projectile.position)
-        return dist < (entity.radius + max(projectile.length, projectile.width) / 2)
-    else:
-        return entity.rect.colliderect(proj_rect)
 
 
 class UnitIso(GameObjectIso):
@@ -1134,12 +805,12 @@ class UnitIso(GameObjectIso):
                                 blocked.add((tx, ty))
 
                     self.path = astar(
-                        self.position,
-                        Vector2(self.move_target),
-                        blocked,
-                        TILE_SIZE,
-                        self.map_width,
-                        self.map_height,
+                        start=self.position,
+                        goal=Vector2(self.move_target),
+                        blocked=blocked,
+                        tile_size=TILE_SIZE,
+                        map_width=self.map_width,
+                        map_height=self.map_height,
                     )
                     self.path_index = 0
                     self.path_recompute_cooldown = 12 + random.randint(0, 8)
@@ -1348,7 +1019,9 @@ class Headquarters(UnitIso):
 
     def place_building(self, position: Point, unit_cls: type, all_buildings) -> None:
         all_buildings_list = list(all_buildings)
-        if is_valid_building_position(position, self.team, unit_cls, all_buildings_list):
+        if is_valid_building_position(
+            position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list
+        ):
             building = unit_cls(position, self.team, hq=self)
             building.map_width = self.map_width
             building.map_height = self.map_height
@@ -2309,12 +1982,12 @@ class AI:
                 snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
                 position = snapped_center
                 if is_valid_building_position(
-                    position,
-                    self.hq.team,
-                    building_cls,
-                    list(all_buildings),
-                    map_width,
-                    map_height,
+                    position=position,
+                    team=self.hq.team,
+                    new_building_cls=building_cls,
+                    buildings=list(all_buildings),
+                    map_width=map_width,
+                    map_height=map_height,
                     margin=60,
                 ):
                     return position
@@ -2802,16 +2475,6 @@ class ProductionInterface:
         return False
 
 
-def get_iso_bounds(map_w: int, map_h: int, zoom: float = 1.0) -> tuple[float, float, float, float]:
-    corners = [(0, 0), (map_w, 0), (map_w, map_h), (0, map_h)]
-    isos = [absolute_world_to_iso(world_pos=c, zoom=zoom) for c in corners]
-    min_x = min(ix for ix, iy in isos)
-    max_x = max(ix for ix, iy in isos)
-    min_y = min(iy for ix, iy in isos)
-    max_y = max(iy for ix, iy in isos)
-    return min_x, max_x, min_y, max_y
-
-
 def draw_mini_map(
     screen: pg.Surface,
     camera: CameraIso,
@@ -2831,7 +2494,7 @@ def draw_mini_map(
     )
     mini_map = pg.Surface((MINI_MAP_WIDTH, MINI_MAP_HEIGHT))
     mini_map.fill((0, 0, 0))
-    min_x1, max_x1, min_y1, max_y1 = get_iso_bounds(map_width, map_height, 1.0)
+    min_x1, max_x1, min_y1, max_y1 = get_iso_bounds(map_w=map_width, map_h=map_height, zoom=1.0)
     span_x1 = max_x1 - min_x1
     span_y1 = max_y1 - min_y1
     mini_zoom = min(MINI_MAP_WIDTH / span_x1, MINI_MAP_HEIGHT / span_y1)
@@ -2935,129 +2598,6 @@ def draw_fitness_panel(screen: pg.Surface, g) -> None:
         y_offset += 25
 
 
-def handle_unit_collisions(all_units: list, unit_hash: SpatialHashIso) -> None:
-    for i, unit in enumerate(all_units):
-        if unit.health <= 0 or unit.is_air:
-            continue
-
-        nearby = unit_hash.query(unit.position, max(unit.rect.width, unit.rect.height))
-        for other in nearby:
-            if other is unit or other.health <= 0 or other.is_air or id(other) <= id(unit):
-                continue
-            if unit.rect.colliderect(other.rect):
-                dx = other.position.x - unit.position.x
-                dy = other.position.y - unit.position.y
-                dist = math.hypot(dx, dy)
-                if dist > 0:
-                    r1 = max(unit.rect.width, unit.rect.height) / 2
-                    r2 = max(other.rect.width, other.rect.height) / 2
-                    overlap = max(0, r1 + r2 - dist)
-                    if overlap > 0:
-                        push = overlap * 0.5
-                        direction_x = dx / dist
-                        direction_y = dy / dist
-                        unit.position.x -= direction_x * push
-                        unit.position.y -= direction_y * push
-                        other.position.x += direction_x * push
-                        other.position.y += direction_y * push
-
-
-def handle_unit_building_collisions(all_units: list, all_buildings: list, building_hash: SpatialHashIso) -> None:
-    for unit in [u for u in all_units if u.health > 0 and not u.is_air]:
-        nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
-        for building in [b for b in nearby_builds if b.health > 0]:
-            if unit.rect.colliderect(building.rect):
-                dx = building.position.x - unit.position.x
-                dy = building.position.y - unit.position.y
-                dist = math.hypot(dx, dy)
-                if dist > 0:
-                    r1 = max(unit.rect.width, unit.rect.height) / 2
-                    r2 = max(building.rect.width, building.rect.height) / 2
-                    overlap = max(0, r1 + r2 - dist)
-                    if overlap > 0:
-                        direction_x = dx / dist
-                        direction_y = dy / dist
-                        unit.position.x -= direction_x * overlap
-                        unit.position.y -= direction_y * overlap
-
-
-def handle_attacks(
-    team: Team,
-    all_units: list,
-    all_buildings: list,
-    projectiles,
-    particles,
-    unit_hash: SpatialHashIso,
-    building_hash: SpatialHashIso,
-    alliances: dict[Team, set[Team]],
-) -> None:
-    unit_allies = alliances[team]
-    armed_entities = [u for u in all_units if u.team == team and u.weapons and u.health > 0]
-    armed_entities += [b for b in all_buildings if b.team == team and b.weapons and b.health > 0]
-    for entity in armed_entities:
-        closest_unit_in_range = None
-        min_unit_dist = float("inf")
-        closest_building_in_range = None
-        min_building_dist = float("inf")
-        closest_overall = None
-        min_overall_dist = float("inf")
-        candidates = unit_hash.query(entity.position, entity.sight_range) + building_hash.query(
-            entity.position, entity.sight_range
-        )
-        for obj in candidates:
-            if hasattr(obj, "team") and obj.team not in unit_allies and hasattr(obj, "health") and obj.health > 0:
-                if obj.is_building:
-                    closest_pt = closest_point_on_rect(rect=obj.rect, pos=entity.position)
-                    dist = Vector2(closest_pt).distance_to(entity.position)
-                else:
-                    dist = entity.distance_to(obj.position)
-
-                if dist <= entity.sight_range:
-                    if dist < min_overall_dist:
-                        closest_overall = obj
-                        min_overall_dist = dist
-
-                    if dist <= entity.attack_range:
-                        if not obj.is_building:
-                            if dist < min_unit_dist:
-                                closest_unit_in_range = obj
-                                min_unit_dist = dist
-                        else:
-                            if dist < min_building_dist:
-                                closest_building_in_range = obj
-                                min_building_dist = dist
-
-        if closest_unit_in_range:
-            closest_target = closest_unit_in_range
-        elif closest_building_in_range:
-            closest_target = closest_building_in_range
-        elif closest_overall:
-            closest_target = closest_overall
-        else:
-            continue
-
-        entity.attack_target = closest_target
-        if closest_target.is_building:
-            closest_pt = closest_point_on_rect(rect=closest_target.rect, pos=entity.position)
-            dir_vec = Vector2(closest_pt) - entity.position
-            dist_to_target = dir_vec.length()
-        else:
-            dir_vec = Vector2(closest_target.position) - entity.position
-            dist_to_target = dir_vec.length()
-
-        if dir_vec.length() > 0:
-            entity.target_turret_angle = math.atan2(dir_vec.y, dir_vec.x)
-        if dist_to_target <= entity.attack_range:
-            entity.shoot(target=closest_target, projectiles=projectiles, particles=particles)
-        else:
-            if not entity.is_building:
-                if closest_target.is_building:
-                    chase_pos = entity.get_chase_position_for_building(closest_target)
-                    entity.move_target = chase_pos if chase_pos is not None else None
-                else:
-                    entity.move_target = closest_target.position
-
-
 def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> None:
     for projectile in list(projectiles):
         proj_allies = g["alliances"][projectile.team]
@@ -3065,7 +2605,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         enemy_buildings = [b for b in all_buildings if b.team not in proj_allies and b.health > 0]
         hit = False
         for e in enemy_units + enemy_buildings:
-            if check_collision(e, projectile):
+            if check_collision(entity=e, projectile=projectile):
                 if e.take_damage(projectile.damage):
                     create_explosion_iso(position=e.position, particles=particles, team=e.team)
                     attacker_hq = g["hqs"][projectile.team]
@@ -3145,7 +2685,7 @@ class GameManager:
         scale = size_scales[size_name]
         map_width = int(base_width * scale)
         map_height = int(base_height * scale)
-        terrain_features = generate_terrain_features(map_name, map_width, map_height)
+        terrain_features = generate_terrain_features(map_name=map_name, map_width=map_width, map_height=map_height)
         num_tx = map_width // TILE_SIZE
         num_ty = map_height // TILE_SIZE
         ownership = [[None] * num_ty for _ in range(num_tx)]
@@ -3211,10 +2751,9 @@ class GameManager:
             units = pg.sprite.Group()
             for j in range(3):
                 offset = find_free_spawn_position(
-                    pos,
-                    pos,
-                    global_buildings.sprites(),
-                    global_units.sprites(),
+                    target_pos=pos,
+                    global_buildings=global_buildings.sprites(),
+                    global_units=global_units.sprites(),
                     map_width=map_width,
                     map_height=map_height,
                 )
@@ -3382,12 +2921,12 @@ class GameManager:
                             unit_type_str = g["interface"].placing_cls.__name__
                             cost = get_unit_cost(unit_type_str)
                             if g["player_hq"].credits >= cost and is_valid_building_position(
-                                snapped,
-                                g["player_team"],
-                                g["interface"].placing_cls,
-                                buildings_list,
-                                g["map_width"],
-                                g["map_height"],
+                                position=snapped,
+                                team=g["player_team"],
+                                new_building_cls=g["interface"].placing_cls,
+                                buildings=buildings_list,
+                                map_width=g["map_width"],
+                                map_height=g["map_height"],
                             ):
                                 building = g["interface"].placing_cls(snapped, g["player_team"], hq=g["player_hq"])
                                 building.map_width = g["map_width"]
@@ -3546,21 +3085,21 @@ class GameManager:
             building_hash = SpatialHashIso(250)
             for b in building_list:
                 building_hash.add(b)
-            handle_unit_collisions(unit_list, unit_hash)
-            handle_unit_building_collisions(unit_list, building_list, building_hash)
+            handle_unit_collisions(all_units=unit_list, unit_hash=unit_hash)
+            handle_unit_building_collisions(all_units=unit_list, building_hash=building_hash)
             for unit in unit_list:
                 unit.rect.center = unit.position
             unique_teams = set(g["teams"])
             for team in unique_teams:
                 handle_attacks(
-                    team,
-                    unit_list,
-                    building_list,
-                    g["projectiles"],
-                    g["particles"],
-                    unit_hash,
-                    building_hash,
-                    g["alliances"],
+                    team=team,
+                    all_units=unit_list,
+                    all_buildings=building_list,
+                    projectiles=g["projectiles"],
+                    particles=g["particles"],
+                    unit_hash=unit_hash,
+                    building_hash=building_hash,
+                    alliances=g["alliances"],
                 )
             handle_projectiles(g["projectiles"], unit_list, building_list, g["particles"], g)
             cleanup_dead_entities(g)
@@ -3697,7 +3236,8 @@ class GameManager:
                     pg.draw.polygon(self.screen, (tile_r, tile_g, tile_b), [iso1, iso2, iso3, iso4])
             for feature in g["terrain_features"]:
                 if g["fog_of_war"].is_visible(feature.position):
-                    feature.draw(self.screen, g["camera"])
+                    feature.draw(surface=self.screen, camera=g["camera"])
+
             draw_allies = set(g["teams"]) if g.get("spectator", False) else g["player_allies"]
             fog = g["fog_of_war"]
             if not g.get("spectator", False):
@@ -3716,12 +3256,12 @@ class GameManager:
                     buildings_list = list(g["global_buildings"])
                     unit_type = g["interface"].placing_cls.__name__
                     valid = is_valid_building_position(
-                        snapped,
-                        g["player_team"],
-                        g["interface"].placing_cls,
-                        buildings_list,
-                        g["map_width"],
-                        g["map_height"],
+                        position=snapped,
+                        team=g["player_team"],
+                        new_building_cls=g["interface"].placing_cls,
+                        buildings=buildings_list,
+                        map_width=g["map_width"],
+                        map_height=g["map_height"],
                     )
                     width, height = get_unit_size(unit_type)
                     half_w, half_h = width / 2, height / 2

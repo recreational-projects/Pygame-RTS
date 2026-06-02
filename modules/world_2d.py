@@ -1,3 +1,5 @@
+"""Functions which require access to buildings/units, specific to 2D game."""
+
 from __future__ import annotations
 
 import math
@@ -9,7 +11,7 @@ from pygame.math import Vector2
 
 from modules.data_2d import MAP_HEIGHT as MAP_HEIGHT_2D
 from modules.data_2d import MAP_WIDTH as MAP_WIDTH_2D
-from modules.geometry import check_collision_2d, closest_point_on_rect
+from modules.geometry import check_collision, closest_point_on_rect
 from modules.particles import GenericParticle, create_explosion_2d
 from modules.unit_stats.unit_stats_2d import get_unit_size
 
@@ -30,8 +32,7 @@ def is_valid_building_position(
     position: Point,
     team: Team,
     new_building_cls: type,
-    # pyrefly: ignore [implicit-any-type-argument]
-    buildings: Iterable,
+    buildings: Iterable[Unit2d],
     map_width: int = MAP_WIDTH_2D,
     map_height: int = MAP_HEIGHT_2D,
     building_range: int = 200,
@@ -50,8 +51,7 @@ def is_valid_building_position(
     :param margin: Minimum distance margin between buildings.
     :return: True if placement is valid.
     """
-    _size = get_unit_size(new_building_cls.__name__)
-    width, height = _size
+    width, height = get_unit_size(new_building_cls.__name__)
     temp_rect = pg.Rect(position[0] - width / 2, position[1] - height / 2, width, height)
     if not (
         temp_rect.left >= 0 and temp_rect.right <= map_width and temp_rect.top >= 0 and temp_rect.bottom <= map_height
@@ -59,7 +59,6 @@ def is_valid_building_position(
         return False
 
     proposed_center = position
-
     has_nearby_friendly = False
     for building in buildings:
         if building.team == team and building.health > 0:
@@ -73,6 +72,7 @@ def is_valid_building_position(
             if dist <= building_range:
                 has_nearby_friendly = True
 
+        # pyrefly: ignore [missing-attribute]
         if building.health > 0 and building.rect.colliderect(temp_rect):
             return False
 
@@ -97,7 +97,6 @@ def find_free_spawn_position(
     :param unit_size: Size of the unit to spawn (default: (40, 40)).
     :return: A free position tuple, or target_pos if no free spot found.
     """
-    # Finds a nearby free position for spawning units, avoiding overlaps with buildings/units.
     for _ in range(20):
         offset_x = random.uniform(-60, 60)
         offset_y = random.uniform(-60, 60)
@@ -112,79 +111,13 @@ def find_free_spawn_position(
     return target_pos
 
 
-# pyrefly: ignore [implicit-any-type-argument]
-def handle_unit_collisions(all_units: list, unit_hash: SpatialHash2d) -> None:
-    """
-    Resolves overlaps between ground units using simple repulsion.
-
-    :param all_units: List of all units.
-    :param unit_hash: SpatialHash2d for nearby queries.
-    """
-    # Resolves overlaps between ground units using simple repulsion.
-    for unit in all_units:
-        if unit.health <= 0 or unit.is_air:
-            continue
-
-        nearby = unit_hash.query(unit.position, max(unit.rect.width, unit.rect.height))
-        for other in nearby:
-            if other is unit or other.health <= 0 or other.is_air or id(other) <= id(unit):
-                continue
-
-            if unit.rect.colliderect(other.rect):
-                dx = other.position.x - unit.position.x
-                dy = other.position.y - unit.position.y
-                dist = math.hypot(dx, dy)
-                if dist > 0:
-                    r1 = max(unit.rect.width, unit.rect.height) / 2
-                    r2 = max(other.rect.width, other.rect.height) / 2
-                    overlap = max(0, r1 + r2 - dist)
-                    if overlap > 0:
-                        push = overlap * 0.5
-                        direction_x = dx / dist
-                        direction_y = dy / dist
-                        unit.position.x -= direction_x * push
-                        unit.position.y -= direction_y * push
-                        other.position.x += direction_x * push
-                        other.position.y += direction_y * push
-
-
-# pyrefly: ignore [implicit-any-type-argument]
-def handle_unit_building_collisions(*, all_units: list, building_hash: SpatialHash2d) -> None:
-    """
-    Pushes units away from building overlaps.
-
-    :param all_units: List of units.
-    :param building_hash: SpatialHash2d for buildings.
-    """
-    # Pushes units away from building overlaps.
-    for unit in [u for u in all_units if u.health > 0 and not u.is_air]:
-        nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
-        for building in [b for b in nearby_builds if b.health > 0]:
-            if unit.rect.colliderect(building.rect):
-                dx = building.position.x - unit.position.x
-                dy = building.position.y - unit.position.y
-                dist = math.hypot(dx, dy)
-                if dist > 0:
-                    r1 = max(unit.rect.width, unit.rect.height) / 2
-                    r2 = max(building.rect.width, building.rect.height) / 2
-                    overlap = max(0, r1 + r2 - dist)
-                    if overlap > 0:
-                        direction_x = dx / dist
-                        direction_y = dy / dist
-                        unit.position.x -= direction_x * overlap
-                        unit.position.y -= direction_y * overlap
-
-
 def handle_attacks(
     *,
     team: Team,
-    # pyrefly: ignore [implicit-any-type-argument]
-    all_units: list,
-    # pyrefly: ignore [implicit-any-type-argument]
-    all_buildings: list,
-    # pyrefly: ignore [implicit-any-parameter]
-    projectiles,  # noqa: ANN001
-    particles: pg.sprite.Group,
+    all_units: Iterable[Unit2d],
+    all_buildings: Iterable[Unit2d],
+    projectiles: pg.sprite.Group[Projectile],
+    particles: pg.sprite.Group[GenericParticle],
     unit_hash: SpatialHash2d,
     building_hash: SpatialHash2d,
     alliances: dict[Team, set[Team]],
@@ -201,7 +134,6 @@ def handle_attacks(
     :param building_hash: Building spatial hash.
     :param alliances: Team alliances dict.
     """
-    # For a team, finds targets in sight range and shoots if in attack range; handles chasing.
     unit_allies = alliances[team]
     armed_entities = [u for u in all_units if u.team == team and u.health > 0]
     armed_entities.extend(b for b in all_buildings if b.team == team and b.weapons and b.health > 0)
@@ -209,6 +141,7 @@ def handle_attacks(
     for entity in armed_entities:
         if entity.last_shot_time != 0:
             continue
+
         closest_unit_in_range = None
         min_unit_dist_in_range = float("inf")
         closest_building_in_range = None
@@ -272,7 +205,6 @@ def cleanup_dead_entities(game_data: GameData) -> None:
 
     :param game_data: Game data dict.
     """
-    # Removes dead entities from groups, cleans up particles.
     # Cleanup dead units
     group = game_data.global_units
     dead = [obj for obj in group if hasattr(obj, "health") and obj.health <= 0]
@@ -314,6 +246,7 @@ def cleanup_dead_entities(game_data: GameData) -> None:
 
 
 def handle_projectiles(
+    *,
     projectiles: Iterable[Projectile],
     all_units: MutableSequence[Unit2d],
     all_buildings: MutableSequence[Unit2d],
@@ -329,7 +262,6 @@ def handle_projectiles(
     :param particles: Particle group.
     :param g: Game data dict.
     """
-    # Updates projectiles, checks hits on enemies, applies damage/explosions.
     for projectile in list(projectiles):
         proj_allies = g.alliances[projectile.team]
         enemy_units = [u for u in all_units if u.team not in proj_allies and u.health > 0]
@@ -337,7 +269,7 @@ def handle_projectiles(
 
         hit = False
         for e in enemy_units + enemy_buildings:
-            if check_collision_2d(e, projectile):
+            if check_collision(entity=e, projectile=projectile):
                 if e.take_damage(projectile.damage):
                     create_explosion_2d(position=e.position, particles=particles, team=e.team)
                     attacker_hq = g.hqs[projectile.team]

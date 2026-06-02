@@ -35,13 +35,12 @@ from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_name
 from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
 from modules.units_2d import Headquarters, Infantry
+from modules.world import handle_unit_building_collisions, handle_unit_collisions
 from modules.world_2d import (
     cleanup_dead_entities,
     find_free_spawn_position,
     handle_attacks,
     handle_projectiles,
-    handle_unit_building_collisions,
-    handle_unit_collisions,
     is_valid_building_position,
 )
 
@@ -276,7 +275,7 @@ class GameManager:
             for b in building_list:
                 building_hash.add(b)
 
-            handle_unit_collisions(unit_list, unit_hash)
+            handle_unit_collisions(all_units=unit_list, unit_hash=unit_hash)
             handle_unit_building_collisions(all_units=unit_list, building_hash=building_hash)
             for unit in unit_list:
                 unit.rect.center = unit.position
@@ -295,7 +294,9 @@ class GameManager:
                     alliances=g.alliances,
                 )
 
-            handle_projectiles(g.projectiles, unit_list, building_list, g.particles, g)
+            handle_projectiles(
+                projectiles=g.projectiles, all_units=unit_list, all_buildings=building_list, particles=g.particles, g=g
+            )
 
             # Cleanup dead entities
             cleanup_dead_entities(g)
@@ -433,11 +434,11 @@ class GameManager:
                 for unit in [u for u in unit_list if not u.is_building]:
                     visible = unit.team in draw_allies or fog.is_visible(unit.position)
                     if unit.health > 0 and visible:
-                        unit.draw(self.screen, g.camera, mouse_pos)
+                        unit.draw(surface=self.screen, camera=g.camera, mouse_pos=mouse_pos)
             else:
                 for unit in [u for u in unit_list if not u.is_building]:
                     if unit.health > 0:
-                        unit.draw(self.screen, g.camera)
+                        unit.draw(surface=self.screen, camera=g.camera)
 
             for projectile in g.projectiles:
                 projectile.draw(self.screen, g.camera)
