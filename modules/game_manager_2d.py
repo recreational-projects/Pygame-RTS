@@ -289,6 +289,7 @@ class GameManager:
                     all_units=unit_list,
                     all_buildings=building_list,
                     projectiles=g.projectiles,
+                    particles=g.particles,
                     unit_hash=unit_hash,
                     building_hash=building_hash,
                     alliances=g.alliances,
