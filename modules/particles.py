@@ -25,8 +25,9 @@ PARTICLES_PER_EXPLOSION_2D = 20
 
 
 def create_explosion_2d(
+    *,
     position: Point,
-    particles: pg.sprite.Group[_Particle],
+    particles: pg.sprite.Group[GenericParticle],
     team: Team,
     count: int = PARTICLES_PER_EXPLOSION_2D,
 ) -> None:
@@ -44,12 +45,13 @@ def create_explosion_2d(
         vy = random.uniform(-3, 3)
         size = random.randint(2, 4)
         lifetime = random.randint(3, 7)
-        particles.add(_Particle(position, vx, vy, size, color, lifetime))
+        particles.add(GenericParticle(position, vx, vy, size, color, lifetime))
 
 
 def create_explosion_iso(
+    *,
     position: Point,
-    particles: pg.sprite.Group[_Particle],
+    particles: pg.sprite.Group[GenericParticle],
     team: Team,
     count: int = PARTICLES_PER_EXPLOSION_ISO,
 ) -> None:
@@ -59,10 +61,10 @@ def create_explosion_iso(
         vy = random.uniform(-3, 3)
         size = random.randint(1, 2)
         lifetime = random.randint(1, 3)
-        particles.add(_Particle(position, vx, vy, size, color, lifetime))
+        particles.add(GenericParticle(position, vx, vy, size, color, lifetime))
 
 
-class _Particle(pg.sprite.Sprite):
+class GenericParticle(pg.sprite.Sprite):
     """Base particle: circular sprite with velocity, fading alpha over lifetime.
 
     Used for explosion effects.
@@ -156,7 +158,7 @@ class _Particle(pg.sprite.Sprite):
                 surface.blit(scaled_image, blit_pos)
 
 
-class PlasmaBurnParticle(_Particle):
+class PlasmaBurnParticle(GenericParticle):
     """Attached particle that follows an entity, offset and rotated with it.
 
     Used for damage burn effects on entities.

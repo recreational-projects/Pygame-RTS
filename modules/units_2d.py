@@ -10,7 +10,7 @@ from pygame.math import Vector2
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
 from modules.game_object.game_object_2d import GameObject2d
 from modules.geometry import closest_point_on_rect
-from modules.particles import create_explosion_2d
+from modules.particles import GenericParticle, create_explosion_2d
 from modules.projectile_2d import Projectile
 from modules.team import Team, team_to_color
 from modules.unit_stats.unit_stats_2d import UnitStats2d
@@ -409,7 +409,9 @@ class Unit2d(GameObject2d):
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_left))
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_right))
 
-    def shoot(self, target: Unit2d, projectiles: pg.sprite.Group[Projectile]) -> None:
+    def shoot(
+        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile], particles: pg.sprite.Group[GenericParticle]
+    ) -> None:
         """
         Fires a projectile using current weapon at target, with lead prediction.
 
@@ -417,6 +419,7 @@ class Unit2d(GameObject2d):
 
         :param target: Target entity.
         :param projectiles: Group to add projectile to.
+        :param particles: Group to add particles to.
         """
         if self.last_shot_time > 0:
             return
@@ -448,7 +451,7 @@ class Unit2d(GameObject2d):
         projectiles.add(proj)
         self.last_shot_time = self.current_weapon.cooldown
         self.turret_angle = math.atan2(direction.y, direction.x)
-        create_explosion_2d(self.position, pg.sprite.Group(), self.team, 3)
+        create_explosion_2d(position=self.position, particles=particles, team=self.team, count=3)
 
 
 # Subclasses now lean, relying on base Unit for drawing setup

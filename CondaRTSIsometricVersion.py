@@ -1237,9 +1237,9 @@ class UnitIso(GameObjectIso):
                 dist = self.distance_to(self.attack_target.position)
                 aim_target = self.attack_target
             if dist <= self.attack_range:
-                self.shoot(aim_target, projectiles)
+                self.shoot(target=aim_target, projectiles=projectiles, particles=particles)
 
-    def shoot(self, target, projectiles: pg.sprite.Group) -> None:
+    def shoot(self, *, target, projectiles: pg.sprite.Group, particles: pg.sprite.Group) -> None:
         if not self.weapons or self.last_shot_time > 0:
             return
 
@@ -1268,7 +1268,7 @@ class UnitIso(GameObjectIso):
         proj = Projectile(self.position, direction, self.current_weapon.damage, self.team, self.current_weapon)
         projectiles.add(proj)  # FIXME: crash here: AttributeError: 'NoneType' object has no attribute 'add'
         self.last_shot_time = self.current_weapon.cooldown
-        create_explosion_iso(self.position, pg.sprite.Group(), self.team, 3)
+        create_explosion_iso(position=self.position, particles=particles, team=self.team, count=3)
         if hasattr(self, "sound") and self.sound:
             self.sound.play()
 
@@ -3011,10 +3011,12 @@ def handle_attacks(
                     dist = Vector2(closest_pt).distance_to(entity.position)
                 else:
                     dist = entity.distance_to(obj.position)
+
                 if dist <= entity.sight_range:
                     if dist < min_overall_dist:
                         closest_overall = obj
                         min_overall_dist = dist
+
                     if dist <= entity.attack_range:
                         if not obj.is_building:
                             if dist < min_unit_dist:
@@ -3024,6 +3026,7 @@ def handle_attacks(
                             if dist < min_building_dist:
                                 closest_building_in_range = obj
                                 min_building_dist = dist
+
         if closest_unit_in_range:
             closest_target = closest_unit_in_range
         elif closest_building_in_range:
@@ -3032,6 +3035,7 @@ def handle_attacks(
             closest_target = closest_overall
         else:
             continue
+
         entity.attack_target = closest_target
         if closest_target.is_building:
             closest_pt = closest_point_on_rect(rect=closest_target.rect, pos=entity.position)
@@ -3040,10 +3044,11 @@ def handle_attacks(
         else:
             dir_vec = Vector2(closest_target.position) - entity.position
             dist_to_target = dir_vec.length()
+
         if dir_vec.length() > 0:
             entity.target_turret_angle = math.atan2(dir_vec.y, dir_vec.x)
         if dist_to_target <= entity.attack_range:
-            entity.shoot(closest_target, projectiles)
+            entity.shoot(target=closest_target, projectiles=projectiles, particles=particles)
         else:
             if not entity.is_building:
                 if closest_target.is_building:
@@ -3062,7 +3067,7 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
         for e in enemy_units + enemy_buildings:
             if check_collision(e, projectile):
                 if e.take_damage(projectile.damage):
-                    create_explosion_iso(e.position, particles, e.team)
+                    create_explosion_iso(position=e.position, particles=particles, team=e.team)
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:

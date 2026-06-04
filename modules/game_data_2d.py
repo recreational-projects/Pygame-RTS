@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from modules.projectile_2d import Projectile
-
 if TYPE_CHECKING:
     import pygame as pg
     from pygame.sprite import Group
@@ -13,8 +11,9 @@ if TYPE_CHECKING:
     from modules.ai_2d import AI
     from modules.camera.camera_2d import Camera2d
     from modules.fog_of_war import FogOfWar2d
-    from modules.particles import _Particle
+    from modules.particles import GenericParticle
     from modules.production_interface_2d import ProductionInterface
+    from modules.projectile_2d import Projectile
     from modules.team import Team
     from modules.units_2d import Headquarters, Unit2d
 
@@ -28,7 +27,7 @@ class GameData:
     global_units: Group  # pyrefly: ignore [implicit-any-type-argument]
     global_buildings: Group  # pyrefly: ignore [implicit-any-type-argument]
     projectiles: Group[Projectile]
-    particles: Group[_Particle]
+    particles: Group[GenericParticle]
     selected_units: Group[Unit2d]
     unit_groups: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]
     hqs: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]

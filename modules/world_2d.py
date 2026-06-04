@@ -10,7 +10,7 @@ from pygame.math import Vector2
 from modules.data_2d import MAP_HEIGHT as MAP_HEIGHT_2D
 from modules.data_2d import MAP_WIDTH as MAP_WIDTH_2D
 from modules.geometry import check_collision_2d, closest_point_on_rect
-from modules.particles import _Particle, create_explosion_2d
+from modules.particles import GenericParticle, create_explosion_2d
 from modules.unit_stats.unit_stats_2d import get_unit_size
 
 if TYPE_CHECKING:
@@ -184,6 +184,7 @@ def handle_attacks(
     all_buildings: list,
     # pyrefly: ignore [implicit-any-parameter]
     projectiles,  # noqa: ANN001
+    particles: pg.sprite.Group,
     unit_hash: SpatialHash2d,
     building_hash: SpatialHash2d,
     alliances: dict[Team, set[Team]],
@@ -195,6 +196,7 @@ def handle_attacks(
     :param all_units: All units.
     :param all_buildings: All buildings.
     :param projectiles: Projectile group.
+    :param particles: Particle group.
     :param unit_hash: Unit spatial hash.
     :param building_hash: Building spatial hash.
     :param alliances: Team alliances dict.
@@ -253,7 +255,8 @@ def handle_attacks(
                 dist_to_target = entity.distance_to(closest_target.position)
             # Shoot if in range
             if dist_to_target <= entity.attack_range:
-                entity.shoot(closest_target, projectiles)
+                entity.shoot(target=closest_target, projectiles=projectiles, particles=particles)
+
             elif not entity.is_building:
                 # Chase the target
                 if closest_target.is_building:
@@ -314,7 +317,7 @@ def handle_projectiles(
     projectiles: Iterable[Projectile],
     all_units: MutableSequence[Unit2d],
     all_buildings: MutableSequence[Unit2d],
-    particles: pg.sprite.Group[_Particle],
+    particles: pg.sprite.Group[GenericParticle],
     g: GameData,
 ) -> None:
     """
@@ -336,7 +339,7 @@ def handle_projectiles(
         for e in enemy_units + enemy_buildings:
             if check_collision_2d(e, projectile):
                 if e.take_damage(projectile.damage):
-                    create_explosion_2d(e.position, particles, e.team)
+                    create_explosion_2d(position=e.position, particles=particles, team=e.team)
                     attacker_hq = g.hqs[projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:
