@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(kw_only=True)
-class GameManager:
+class GameManager2d:
     """
     GameManager orchestrates state machine, initializes game data, runs loops.
 
@@ -70,6 +70,7 @@ class GameManager:
     def __post_init__(self) -> None:
         pg.init()
         self.screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pg.display.set_caption("Paper Tigers")
         self.clock = pg.time.Clock()
         self.state = GameState.MENU
 
@@ -83,15 +84,14 @@ class GameManager:
         """
         State machine loop: menu -> setup -> playing -> victory/defeat -> menu.
         """
-        # State machine loop: menu -> setup -> playing -> victory/defeat -> menu.
         while self.running:
             if self.state == GameState.MENU:
                 self.main_menu.update(pg.mouse.get_pos())
                 self.main_menu.draw(self.screen)
-
                 for event in pg.event.get():
                     if event.type == pg.QUIT:
                         self.running = False
+
                     result = self.main_menu.handle_event(event)
                     if result == "skirmish_setup":
                         self.state = GameState.SKIRMISH_SETUP
@@ -108,6 +108,7 @@ class GameManager:
                 for event in pg.event.get():
                     if event.type == pg.QUIT:
                         self.running = False
+
                     result = self.skirmish_setup.handle_event(event)
                     if result == "menu":
                         self.state = GameState.MENU
@@ -153,7 +154,6 @@ class GameManager:
         """
         Main game loop: event handling, updates, rendering, win/loss checks.
         """
-        # Main game loop: event handling, updates, rendering, win/loss checks.
         g = self.game_data
 
         while self.running and self.state == GameState.PLAYING:
@@ -297,7 +297,11 @@ class GameManager:
                 )
 
             handle_projectiles(
-                projectiles=g.projectiles, all_units=unit_list, all_buildings=building_list, particles=g.particles, g=g
+                projectiles=g.projectiles,
+                all_units=unit_list,
+                all_buildings=building_list,
+                particles=g.particles,
+                g=g,
             )
 
             # Cleanup dead entities
@@ -646,13 +650,7 @@ class GameManager:
         base_height = map_data["height"]
         color = pg.Color(map_data["color"])
 
-        size_scales = {
-            "tiny": 0.80,
-            "small": 0.80,
-            "medium": 0.80,
-            "large": 0.80,
-            "huge": 0.80,
-        }
+        size_scales = {"tiny": 0.80, "small": 0.80, "medium": 0.80, "large": 0.80, "huge": 0.80}
         scale = size_scales[size_name]
         map_width = int(base_width * scale)
         map_height = int(base_height * scale)

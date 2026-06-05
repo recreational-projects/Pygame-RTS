@@ -1,4 +1,4 @@
-from CondaRTS2DVersion import GameManager
+from CondaRTS2DVersion import GameManager2d
 from modules.data_2d import UNIT_CLASSES
 from modules.unit_stats.unit_stats_2d import UnitStats2d
 
@@ -7,7 +7,7 @@ def test_create_manager() -> None:
     """Test that a GameManager can be instantiated."""
     # arrange
     # act
-    manager = GameManager()
+    manager = GameManager2d()
     # assert
     assert manager
 

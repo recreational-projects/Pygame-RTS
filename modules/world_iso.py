@@ -4,31 +4,32 @@ from __future__ import annotations
 
 import math
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 from pygame.math import Vector2
 
 from modules.data_iso import MAP_HEIGHT, MAP_WIDTH
-from modules.geometry import closest_point_on_rect
+from modules.geometry import check_collision, closest_point_on_rect
+from modules.particles import create_explosion_iso
 from modules.unit_stats.unit_stats_iso import get_unit_size
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, MutableSequence
 
     from pygame.typing import IntPoint, Point
 
-    from CondaRTSIsometricVersion import UnitIso
     from modules.particles import GenericParticle
     from modules.projectile.projectile_iso import ProjectileIso
     from modules.spatial_hash import SpatialHashIso
     from modules.team import Team
+    from modules.units_iso import UnitIso
 
 
 def is_valid_building_position(
     *,
     position: Point,
-    team: Team,
+    team: Team | None,
     new_building_cls: type,
     buildings: Iterable[UnitIso],
     map_width: int = MAP_WIDTH,
@@ -40,7 +41,7 @@ def is_valid_building_position(
     half_w_n, half_h_n = width / 2, height / 2
     temp_rect = pg.Rect(position[0] - half_w_n, position[1] - half_h_n, width, height)
     if not (
-        0 <= temp_rect.left and temp_rect.right <= map_width and 0 <= temp_rect.top and temp_rect.bottom <= map_height
+        temp_rect.left >= 0 and temp_rect.right <= map_width and temp_rect.top >= 0 and temp_rect.bottom <= map_height
     ):
         return False
 
@@ -98,7 +99,7 @@ def handle_attacks(
     particles: pg.sprite.Group[GenericParticle],
     unit_hash: SpatialHashIso,
     building_hash: SpatialHashIso,
-    alliances: dict[Team, set[Team]],
+    alliances: dict[Team, frozenset[Team]],
 ) -> None:
     unit_allies = alliances[team]
     armed_entities = [u for u in all_units if u.team == team and u.weapons and u.health > 0]
@@ -131,10 +132,9 @@ def handle_attacks(
                             if dist < min_unit_dist:
                                 closest_unit_in_range = obj
                                 min_unit_dist = dist
-                        else:
-                            if dist < min_building_dist:
-                                closest_building_in_range = obj
-                                min_building_dist = dist
+                        elif dist < min_building_dist:
+                            closest_building_in_range = obj
+                            min_building_dist = dist
 
         if closest_unit_in_range:
             closest_target = closest_unit_in_range
@@ -158,10 +158,91 @@ def handle_attacks(
             entity.target_turret_angle = math.atan2(dir_vec.y, dir_vec.x)
         if dist_to_target <= entity.attack_range:
             entity.shoot(target=closest_target, projectiles=projectiles, particles=particles)
-        else:
-            if not entity.is_building:
-                if closest_target.is_building:
-                    chase_pos = entity.get_chase_position_for_building(closest_target)
-                    entity.move_target = chase_pos if chase_pos is not None else None
-                else:
-                    entity.move_target = closest_target.position
+        elif not entity.is_building:
+            if closest_target.is_building:
+                chase_pos = entity.get_chase_position_for_building(closest_target)
+                entity.move_target = chase_pos if chase_pos is not None else None
+            else:
+                entity.move_target = closest_target.position
+
+
+def cleanup_dead_entities(g: Mapping[str, Any]) -> None:
+    for group_name in ["global_units"]:
+        group = g[group_name]
+        dead = [obj for obj in group if obj.health <= 0]
+        for d in dead:
+            group.remove(d)
+            if hasattr(d, "plasma_burn_particles"):
+                for p in d.plasma_burn_particles:
+                    if hasattr(p, "kill"):
+                        p.kill()
+
+                d.plasma_burn_particles.clear()
+
+    for group_name in ["global_buildings"]:
+        group = g[group_name]
+        dead = [obj for obj in group if hasattr(obj, "health") and obj.health <= 0]
+        for d in dead:
+            group.remove(d)
+            if hasattr(d, "plasma_burn_particles"):
+                for p in d.plasma_burn_particles:
+                    if hasattr(p, "kill"):
+                        p.kill()
+
+                d.plasma_burn_particles.clear()
+
+    for ug in g["unit_groups"].values():
+        dead = [u for u in ug if u.health <= 0]
+        for d in dead:
+            ug.remove(d)
+            if hasattr(d, "plasma_burn_particles"):
+                for p in d.plasma_burn_particles:
+                    if hasattr(p, "kill"):
+                        p.kill()
+
+                d.plasma_burn_particles.clear()
+
+
+def handle_projectiles(
+    *,
+    projectiles: Iterable[ProjectileIso],
+    all_units: MutableSequence[UnitIso],
+    all_buildings: MutableSequence[UnitIso],
+    particles: pg.sprite.Group[GenericParticle],
+    g: Mapping[str, Any],
+) -> None:
+    from modules.units_iso import UnitIso  # TODO: refactor
+
+    for projectile in list(projectiles):
+        proj_allies = g["alliances"][projectile.team]
+        enemy_units = [u for u in all_units if u.team not in proj_allies and u.health > 0]
+        enemy_buildings = [b for b in all_buildings if b.team not in proj_allies and b.health > 0]
+        hit = False
+        for e in enemy_units + enemy_buildings:
+            if check_collision(entity=e, projectile=projectile):
+                if e.take_damage(projectile.damage):
+                    create_explosion_iso(position=e.position, particles=particles, team=e.team)
+                    attacker_hq = g["hqs"][projectile.team]
+                    if hasattr(e, "hq") and e.hq:
+                        if e.is_building:
+                            e.hq.game_stats["buildings_lost"] += 1
+                            attacker_hq.game_stats["buildings_destroyed"] += 1
+                        else:
+                            e.hq.game_stats["units_lost"] += 1
+                            attacker_hq.game_stats["units_destroyed"] += 1
+
+                    if e in all_units:
+                        all_units.remove(e)
+                        if isinstance(e, UnitIso):
+                            for ug in g["unit_groups"].values():
+                                if e in ug:
+                                    ug.remove(e)
+
+                    elif e in all_buildings:
+                        all_buildings.remove(e)
+
+                hit = True
+                break
+
+        if hit:
+            projectile.kill()

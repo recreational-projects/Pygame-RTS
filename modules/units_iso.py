@@ -670,7 +670,7 @@ class UnitIso(GameObjectIso):
         *,
         particles: pg.sprite.Group[GenericParticle],
         friendly_units: MutableSet[UnitIso] | None = None,
-        all_units: MutableSet[UnitIso] | None = None,
+        all_units: pg.sprite.Group[UnitIso] | None = None,
         global_buildings: Iterable[UnitIso],
         projectiles: pg.sprite.Group[ProjectileIso],
     ) -> None:
@@ -874,7 +874,7 @@ class UnitIso(GameObjectIso):
         target_pos.y = max(0, min(target_pos.y, self.map_height))
         return target_pos
 
-    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: MutableSet[UnitIso]) -> None:
+    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: pg.sprite.Group[UnitIso]) -> None:
         if self.production_queue:
             current_unit_count = len(friendly_units)
             if current_unit_count < 100:
@@ -1027,7 +1027,7 @@ class Headquarters(UnitIso):
             "credits_earned": 0,
         }
 
-    def place_building(self, position: Point, unit_cls: type, all_buildings: MutableSet[UnitIso]) -> None:
+    def place_building(self, position: Point, unit_cls: type, all_buildings: pg.sprite.Group[UnitIso]) -> None:
         all_buildings_list = list(all_buildings)
         if is_valid_building_position(
             position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list

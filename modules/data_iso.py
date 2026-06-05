@@ -328,6 +328,7 @@ UNIT_CLASSES = {
         "sight_range": 200,
         # pyrefly: ignore [implicit-any-empty-container]
         "weapons": [],
+        "producible": ["Barracks", "WarFactory", "Hangar", "PowerPlant", "Turret", "Refinery"],
         "size": (40, 40),
         "air": False,
         "is_building": True,

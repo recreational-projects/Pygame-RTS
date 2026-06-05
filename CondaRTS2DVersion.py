@@ -1,11 +1,11 @@
 """Runs the 2d version of the game."""
 
-from modules.game_manager_2d import GameManager
+from modules.game_manager_2d import GameManager2d
 
 
 def main() -> None:
     """Run the game."""
-    manager = GameManager()
+    manager = GameManager2d()
     manager.run()
 
 

@@ -32,7 +32,7 @@ class GameData:
     hqs: dict[Team, Any] = field(default_factory=dict)
     player_team: Team | None
     player_allies: frozenset[Team] = field(default_factory=frozenset)
-    alliances: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]
+    alliances: dict[Team, frozenset[Team]] = field(default_factory=dict)
     fog_of_war: FogOfWar2d
     camera: Camera2d
     map_color: pg.Color

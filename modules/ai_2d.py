@@ -149,6 +149,10 @@ class AI:
     hangar_index: int = field(init=False, default=0)
 
     build_jitter = random.uniform(0.1, 0.5)  # Extra randomness in build angles (lower = more biased)
+    threat_level: float = field(init=False, default=0)
+    military_strength: int = field(init=False, default=0)
+    enemy_strength: int = field(init=False, default=0)
+    economy_level: int = field(init=False, default=0)
 
     @property
     def aggression_bias(self) -> float:
@@ -176,7 +180,6 @@ class AI:
         :param map_width: Map width.
         :param map_height: Map height.
         """
-        # Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
         self._assess_situation(
             friendly_units=friendly_units, friendly_buildings=friendly_buildings, enemy_units=enemy_units
         )
@@ -277,9 +280,9 @@ class AI:
         _power_count = len([b for b in _live_friendly_buildings if isinstance(b, PowerPlant)])
         self.total_buildings = sum((self.military_prod_count, self.resource_count, _power_count, self.turret_count))
 
-        power_plants = len([b for b in friendly_buildings if isinstance(b, PowerPlant)])
+        _power_plants = len([b for b in friendly_buildings if isinstance(b, PowerPlant)])
         # TODO: counts dead buildings - is this intentional?
-        self.power_shortage = power_plants < self.economy_level + 1
+        self.power_shortage = _power_plants < self.economy_level + 1
 
         inf_prio = 0.5 if self.threat_level > 0.5 else 0.6
         gren_prio = 0.3 if self.threat_level > 0.5 else 0.2
@@ -295,6 +298,7 @@ class AI:
             mgv_prio /= total_prio
             rocket_prio /= total_prio
             heli_prio /= total_prio
+
         self.production_priorities = {
             "Infantry": inf_prio,
             "Grenadier": gren_prio,
@@ -494,11 +498,14 @@ class AI:
                     map_height=map_height,
                 ):
                     return position
+
                 attempts += 1
                 if attempts > max_attempts:
                     break
+
             if attempts > max_attempts:
                 break
+
         return None
 
     def _strategize_attacks(

@@ -120,7 +120,7 @@ def handle_attacks(
     particles: pg.sprite.Group[GenericParticle],
     unit_hash: SpatialHash2d,
     building_hash: SpatialHash2d,
-    alliances: dict[Team, set[Team]],
+    alliances: dict[Team, frozenset[Team]],
 ) -> None:
     """
     For a team, finds targets in sight range and shoots if in attack range; handles chasing.
