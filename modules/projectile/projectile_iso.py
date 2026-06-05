@@ -53,9 +53,11 @@ class ProjectileIso(GenericProjectile):
 
         scaled_length = int(self.length * camera.zoom)
         scaled_width = int(self.width * camera.zoom)
-        if self.image is not None:  # TODO: type guard - not sure why needed
-            if scaled_length > 0 and scaled_width > 0:
-                scaled_image = pg.transform.smoothscale(self.image, (scaled_length, scaled_width))
-                rotated_image = pg.transform.rotate(scaled_image, -math.degrees(self.angle))
-                rot_rect = rotated_image.get_rect(center=screen_pos)
-                surface.blit(rotated_image, rot_rect.topleft)
+        if self.image is None:
+            raise TypeError("self.image` is unexpectedly `None`")
+
+        if scaled_length > 0 and scaled_width > 0:
+            scaled_image = pg.transform.smoothscale(self.image, (scaled_length, scaled_width))
+            rotated_image = pg.transform.rotate(scaled_image, -math.degrees(self.angle))
+            rot_rect = rotated_image.get_rect(center=screen_pos)
+            surface.blit(rotated_image, rot_rect.topleft)

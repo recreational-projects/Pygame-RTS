@@ -230,6 +230,7 @@ class GameManager:
                             abs(world_end[1] - world_start[1]),
                         )
                         for unit in g.player_units:
+                            # pyrefly: ignore [bad-argument-type]
                             if world_rect.colliderect(unit.rect):
                                 unit.selected = True
                                 g.selected_units.add(unit)
@@ -278,6 +279,7 @@ class GameManager:
             handle_unit_collisions(all_units=unit_list, unit_hash=unit_hash)
             handle_unit_building_collisions(all_units=unit_list, building_hash=building_hash)
             for unit in unit_list:
+                # pyrefly: ignore [missing-attribute]
                 unit.rect.center = unit.position
 
             # Unified attacks for all teams
@@ -552,6 +554,7 @@ class GameManager:
             (
                 b
                 for b in g.global_buildings
+                # pyrefly: ignore [bad-argument-type]
                 if b.team == g.player_team and g.camera.get_screen_rect(b.rect).collidepoint(target_x, target_y)
             ),
             None,
@@ -595,6 +598,7 @@ class GameManager:
             unit_list = list(g.global_units)
             building_list = [b for b in g.global_buildings if b.health > 0]
             for u in unit_list:
+                # pyrefly: ignore [bad-argument-type]
                 screen_rect = g.camera.get_screen_rect(u.rect)
                 if screen_rect.collidepoint(mouse_pos) and u.team not in g.player_allies and u.health > 0:
                     clicked_enemy = u
@@ -602,6 +606,7 @@ class GameManager:
 
             if not clicked_enemy:
                 for b in building_list:
+                    # pyrefly: ignore [bad-argument-type]
                     screen_rect = g.camera.get_screen_rect(b.rect)
                     if screen_rect.collidepoint(mouse_pos) and b.team not in g.player_allies and b.health > 0:
                         clicked_enemy = b
@@ -770,7 +775,9 @@ class GameManager:
             ais.append(ai)
 
         self.game_data = GameData(
+            # pyrefly: ignore [bad-argument-type]
             player_units=player_units,
+            # pyrefly: ignore [bad-argument-type]
             ai_units=ai_units,
             global_units=global_units,
             global_buildings=global_buildings,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pygame as pg
 from pygame.math import Vector2
@@ -17,8 +17,6 @@ from modules.unit_stats.unit_stats_2d import UnitStats2d
 from modules.world_2d import is_valid_building_position
 
 if TYPE_CHECKING:
-    from collections.abc import MutableSet
-
     from pygame.sprite import Group
     from pygame.typing import Point
 
@@ -78,6 +76,7 @@ class Unit2d(GameObject2d):
         if not self.image:  # TODO: type guard - not sure why needed
             raise TypeError("Unit has no `image`")
 
+        # pyrefly: ignore [missing-override-decorator]
         self.rect = self.image.get_rect(center=position)
         # Modular drawing setup
         self._setup_drawing()
@@ -87,6 +86,7 @@ class Unit2d(GameObject2d):
 
         unit_type_str = self.__class__.__name__
         if unit_type_str in SIMPLE_DRAW_RECIPES:
+            # pyrefly: ignore [missing-override-decorator]
             self.image = SIMPLE_DRAW_RECIPES[unit_type_str](self.size, team_to_color[self.team])
 
         if not self.image:  # TODO: type guard - not sure why needed
@@ -155,7 +155,7 @@ class Unit2d(GameObject2d):
         return Vector2(self._stats.barrel_offset)
 
     def update(
-        self, *, friendly_units: MutableSet[Unit2d] | None = None, all_units: MutableSet[Unit2d] | None = None
+        self, *, friendly_units: pg.sprite.Group[Unit2d] | None = None, all_units: pg.sprite.Group[Unit2d] | None = None
     ) -> None:
         """
         Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
@@ -280,7 +280,7 @@ class Unit2d(GameObject2d):
         target_pos += perp_dir * spread_dist
         return target_pos
 
-    def _update_production(self, friendly_units: MutableSet[Unit2d], all_units: MutableSet[Unit2d]) -> None:
+    def _update_production(self, friendly_units: pg.sprite.Group[Unit2d], all_units: pg.sprite.Group[Unit2d]) -> None:
         """
         Advances production queue, spawns units at gate, opens gate animation.
 
@@ -328,6 +328,7 @@ class Unit2d(GameObject2d):
 
                 self.production_timer = None
 
+    @override
     def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
         """
         Overridden draw for units: handles air height, rotation, rally point, gate animation.
@@ -546,6 +547,7 @@ class Barracks(Unit2d):
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
+        # pyrefly: ignore [implicit-any-attribute]
         self.parent_hq = None
 
 
@@ -554,6 +556,7 @@ class WarFactory(Unit2d):
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
+        # pyrefly: ignore [implicit-any-attribute]
         self.parent_hq = None
 
 
@@ -562,6 +565,7 @@ class Hangar(Unit2d):
 
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
+        # pyrefly: ignore [implicit-any-attribute]
         self.parent_hq = None
 
 

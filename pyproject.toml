@@ -59,13 +59,14 @@ extend-safe-fixes = [
 "modules/*.py" = [
     "D",
 ]
-"modules/draw_2d.py" = [
+"modules/draw_*.py" = [
     "ANN001", # missing-type-function-argument
+    "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument: keys
 ]
-"modules/production_interface_2d.py" = [
+"modules/production_interface_*.py" = [
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/screens.py" = [

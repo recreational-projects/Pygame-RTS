@@ -47,9 +47,7 @@ class SpatialHash2d:
         nearby = []
         for k in keys:
             if k in self.grid:
-                for o in self.grid[k]:
-                    if o.distance_to(pos) <= radius:
-                        nearby.append(o)
+                nearby.extend(o for o in self.grid[k] if o.distance_to(pos) <= radius)
 
         return nearby
 

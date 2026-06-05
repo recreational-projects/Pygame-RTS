@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import pygame as pg
-    from pygame.sprite import Group
     from pygame.typing import IntPoint
 
     from modules.ai_2d import AI
@@ -22,15 +21,15 @@ if TYPE_CHECKING:
 class GameData:
     """Global game data."""
 
-    player_units: Group  # pyrefly: ignore [implicit-any-type-argument]
-    ai_units: Group  # pyrefly: ignore [implicit-any-type-argument]
-    global_units: Group  # pyrefly: ignore [implicit-any-type-argument]
-    global_buildings: Group  # pyrefly: ignore [implicit-any-type-argument]
-    projectiles: Group[Projectile2d]
-    particles: Group[GenericParticle]
-    selected_units: Group[Unit2d]
-    unit_groups: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]
-    hqs: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]
+    player_units: pg.sprite.Group[Unit2d]
+    ai_units: pg.sprite.Group[Unit2d]
+    global_units: pg.sprite.Group[Unit2d]
+    global_buildings: pg.sprite.Group[Unit2d]
+    projectiles: pg.sprite.Group[Projectile2d]
+    particles: pg.sprite.Group[GenericParticle]
+    selected_units: pg.sprite.Group[Unit2d]
+    unit_groups: dict[Team, Any] = field(default_factory=dict)
+    hqs: dict[Team, Any] = field(default_factory=dict)
     player_team: Team | None
     player_allies: frozenset[Team] = field(default_factory=frozenset)
     alliances: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]
