@@ -730,11 +730,12 @@ class UnitIso(GameObjectIso):
 
     def update(
         self,
-        particles: MutableSet[GenericParticle] | None = None,
+        *,
+        particles: pg.sprite.Group[GenericParticle],
         friendly_units: MutableSet[UnitIso] | None = None,
         all_units: MutableSet[UnitIso] | None = None,
         global_buildings: Iterable[UnitIso] | None = None,
-        projectiles: Container[Projectile] | None = None,
+        projectiles: pg.sprite.Group[Projectile],
         enemy_units: Container[UnitIso] | None = None,
         enemy_buildings: Container[UnitIso] | None = None,
     ) -> None:
@@ -910,7 +911,6 @@ class UnitIso(GameObjectIso):
                 aim_target = self.attack_target
 
             if dist <= self.attack_range:
-                # pyrefly: ignore [bad-argument-type]
                 self.shoot(target=aim_target, projectiles=projectiles, particles=particles)
 
     def shoot(
