@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
@@ -132,18 +132,27 @@ class AI:
     preferred_build_direction: float
     """Preferred build direction angle."""
     allies: frozenset[Team]
+
     # internal
     timer_offset = random.randint(0, 180)  # Stagger starts by up to 3 seconds (at 60 FPS)
     interval_multiplier = random.uniform(0.7, 1.3)  # Vary speeds: 70-130% of base intervals
-    personality = random.choice(["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"])  # Random trait
+    personality: Literal["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"] = random.choice(
+        ["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"]
+    )  # Random trait
     action_timer: int = field(init=False, default=0)
     defense_timer: int = field(init=False, default=0)
     scout_timer: int = field(init=False, default=0)
     attack_timer: int = field(init=False, default=0)
+
     barracks_index: int = field(init=False, default=0)
     warfactory_index: int = field(init=False, default=0)
     hangar_index: int = field(init=False, default=0)
+
     build_jitter = random.uniform(0.1, 0.5)  # Extra randomness in build angles (lower = more biased)
+    threat_level: float = field(init=False, default=0)
+    military_strength: int = field(init=False, default=0)
+    enemy_strength: int = field(init=False, default=0)
+    economy_level: int = field(init=False, default=0)
 
     @property
     def aggression_bias(self) -> float:
@@ -171,7 +180,6 @@ class AI:
         :param map_width: Map width.
         :param map_height: Map height.
         """
-        # Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
         self._assess_situation(
             friendly_units=friendly_units, friendly_buildings=friendly_buildings, enemy_units=enemy_units
         )
@@ -272,9 +280,9 @@ class AI:
         _power_count = len([b for b in _live_friendly_buildings if isinstance(b, PowerPlant)])
         self.total_buildings = sum((self.military_prod_count, self.resource_count, _power_count, self.turret_count))
 
-        power_plants = len([b for b in friendly_buildings if isinstance(b, PowerPlant)])
+        _power_plants = len([b for b in friendly_buildings if isinstance(b, PowerPlant)])
         # TODO: counts dead buildings - is this intentional?
-        self.power_shortage = power_plants < self.economy_level + 1
+        self.power_shortage = _power_plants < self.economy_level + 1
 
         inf_prio = 0.5 if self.threat_level > 0.5 else 0.6
         gren_prio = 0.3 if self.threat_level > 0.5 else 0.2
@@ -290,6 +298,7 @@ class AI:
             mgv_prio /= total_prio
             rocket_prio /= total_prio
             heli_prio /= total_prio
+
         self.production_priorities = {
             "Infantry": inf_prio,
             "Grenadier": gren_prio,
@@ -371,59 +380,57 @@ class AI:
         if self.personality == "RUSHER" and self.resource_count == 0:  # Rush military over economy
             return Barracks
 
-        elif self.personality == "DEFENSIVE" and self.turret_count < self.total_buildings // 3:
+        if self.personality == "DEFENSIVE" and self.turret_count < self.total_buildings // 3:
             return Turret
-        else:
-            if (
-                self.threat_level > 0.4
-                and self.turret_count < min(3, self.total_buildings // 2)
-                and self.hq.credits >= get_unit_cost("Turret")
-            ):
-                return Turret
 
-            if self.resource_count == 0 and self.hq.credits >= get_unit_cost("OilDerrick"):
-                return OilDerrick
+        if (
+            self.threat_level > 0.4
+            and self.turret_count < min(3, self.total_buildings // 2)
+            and self.hq.credits >= get_unit_cost("Turret")
+        ):
+            return Turret
 
-            elif self.resource_count < 2 and self.hq.credits >= get_unit_cost("Refinery"):
-                _has_refinery = any(isinstance(b, Refinery) for b in live_friendly_buildings)
-                return Refinery if not _has_refinery else random.choice([ShaleFracker, BlackMarket])
+        if self.resource_count == 0 and self.hq.credits >= get_unit_cost("OilDerrick"):
+            return OilDerrick
 
-            elif self.power_shortage and self.economy_level > 0 and self.hq.credits >= get_unit_cost("PowerPlant"):
-                return PowerPlant
+        if self.resource_count < 2 and self.hq.credits >= get_unit_cost("Refinery"):
+            _has_refinery = any(isinstance(b, Refinery) for b in live_friendly_buildings)
+            return Refinery if not _has_refinery else random.choice([ShaleFracker, BlackMarket])
 
-            elif self.military_prod_count < max(1, self.resource_count // 2 + 1):
-                _has_barracks = any(isinstance(b, Barracks) for b in live_friendly_buildings)
-                _has_factory = any(isinstance(b, WarFactory) for b in live_friendly_buildings)
-                _has_hangar = any(isinstance(b, Hangar) for b in live_friendly_buildings)
-                if not _has_barracks:
-                    return Barracks
+        if self.power_shortage and self.economy_level > 0 and self.hq.credits >= get_unit_cost("PowerPlant"):
+            return PowerPlant
 
-                elif self.resource_count >= 2 and not _has_factory:
-                    return WarFactory
+        if self.military_prod_count < max(1, self.resource_count // 2 + 1):
+            _has_barracks = any(isinstance(b, Barracks) for b in live_friendly_buildings)
+            _has_factory = any(isinstance(b, WarFactory) for b in live_friendly_buildings)
+            _has_hangar = any(isinstance(b, Hangar) for b in live_friendly_buildings)
+            if not _has_barracks:
+                return Barracks
 
-                elif self.resource_count >= 3 and not _has_hangar:
-                    return Hangar
-                else:
-                    return random.choice([Barracks, WarFactory, Hangar])
+            if self.resource_count >= 2 and not _has_factory:
+                return WarFactory
 
-            else:
-                rand = random.random()
-                if rand < 0.4:
-                    return random.choice([Barracks, WarFactory, Hangar])
+            if self.resource_count >= 3 and not _has_hangar:
+                return Hangar
 
-                elif rand < 0.7:
-                    return random.choice([OilDerrick, Refinery, ShaleFracker, BlackMarket])
+            return random.choice([Barracks, WarFactory, Hangar])
 
-                else:
-                    all_possible = [
-                        PowerPlant,
-                        Turret,
-                        OilDerrick,
-                        Refinery,
-                        ShaleFracker,
-                        BlackMarket,
-                    ]
-                    return random.choice(all_possible)
+        rand = random.random()
+        if rand < 0.4:
+            return random.choice([Barracks, WarFactory, Hangar])
+
+        if rand < 0.7:
+            return random.choice([OilDerrick, Refinery, ShaleFracker, BlackMarket])
+
+        all_possible = [
+            PowerPlant,
+            Turret,
+            OilDerrick,
+            Refinery,
+            ShaleFracker,
+            BlackMarket,
+        ]
+        return random.choice(all_possible)
 
     def _find_build_position(
         self,
@@ -491,11 +498,14 @@ class AI:
                     map_height=map_height,
                 ):
                     return position
+
                 attempts += 1
                 if attempts > max_attempts:
                     break
+
             if attempts > max_attempts:
                 break
+
         return None
 
     def _strategize_attacks(

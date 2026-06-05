@@ -82,10 +82,8 @@ def is_valid_building_position(
 def find_free_spawn_position(
     *,
     target_pos: Point,
-    # pyrefly: ignore [implicit-any-type-argument]
-    global_buildings: Iterable,
-    # pyrefly: ignore [implicit-any-type-argument]
-    global_units: Iterable,
+    global_buildings: Iterable[Unit2d],
+    global_units: Iterable[Unit2d],
     unit_size: IntPoint = (40, 40),
 ) -> Point:
     """
@@ -103,7 +101,9 @@ def find_free_spawn_position(
         pos_x = target_pos[0] + offset_x
         pos_y = target_pos[1] + offset_y
         unit_rect = pg.Rect(pos_x - unit_size[0] / 2, pos_y - unit_size[1] / 2, unit_size[0], unit_size[1])
+        # pyrefly: ignore [missing-attribute]
         overlaps_building = any(b.rect.colliderect(unit_rect) for b in global_buildings if b.health > 0)
+        # pyrefly: ignore [missing-attribute]
         overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.is_air)
         if not overlaps_building and not overlaps_unit:
             return pos_x, pos_y
@@ -120,7 +120,7 @@ def handle_attacks(
     particles: pg.sprite.Group[GenericParticle],
     unit_hash: SpatialHash2d,
     building_hash: SpatialHash2d,
-    alliances: dict[Team, set[Team]],
+    alliances: dict[Team, frozenset[Team]],
 ) -> None:
     """
     For a team, finds targets in sight range and shoots if in attack range; handles chasing.
@@ -215,7 +215,6 @@ def cleanup_dead_entities(game_data: GameData) -> None:
                 if hasattr(p, "kill"):
                     p.kill()
 
-            # pyrefly: ignore [implicit-any-empty-container]
             d.plasma_burn_particles = []
 
     # Cleanup dead buildings
@@ -228,7 +227,6 @@ def cleanup_dead_entities(game_data: GameData) -> None:
                 if hasattr(p, "kill"):
                     p.kill()
 
-            # pyrefly: ignore [implicit-any-empty-container]
             d.plasma_burn_particles = []
 
     # Cleanup unit groups

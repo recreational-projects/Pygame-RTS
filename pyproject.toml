@@ -24,48 +24,41 @@ line-length = 120  # for both linter and formatter
 [tool.ruff.lint]
 future-annotations = true
 select = [
-    "ANN", # flake8-annotations
-    "D", # pydocstyle
-    "E", # pycodestyle
-    "F", # pyflakes
-    "FBT", # flake8-boolean-trap
-    "I", # isort
-    "TC", # flake8-type-checking
-    "UP", # pyupgrade
+    "ALL"
 ]
 ignore = [
+    "B905", # zip-without-explicit-strict
+    "C", # mmcabe
     "COM812", # missing-trailing-comma: conflicts with formatter
     "D203", "D213", # format choices
-    "E722", # bare-except
+    "E721", # type-comparison
+    "ERA001", # commented-out-code
     "EM", # flake8-errmsg
     "FIX", # flake8-fixme
+    "PLC", # Pylint
+    "PLR", # Pylint
+    "RUF012", # mutable-class-default
     "S311",  # suspicious-non-cryptographic-random-usage
-#    "TD",
-#    "TRY", # tryceratops
+    "SIM108", # if-else-block-instead-of-if-exp
+    "TD",
+    "TRY", # tryceratops
 ]
 extend-safe-fixes = [
     "TC",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"CondaRTSIsometricVersion.py" = [
-    "ANN",
-    "D",
-    "E",
-    "E501", # line-too-long
-    "F841", # unused-variable
-    "FBT", # flake8-boolean-trap
-]
 "modules/*.py" = [
     "D",
 ]
-"modules/draw_2d.py" = [
+"modules/draw_*.py" = [
     "ANN001", # missing-type-function-argument
+    "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument: keys
 ]
-"modules/production_interface_2d.py" = [
+"modules/production_interface_*.py" = [
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/screens.py" = [

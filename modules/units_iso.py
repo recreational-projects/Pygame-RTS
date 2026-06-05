@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pygame as pg
 from pygame.math import Vector2
@@ -18,7 +18,7 @@ from modules.unit_stats.unit_stats_iso import UnitStatsIso
 from modules.world_iso import is_valid_building_position
 
 if TYPE_CHECKING:
-    from collections.abc import Container, Iterable, MutableSet
+    from collections.abc import Iterable, MutableSet
 
     from pygame.typing import Point
 
@@ -71,6 +71,7 @@ class UnitIso(GameObjectIso):
             self.production_queue = []
             self.production_timer: int | None = None
 
+        # pyrefly: ignore [missing-override-decorator]
         self.rect = pg.Rect(self.position.x - self.size[0] / 2, self.position.y - self.size[1] / 2, *self.size)
         self._setup_drawing()
 
@@ -596,6 +597,7 @@ class UnitIso(GameObjectIso):
         outline_color: pg.Color,
         zoom: float,
         is_turret: bool = False,
+        # pyrefly: ignore [implicit-any-type-argument]
         p_bottom: list | None = None,
     ) -> None:
         cos = math.cos(angle)
@@ -648,7 +650,7 @@ class UnitIso(GameObjectIso):
         bottom_edge = [0, 1, 2, 3, 0]
         top_edge = [4, 5, 6, 7, 4]
         verticals = [[0, 4], [1, 5], [2, 6], [3, 7]]
-        all_edges = [bottom_edge, top_edge] + verticals
+        all_edges = [bottom_edge, top_edge, *verticals]
         line_width = int(1 * zoom) if is_turret else int(2 * zoom)
         for edge in all_edges:
             if len(edge) > 2:
@@ -668,22 +670,21 @@ class UnitIso(GameObjectIso):
         *,
         particles: pg.sprite.Group[GenericParticle],
         friendly_units: MutableSet[UnitIso] | None = None,
-        all_units: MutableSet[UnitIso] | None = None,
-        global_buildings: Iterable[UnitIso] | None = None,
+        all_units: pg.sprite.Group[UnitIso] | None = None,
+        global_buildings: Iterable[UnitIso],
         projectiles: pg.sprite.Group[ProjectileIso],
-        enemy_units: Container[UnitIso] | None = None,
-        enemy_buildings: Container[UnitIso] | None = None,
     ) -> None:
         self.under_attack_timer = max(0, self.under_attack_timer - 1)
         self.under_attack = self.under_attack_timer > 0
         if self.last_shot_time > 0:
             self.last_shot_time -= 1
 
-        if self.attack_target:
-            if self.attack_target.health <= 0 or self.distance_to(self.attack_target.position) > self.sight_range + 50:
-                self.attack_target = None
-                if self.move_target == getattr(self.attack_target, "position", None):
-                    self.move_target = None
+        if self.attack_target and (
+            self.attack_target.health <= 0 or self.distance_to(self.attack_target.position) > self.sight_range + 50
+        ):
+            self.attack_target = None
+            if self.move_target == getattr(self.attack_target, "position", None):
+                self.move_target = None
 
         if not self.is_building:
             if self.move_target:
@@ -706,7 +707,6 @@ class UnitIso(GameObjectIso):
                     blocked = set()
                     num_tiles_x = self.map_width // TILE_SIZE
                     num_tiles_y = self.map_height // TILE_SIZE
-                    # pyrefly: ignore [not-iterable]
                     for b in global_buildings:
                         if b.health <= 0 or not b.is_air:
                             continue
@@ -848,7 +848,7 @@ class UnitIso(GameObjectIso):
             if dist <= self.attack_range:
                 self.shoot(target=aim_target, projectiles=projectiles, particles=particles)
 
-    def get_chase_position_for_building(self, target_building: UnitIso) -> Vector2 | None:  # noqa: ANN001
+    def get_chase_position_for_building(self, target_building: UnitIso) -> Vector2 | None:
         # pyrefly: ignore [bad-argument-type]
         closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
         dir_to_closest = Vector2(closest) - self.position
@@ -874,7 +874,7 @@ class UnitIso(GameObjectIso):
         target_pos.y = max(0, min(target_pos.y, self.map_height))
         return target_pos
 
-    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: MutableSet[UnitIso]) -> None:  # noqa: ANN001
+    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: pg.sprite.Group[UnitIso]) -> None:
         if self.production_queue:
             current_unit_count = len(friendly_units)
             if current_unit_count < 100:
@@ -1011,7 +1011,9 @@ class Headquarters(UnitIso):
         self.has_enough_power = True
         self.production_queue: list[dict[str, Any]] = []
         self.production_timer = None
+        # pyrefly: ignore [implicit-any-attribute]
         self.pending_building = None
+        # pyrefly: ignore [implicit-any-attribute]
         self.pending_building_pos = None
         self.rally_point = Vector2(position[0] + (100 if team == Team.GREEN else position[0] - 100), position[1])
         self.radius = 50
@@ -1025,7 +1027,7 @@ class Headquarters(UnitIso):
             "credits_earned": 0,
         }
 
-    def place_building(self, position: Point, unit_cls: type, all_buildings: MutableSet[UnitIso]) -> None:
+    def place_building(self, position: Point, unit_cls: type, all_buildings: pg.sprite.Group[UnitIso]) -> None:
         all_buildings_list = list(all_buildings)
         if is_valid_building_position(
             position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list
@@ -1046,6 +1048,7 @@ class PowerPlant(UnitIso):
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
 
+    @override
     def draw(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
@@ -1125,6 +1128,7 @@ class Refinery(UnitIso):
         super().__init__(position=position, team=team, hq=hq)
         self.radius = 60
 
+    @override
     def draw(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
@@ -1159,7 +1163,7 @@ class Refinery(UnitIso):
             is_turret=False,
             p_bottom=p_bottom,
         )
-        for i, offset in enumerate([-w * 0.4, 0, w * 0.4]):
+        for offset in (-w * 0.4, 0, w * 0.4):
             tank_x = pos.x + offset * cos
             tank_y = pos.y + offset * sin
             tank_base = (tank_x, tank_y, base_z)
@@ -1170,6 +1174,7 @@ class Refinery(UnitIso):
             pg.draw.circle(surface, pg.Color(100, 100, 100), (int(p_tank_base[0]), int(p_tank_base[1])), radius)
             pg.draw.circle(surface, pg.Color(80, 80, 80), (int(p_tank_top[0]), int(p_tank_top[1])), radius)
             pg.draw.line(surface, outline_color, p_tank_base, p_tank_top, int(2 * zoom))
+
         tower_x = pos.x
         tower_y = pos.y + d * 0.5 * sin
         tower_base = (tower_x, tower_y, base_z)
@@ -1210,6 +1215,7 @@ class Turret(UnitIso):
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
 
+    @override
     def draw(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
@@ -1305,8 +1311,10 @@ class Turret(UnitIso):
 class Barracks(UnitIso):
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
+        # pyrefly: ignore [implicit-any-attribute]
         self.parent_hq = None
 
+    @override
     def draw(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
@@ -1420,8 +1428,10 @@ class Barracks(UnitIso):
 class WarFactory(UnitIso):
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
+        # pyrefly: ignore [implicit-any-attribute]
         self.parent_hq = None
 
+    @override
     def draw(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
@@ -1532,8 +1542,10 @@ class WarFactory(UnitIso):
 class Hangar(UnitIso):
     def __init__(self, position: Point, team: Team, hq: Headquarters | None = None) -> None:
         super().__init__(position=position, team=team, hq=hq)
+        # pyrefly: ignore [implicit-any-attribute]
         self.parent_hq = None
 
+    @override
     def draw(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return

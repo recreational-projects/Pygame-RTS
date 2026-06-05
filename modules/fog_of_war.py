@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from modules.camera.camera_2d import Camera2d
     from modules.camera.camera_iso import CameraIso
     from modules.units_2d import Unit2d
+    from modules.units_iso import UnitIso
 
 
 class FogOfWar2d:
@@ -156,7 +157,7 @@ class FogOfWarIso:
             self.visible = [[True] * num_tiles_y for _ in range(num_tiles_x)]
 
     def update_visibility(
-        self, ally_units: Iterable[Unit2d], ally_buildings: Iterable[Unit2d], global_buildings: Iterable[Unit2d]
+        self, ally_units: Iterable[UnitIso], ally_buildings: Iterable[UnitIso], global_buildings: Iterable[UnitIso]
     ) -> None:
         if not ally_units and not ally_buildings:
             return

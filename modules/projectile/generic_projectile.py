@@ -66,7 +66,7 @@ class GenericProjectile(pg.sprite.Sprite):
         self.rect = self.image.get_rect(center=self.position)
 
     @override
-    def update(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+    def update(self, *args: Any, **kwargs: Any) -> None:
         """Advances position, adds to trail, kills after lifetime."""
         self.trail.append(self.position.copy())
         self.position += self.direction * self.speed
