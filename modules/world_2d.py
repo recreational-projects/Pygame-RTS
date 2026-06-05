@@ -104,7 +104,7 @@ def find_free_spawn_position(
         pos_y = target_pos[1] + offset_y
         unit_rect = pg.Rect(pos_x - unit_size[0] / 2, pos_y - unit_size[1] / 2, unit_size[0], unit_size[1])
         overlaps_building = any(b.rect.colliderect(unit_rect) for b in global_buildings if b.health > 0)
-        overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.air)
+        overlaps_unit = any(u.rect.colliderect(unit_rect) for u in global_units if u.health > 0 and not u.is_air)
         if not overlaps_building and not overlaps_unit:
             return pos_x, pos_y
 
