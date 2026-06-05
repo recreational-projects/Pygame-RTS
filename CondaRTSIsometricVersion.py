@@ -1478,7 +1478,10 @@ class GameManager:
             unit_list = list(g["global_units"])
             building_list = [b for b in g["global_buildings"] if b.health > 0]
             for unit in [u for u in unit_list if not u.is_building]:
-                unit.update(global_buildings=list(g["global_buildings"]))
+                unit.update(
+                    global_buildings=list(g["global_buildings"]), projectiles=g["projectiles"], particles=g["particles"]
+                )
+
             for building in building_list:
                 building_team = building.team
                 friendly_units_for_build = g["unit_groups"].get(building_team, pg.sprite.Group())
