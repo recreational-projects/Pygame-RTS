@@ -1032,11 +1032,12 @@ def handle_projectiles(projectiles, all_units, all_buildings, particles, g) -> N
                     attacker_hq = g["hqs"][projectile.team]
                     if hasattr(e, "hq") and e.hq:
                         if e.is_building:
-                            e.hq.stats["buildings_lost"] += 1
-                            attacker_hq.stats["buildings_destroyed"] += 1
+                            e.hq.game_stats["buildings_lost"] += 1
+                            attacker_hq.game_stats["buildings_destroyed"] += 1
                         else:
-                            e.hq.stats["units_lost"] += 1
-                            attacker_hq.stats["units_destroyed"] += 1
+                            e.hq.game_stats["units_lost"] += 1
+                            attacker_hq.game_stats["units_destroyed"] += 1
+
                     if e in all_units:
                         all_units.remove(e)
                         if isinstance(e, UnitIso):
@@ -1158,7 +1159,7 @@ class GameManager:
             hq = Headquarters(position=pos, team=team)
             hq.map_width = map_width
             hq.map_height = map_height
-            hq.stats = {
+            hq.game_stats = {
                 "units_created": 3,
                 "units_lost": 0,
                 "units_destroyed": 0,
@@ -1553,8 +1554,9 @@ class GameManager:
                             )
                             income = count * 0.050
                             hq.credits += income
-                            if "credits_earned" in hq.stats:
-                                hq.stats["credits_earned"] += income
+                            if "credits_earned" in hq.game_stats:
+                                hq.game_stats["credits_earned"] += income
+
             for ai in g["ais"]:
                 their_team = ai.hq.team
                 friendly_units_list = g["unit_groups"][their_team].sprites()
@@ -1583,13 +1585,13 @@ class GameManager:
             for team in g["teams"]:
                 hq = g["hqs"][team]
                 if hq.health > 0:
-                    stats = hq.stats
+                    game_stats = hq.game_stats
                     fitness = (
-                        stats.get("units_destroyed", 0) * 10
-                        + stats.get("buildings_destroyed", 0) * 20
-                        - stats.get("units_lost", 0) * 5
-                        - stats.get("buildings_lost", 0) * 10
-                        + stats.get("credits_earned", 0) // 50
+                        game_stats.get("units_destroyed", 0) * 10
+                        + game_stats.get("buildings_destroyed", 0) * 20
+                        - game_stats.get("units_lost", 0) * 5
+                        - game_stats.get("buildings_lost", 0) * 10
+                        + game_stats.get("credits_earned", 0) // 50
                     )
                     g["current_fitness"][team] = fitness
                     prev = g["previous_fitness"].get(team, 0)
@@ -1603,7 +1605,7 @@ class GameManager:
             else:
                 g["fog_of_war"].update_visibility([], [], g["global_buildings"].sprites())
             alive_hqs = [hq for hq in g["hqs"].values() if hq.health > 0]
-            all_stats = {team_to_name[team]: hq.stats for team, hq in g["hqs"].items()}
+            all_stats = {team_to_name[team]: hq.game_stats for team, hq in g["hqs"].items()}
             if g["player_hq"] and g["player_hq"].health <= 0:
                 self.state = GameState.DEFEAT
                 self.victory_screen = VictoryScreen(

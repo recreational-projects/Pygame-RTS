@@ -465,7 +465,7 @@ class VictoryScreen:
             # Data rows
             sorted_stats = sorted(self.all_stats.items(), key=lambda item: item[0])  # Sort by team name
             x_pos = self.table_x
-            for row_idx, (team_name, stats) in enumerate(sorted_stats):
+            for row_idx, (team_name, game_stats) in enumerate(sorted_stats):
                 row_y = self.table_y + (row_idx + 1) * self.row_height
                 row_color = self.row_color_even if row_idx % 2 == 0 else self.row_color_odd
                 pg.draw.rect(surface, row_color, (self.table_x, row_y, self.table_width, self.row_height))
@@ -475,13 +475,13 @@ class VictoryScreen:
 
                 values = [
                     team_name,
-                    str(stats.get("units_created", 0)),
-                    str(stats.get("units_destroyed", 0)),
-                    str(stats.get("units_lost", 0)),
-                    str(stats.get("buildings_constructed", 0)),
-                    str(stats.get("buildings_destroyed", 0)),
-                    str(stats.get("buildings_lost", 0)),
-                    f"${stats.get('credits_earned', 0):,}",
+                    str(game_stats.get("units_created", 0)),
+                    str(game_stats.get("units_destroyed", 0)),
+                    str(game_stats.get("units_lost", 0)),
+                    str(game_stats.get("buildings_constructed", 0)),
+                    str(game_stats.get("buildings_destroyed", 0)),
+                    str(game_stats.get("buildings_lost", 0)),
+                    f"${game_stats.get('credits_earned', 0):,}",
                 ]
 
                 for col_idx, value in enumerate(values):
