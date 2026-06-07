@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 
     from pygame.typing import Point
 
-    from CondaRTSIsometricVersion import UnitIso
-    from modules.projectile_2d import Projectile
+    from modules.projectile.generic_projectile import GenericProjectile
     from modules.units_2d import Unit2d
+    from modules.units_iso import UnitIso
 
 
 def snap_to_grid(*, pos: Point, grid_size: int) -> tuple[int, int]:
@@ -132,12 +132,12 @@ def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[floa
     return max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom))
 
 
-def check_collision(*, entity: Unit2d | UnitIso, projectile: Projectile) -> bool:
+def check_collision(*, entity: Unit2d | UnitIso, projectile: GenericProjectile) -> bool:
     """
     Detects collision between entity and projectile using rect or radius approximation.
 
     :param entity: Entity to check against.
-    :param projectile: Projectile to check.
+    :param projectile: GenericProjectile to check.
     :return: True if collision detected.
     """
     proj_rect = pg.Rect(

@@ -11,7 +11,7 @@ from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_
 from modules.game_object.game_object_2d import GameObject2d
 from modules.geometry import closest_point_on_rect
 from modules.particles import GenericParticle, create_explosion_2d
-from modules.projectile_2d import Projectile
+from modules.projectile.projectile_2d import Projectile2d
 from modules.team import Team, team_to_color
 from modules.unit_stats.unit_stats_2d import UnitStats2d
 from modules.world_2d import is_valid_building_position
@@ -410,7 +410,7 @@ class Unit2d(GameObject2d):
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_right))
 
     def shoot(
-        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile], particles: pg.sprite.Group[GenericParticle]
+        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[GenericParticle]
     ) -> None:
         """
         Fires a projectile using current weapon at target, with lead prediction.
@@ -447,7 +447,7 @@ class Unit2d(GameObject2d):
             return
 
         direction = vec.normalize()
-        proj = Projectile(pos=self.position, direction=direction, team=self.team, weapon=self.current_weapon)
+        proj = Projectile2d(position=self.position, direction=direction, team=self.team, weapon=self.current_weapon)
         projectiles.add(proj)
         self.last_shot_time = self.current_weapon.cooldown
         self.turret_angle = math.atan2(direction.y, direction.x)
