@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from CondaRTSIsometricVersion import UnitIso
     from modules.particles import GenericParticle
-    from modules.projectile_iso import Projectile
+    from modules.projectile.projectile_iso import ProjectileIso
     from modules.spatial_hash import SpatialHashIso
     from modules.team import Team
 
@@ -94,7 +94,7 @@ def handle_attacks(
     team: Team,
     all_units: Iterable[UnitIso],
     all_buildings: Iterable[UnitIso],
-    projectiles: pg.sprite.Group[Projectile],
+    projectiles: pg.sprite.Group[ProjectileIso],
     particles: pg.sprite.Group[GenericParticle],
     unit_hash: SpatialHashIso,
     building_hash: SpatialHashIso,

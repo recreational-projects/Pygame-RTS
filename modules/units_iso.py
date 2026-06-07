@@ -12,7 +12,7 @@ from modules.game_object.game_object_iso import GameObjectIso
 from modules.geometry import closest_point_on_rect
 from modules.particles import GenericParticle, create_explosion_iso
 from modules.pathfinding_iso import astar
-from modules.projectile_iso import Projectile
+from modules.projectile.projectile_iso import ProjectileIso
 from modules.team import Team, team_to_color
 from modules.unit_stats.unit_stats_iso import UnitStatsIso
 from modules.world_iso import is_valid_building_position
@@ -73,6 +73,14 @@ class UnitIso(GameObjectIso):
 
         self.rect = pg.Rect(self.position.x - self.size[0] / 2, self.position.y - self.size[1] / 2, *self.size)
         self._setup_drawing()
+
+    def _setup_drawing(self) -> None:
+        if isinstance(self, Infantry | Grenadier | RocketSoldier | Marksman):
+            self.draw = self._draw_humanoid
+        elif not self.is_vehicle:
+            self.draw = self._draw_static
+        else:
+            self.draw = self._draw_vehicle
 
     @property
     def is_building(self) -> bool:
@@ -466,89 +474,6 @@ class UnitIso(GameObjectIso):
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
-    def _draw_rotated_box(
-        self,
-        *,
-        surface: pg.Surface,
-        camera: CameraIso,
-        w: float,
-        d: float,
-        h: float,
-        angle: float,
-        base_z: float,
-        team_color: pg.Color | tuple[int, ...],
-        side_color: tuple[int, ...],
-        roof_color: pg.Color | tuple[int, ...],
-        outline_color: pg.Color,
-        zoom: float,
-        is_turret: bool = False,
-        p_bottom: list | None = None,
-    ) -> None:
-        cos = math.cos(angle)
-        sin = math.sin(angle)
-
-        def rotate_rel(
-            points: list[tuple[float, float, float]] | list[tuple[float, float, int]], cos: float, sin: float
-        ) -> list[Point]:
-            return [(x * cos - y * sin, x * sin + y * cos, z) for x, y, z in points]
-
-        rel_bottom = [
-            (-w / 2, -d / 2, 0),
-            (w / 2, -d / 2, 0),
-            (w / 2, d / 2, 0),
-            (-w / 2, d / 2, 0),
-        ]
-        rel_top = [(x, y, h) for x, y, _ in rel_bottom]
-        rot_bottom = rotate_rel(rel_bottom, cos, sin)
-        rot_top = rotate_rel(rel_top, cos, sin)
-        full_bottom = [(self.position.x + rx, self.position.y + ry, base_z + rz) for rx, ry, rz in rot_bottom]
-        full_top = [(self.position.x + rx, self.position.y + ry, base_z + rz) for rx, ry, rz in rot_top]
-        p_bottom_local = [camera.world_to_iso_3d(*pt, zoom) for pt in full_bottom]
-        p_top = [camera.world_to_iso_3d(*pt, zoom) for pt in full_top]
-        if p_bottom is not None:
-            p_bottom[:] = p_bottom_local
-        wall_indices = [[0, 1, 1, 0], [1, 2, 2, 1], [2, 3, 3, 2], [3, 0, 0, 3]]
-        avg_ys = []
-        for widx in wall_indices:
-            ys = [
-                full_bottom[widx[0]][1],
-                full_bottom[widx[1]][1],
-                full_top[widx[2]][1],
-                full_top[widx[3]][1],
-            ]
-            avg_ys.append(sum(ys) / 4)
-
-        front_idx = avg_ys.index(min(avg_ys))
-        for i, widx in enumerate(wall_indices):
-            points = [
-                p_bottom_local[widx[0]],
-                p_bottom_local[widx[1]],
-                p_top[widx[2]],
-                p_top[widx[3]],
-            ]
-            color = team_color if i == front_idx else side_color
-            pg.draw.polygon(surface, color, points)
-
-        pg.draw.polygon(surface, roof_color, p_top)
-        all_points = p_bottom_local + p_top
-        bottom_edge = [0, 1, 2, 3, 0]
-        top_edge = [4, 5, 6, 7, 4]
-        verticals = [[0, 4], [1, 5], [2, 6], [3, 7]]
-        all_edges = [bottom_edge, top_edge] + verticals
-        line_width = int(1 * zoom) if is_turret else int(2 * zoom)
-        for edge in all_edges:
-            if len(edge) > 2:
-                for j in range(len(edge) - 1):
-                    pg.draw.line(
-                        surface,
-                        outline_color,
-                        all_points[edge[j]],
-                        all_points[edge[j + 1]],
-                        line_width,
-                    )
-            else:
-                pg.draw.line(surface, outline_color, all_points[edge[0]], all_points[edge[1]], line_width)
-
     def _draw_vehicle(self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None) -> None:
         if self.health <= 0:
             return
@@ -655,78 +580,88 @@ class UnitIso(GameObjectIso):
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
-    def get_chase_position_for_building(self, target_building: UnitIso) -> Vector2 | None:  # noqa: ANN001
-        # pyrefly: ignore [bad-argument-type]
-        closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
-        dir_to_closest = Vector2(closest) - self.position
-        dist_to_closest = dir_to_closest.length()
-        if dist_to_closest <= self.attack_range:
-            return None
-        if dist_to_closest == 0:
-            return None
-        dir_unit = dir_to_closest.normalize()
-        target_pos = Vector2(closest) - dir_unit * self.attack_range
-        perp_dir = dir_unit.rotate_rad(math.pi / 2)
-        max_spread = min(15, self.attack_range * 0.15)
-        spread_dist = random.uniform(-max_spread, max_spread)
-        target_pos += perp_dir * spread_dist
-        # pyrefly: ignore [bad-argument-type]
-        new_closest = closest_point_on_rect(rect=target_building.rect, pos=target_pos)
-        new_dist = Vector2(new_closest).distance_to(target_pos)
-        if new_dist > self.attack_range:
-            overage = new_dist - self.attack_range
-            adjust_dir = (Vector2(new_closest) - target_pos).normalize()
-            target_pos += adjust_dir * overage * 0.5
-        target_pos.x = max(0, min(target_pos.x, self.map_width))
-        target_pos.y = max(0, min(target_pos.y, self.map_height))
-        return target_pos
+    def _draw_rotated_box(
+        self,
+        *,
+        surface: pg.Surface,
+        camera: CameraIso,
+        w: float,
+        d: float,
+        h: float,
+        angle: float,
+        base_z: float,
+        team_color: pg.Color | tuple[int, ...],
+        side_color: tuple[int, ...],
+        roof_color: pg.Color | tuple[int, ...],
+        outline_color: pg.Color,
+        zoom: float,
+        is_turret: bool = False,
+        p_bottom: list | None = None,
+    ) -> None:
+        cos = math.cos(angle)
+        sin = math.sin(angle)
 
-    def _setup_drawing(self) -> None:
-        if isinstance(self, Infantry | Grenadier | RocketSoldier | Marksman):
-            self.draw = self._draw_humanoid
-        elif not self.is_vehicle:
-            self.draw = self._draw_static
-        else:
-            self.draw = self._draw_vehicle
+        def rotate_rel(
+            points: list[tuple[float, float, float]] | list[tuple[float, float, int]], cos: float, sin: float
+        ) -> list[Point]:
+            return [(x * cos - y * sin, x * sin + y * cos, z) for x, y, z in points]
 
-    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: MutableSet[UnitIso]) -> None:  # noqa: ANN001
-        if self.production_queue:
-            current_unit_count = len(friendly_units)
-            if current_unit_count < 100:
-                if self.production_timer is None:
-                    self.production_timer = self.production_time
+        rel_bottom = [
+            (-w / 2, -d / 2, 0),
+            (w / 2, -d / 2, 0),
+            (w / 2, d / 2, 0),
+            (-w / 2, d / 2, 0),
+        ]
+        rel_top = [(x, y, h) for x, y, _ in rel_bottom]
+        rot_bottom = rotate_rel(rel_bottom, cos, sin)
+        rot_top = rotate_rel(rel_top, cos, sin)
+        full_bottom = [(self.position.x + rx, self.position.y + ry, base_z + rz) for rx, ry, rz in rot_bottom]
+        full_top = [(self.position.x + rx, self.position.y + ry, base_z + rz) for rx, ry, rz in rot_top]
+        p_bottom_local = [camera.world_to_iso_3d(*pt, zoom) for pt in full_bottom]
+        p_top = [camera.world_to_iso_3d(*pt, zoom) for pt in full_top]
+        if p_bottom is not None:
+            p_bottom[:] = p_bottom_local
+        wall_indices = [[0, 1, 1, 0], [1, 2, 2, 1], [2, 3, 3, 2], [3, 0, 0, 3]]
+        avg_ys = []
+        for widx in wall_indices:
+            ys = [
+                full_bottom[widx[0]][1],
+                full_bottom[widx[1]][1],
+                full_top[widx[2]][1],
+                full_top[widx[3]][1],
+            ]
+            avg_ys.append(sum(ys) / 4)
 
-                # pyrefly: ignore [unsupported-operation]
-                self.production_timer -= 1
-                if self.production_timer <= 0:
-                    item = self.production_queue.pop(0)
-                    unit_type = item["unit_type"]
-                    repeat = item.get("repeat", False)
+        front_idx = avg_ys.index(min(avg_ys))
+        for i, widx in enumerate(wall_indices):
+            points = [
+                p_bottom_local[widx[0]],
+                p_bottom_local[widx[1]],
+                p_top[widx[2]],
+                p_top[widx[3]],
+            ]
+            color = team_color if i == front_idx else side_color
+            pg.draw.polygon(surface, color, points)
 
-                    if not isinstance(self.rect, pg.Rect):
-                        raise TypeError("Unit has unexpected `rect` type")
-
-                    spawn_pos = (self.rect.right, self.rect.centery)
-                    try:
-                        new_unit = globals()[unit_type](position=spawn_pos, team=self.team, hq=self.hq)
-                    except KeyError:
-                        new_unit = globals()["Infantry"](position=spawn_pos, team=self.team, hq=self.hq)
-
-                    if not self.hq:
-                        raise ValueError("Unit has no `hq`")
-
-                    new_unit.map_width = self.map_width
-                    new_unit.map_height = self.map_height
-                    self.hq.game_stats["units_created"] += 1
-                    new_unit.position = Vector2(spawn_pos)
-                    new_unit.rect.center = new_unit.position
-                    new_unit.move_target = self.rally_point
-                    friendly_units.add(new_unit)
-                    all_units.add(new_unit)
-                    if repeat:
-                        self.production_queue.append({"unit_type": unit_type, "repeat": True})
-
-                    self.production_timer = None
+        pg.draw.polygon(surface, roof_color, p_top)
+        all_points = p_bottom_local + p_top
+        bottom_edge = [0, 1, 2, 3, 0]
+        top_edge = [4, 5, 6, 7, 4]
+        verticals = [[0, 4], [1, 5], [2, 6], [3, 7]]
+        all_edges = [bottom_edge, top_edge] + verticals
+        line_width = int(1 * zoom) if is_turret else int(2 * zoom)
+        for edge in all_edges:
+            if len(edge) > 2:
+                for j in range(len(edge) - 1):
+                    pg.draw.line(
+                        surface,
+                        outline_color,
+                        all_points[edge[j]],
+                        all_points[edge[j + 1]],
+                        line_width,
+                    )
+            else:
+                pg.draw.line(surface, outline_color, all_points[edge[0]], all_points[edge[1]], line_width)
 
     def update(
         self,
@@ -735,7 +670,7 @@ class UnitIso(GameObjectIso):
         friendly_units: MutableSet[UnitIso] | None = None,
         all_units: MutableSet[UnitIso] | None = None,
         global_buildings: Iterable[UnitIso] | None = None,
-        projectiles: pg.sprite.Group[Projectile],
+        projectiles: pg.sprite.Group[ProjectileIso],
         enemy_units: Container[UnitIso] | None = None,
         enemy_buildings: Container[UnitIso] | None = None,
     ) -> None:
@@ -913,8 +848,77 @@ class UnitIso(GameObjectIso):
             if dist <= self.attack_range:
                 self.shoot(target=aim_target, projectiles=projectiles, particles=particles)
 
+    def get_chase_position_for_building(self, target_building: UnitIso) -> Vector2 | None:  # noqa: ANN001
+        # pyrefly: ignore [bad-argument-type]
+        closest = closest_point_on_rect(rect=target_building.rect, pos=self.position)
+        dir_to_closest = Vector2(closest) - self.position
+        dist_to_closest = dir_to_closest.length()
+        if dist_to_closest <= self.attack_range:
+            return None
+        if dist_to_closest == 0:
+            return None
+        dir_unit = dir_to_closest.normalize()
+        target_pos = Vector2(closest) - dir_unit * self.attack_range
+        perp_dir = dir_unit.rotate_rad(math.pi / 2)
+        max_spread = min(15, self.attack_range * 0.15)
+        spread_dist = random.uniform(-max_spread, max_spread)
+        target_pos += perp_dir * spread_dist
+        # pyrefly: ignore [bad-argument-type]
+        new_closest = closest_point_on_rect(rect=target_building.rect, pos=target_pos)
+        new_dist = Vector2(new_closest).distance_to(target_pos)
+        if new_dist > self.attack_range:
+            overage = new_dist - self.attack_range
+            adjust_dir = (Vector2(new_closest) - target_pos).normalize()
+            target_pos += adjust_dir * overage * 0.5
+        target_pos.x = max(0, min(target_pos.x, self.map_width))
+        target_pos.y = max(0, min(target_pos.y, self.map_height))
+        return target_pos
+
+    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: MutableSet[UnitIso]) -> None:  # noqa: ANN001
+        if self.production_queue:
+            current_unit_count = len(friendly_units)
+            if current_unit_count < 100:
+                if self.production_timer is None:
+                    self.production_timer = self.production_time
+
+                # pyrefly: ignore [unsupported-operation]
+                self.production_timer -= 1
+                if self.production_timer <= 0:
+                    item = self.production_queue.pop(0)
+                    unit_type = item["unit_type"]
+                    repeat = item.get("repeat", False)
+
+                    if not isinstance(self.rect, pg.Rect):
+                        raise TypeError("Unit has unexpected `rect` type")
+
+                    spawn_pos = (self.rect.right, self.rect.centery)
+                    try:
+                        new_unit = globals()[unit_type](position=spawn_pos, team=self.team, hq=self.hq)
+                    except KeyError:
+                        new_unit = globals()["Infantry"](position=spawn_pos, team=self.team, hq=self.hq)
+
+                    if not self.hq:
+                        raise ValueError("Unit has no `hq`")
+
+                    new_unit.map_width = self.map_width
+                    new_unit.map_height = self.map_height
+                    self.hq.game_stats["units_created"] += 1
+                    new_unit.position = Vector2(spawn_pos)
+                    new_unit.rect.center = new_unit.position
+                    new_unit.move_target = self.rally_point
+                    friendly_units.add(new_unit)
+                    all_units.add(new_unit)
+                    if repeat:
+                        self.production_queue.append({"unit_type": unit_type, "repeat": True})
+
+                    self.production_timer = None
+
     def shoot(
-        self, *, target: UnitIso, projectiles: pg.sprite.Group[Projectile], particles: pg.sprite.Group[GenericParticle]
+        self,
+        *,
+        target: UnitIso,
+        projectiles: pg.sprite.Group[ProjectileIso],
+        particles: pg.sprite.Group[GenericParticle],
     ) -> None:
         if not self.weapons or self.last_shot_time > 0:
             return
@@ -942,8 +946,8 @@ class UnitIso(GameObjectIso):
             return
 
         direction = vec.normalize()
-        proj = Projectile(self.position, direction, self.current_weapon.damage, self.team, self.current_weapon)
-        projectiles.add(proj)  # FIXME: crash here: AttributeError: 'NoneType' object has no attribute 'add'
+        proj = ProjectileIso(position=self.position, direction=direction, team=self.team, weapon=self.current_weapon)
+        projectiles.add(proj)
         self.last_shot_time = self.current_weapon.cooldown
         create_explosion_iso(position=self.position, particles=particles, team=self.team, count=3)
 

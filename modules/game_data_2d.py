@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from modules.fog_of_war import FogOfWar2d
     from modules.particles import GenericParticle
     from modules.production_interface_2d import ProductionInterface
-    from modules.projectile_2d import Projectile
+    from modules.projectile.projectile_2d import Projectile2d
     from modules.team import Team
     from modules.units_2d import Headquarters, Unit2d
 
@@ -26,7 +26,7 @@ class GameData:
     ai_units: Group  # pyrefly: ignore [implicit-any-type-argument]
     global_units: Group  # pyrefly: ignore [implicit-any-type-argument]
     global_buildings: Group  # pyrefly: ignore [implicit-any-type-argument]
-    projectiles: Group[Projectile]
+    projectiles: Group[Projectile2d]
     particles: Group[GenericParticle]
     selected_units: Group[Unit2d]
     unit_groups: dict = field(default_factory=dict)  # pyrefly: ignore [implicit-any-type-argument]

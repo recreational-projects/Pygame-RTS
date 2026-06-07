@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import math
-from collections import deque
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING
 
 import pygame as pg
-from pygame.math import Vector2
 
 from modules.data_2d import PROJECTILE_LIFETIME
+from modules.projectile.generic_projectile import GenericProjectile
 from modules.team import team_to_color
 
 if TYPE_CHECKING:
+    from pygame.math import Vector2
     from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
@@ -18,56 +18,28 @@ if TYPE_CHECKING:
     from modules.unit_stats.unit_stats import WeaponStats
 
 
-class Projectile(pg.sprite.Sprite):
-    """Projectile class for bullets/rockets; handles trailing effect and collision detection.
+class Projectile2d(GenericProjectile):
+    """GenericProjectile class for bullets/rockets; handles trailing effect and collision detection.
 
     Creates a tapered image with a fading trail deque.
     """
 
-    def __init__(self, pos: Point, direction: Vector2, team: Team, weapon: WeaponStats) -> None:
+    def __init__(self, *, position: Point, direction: Vector2, team: Team, weapon: WeaponStats) -> None:
         """Initializes projectile with tapered image, trail deque for fading tail.
 
-        :param pos: Starting position (x, y).
+        :param position: Starting position (x, y).
         :param direction: Normalized direction Vector2.
         :param team: Firing team.
         :param weapon: Weapon dict with projectile params.
         """
-        super().__init__()
-        self.position = Vector2(pos)
-        self.direction = direction.normalize() if direction.length() > 0 else Vector2(1, 0)
-        self.damage = weapon.damage
-        self.team = team
-        self.speed = weapon.projectile_speed
-        self.lifetime = PROJECTILE_LIFETIME * 30
-        self.age = 0
-        self.length = weapon.projectile_length
-        self.width = weapon.projectile_width
-        self.angle = math.atan2(self.direction.y, self.direction.x)
-        # pyrefly: ignore [missing-override-decorator]
-        self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
-        color = team_to_color[team]
-
-        if self.image is not None:  # TODO: type guard - not sure why needed
-            for i in range(self.length):
-                alpha = int(255 * (i / self.length))
-                pg.draw.line(self.image, (color.r, color.g, color.b, alpha), (i, 0), (i, self.width), 1)
-
-            # pyrefly: ignore [missing-override-decorator]
-            self.rect = self.image.get_rect(center=self.position)
-
-        self.trail = deque(maxlen=15)
-
-    @override
-    def update(self, *args: Any, **kwargs: Any) -> None:
-        """Advances position, adds to trail, kills after lifetime."""
-        self.trail.append(self.position.copy())
-        self.position += self.direction * self.speed
-        self.age += 1
-        if self.rect is not None:  # TODO: type guard - not sure why this can be None
-            self.rect.center = self.position
-
-        if self.age >= self.lifetime:
-            self.kill()
+        super().__init__(
+            position=position,
+            direction=direction,
+            team=team,
+            weapon=weapon,
+            lifetime=PROJECTILE_LIFETIME * 30,
+            trail_length=15,
+        )
 
     def draw(self, surface: pg.Surface, camera: Camera2d) -> None:
         """Draws trail segments with fading intensity, then the main projectile.

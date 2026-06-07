@@ -122,71 +122,100 @@ class AI:
         )
         self.unit_counts = {unit: 0 for unit in base_priorities.keys()}
 
-    def _send_attack_group(
-        self, friendly_units, enemy_buildings, enemy_units, num_to_send: int, map_width: int, map_height: int
+    def update(
+        self,
+        friendly_units,
+        friendly_buildings,
+        enemy_units,
+        enemy_buildings,
+        all_buildings,
+        map_width: int = MAP_WIDTH,
+        map_height: int = MAP_HEIGHT,
     ) -> None:
-        if num_to_send <= 0:
-            return
-        primary_target = self._get_nearest_enemy_target(
-            enemy_buildings, enemy_units, friendly_units[0].position if friendly_units else (0, 0)
-        )
-        if not primary_target:
-            return
-        target_center = primary_target.position if not hasattr(primary_target, "rect") else primary_target.rect.center
-        total_pos = Vector2(0, 0)
-        for u in friendly_units[:num_to_send]:
-            total_pos += Vector2(u.position)
-        avg_pos = total_pos / num_to_send
-        formation_type = "v" if self.personality in ["aggressive", "rusher"] else "line"
-        spacing = 40 * self.formation_spacing_mult
-        positions = calculate_formation_positions_iso(
-            center=avg_pos, target=target_center, num_units=num_to_send, formation_type=formation_type, spacing=spacing
-        )
-        positions = [(max(0, min(p[0], map_width)), max(0, min(p[1], map_height))) for p in positions]
-        attackers = friendly_units[:num_to_send]
-        for unit, pos in zip(attackers, positions):
-            unit.attack_target = primary_target
-            unit.move_target = pos
-
-    def regroup_idle_units(
-        self, friendly_units, focal_point: Point, num_to_group: int, formation_type: str = "line"
-    ) -> None:
-        idle_units = [u for u in friendly_units if u.health > 0 and u.move_target is None][:num_to_group]
-        if len(idle_units) < 2:
-            return
-        spacing = 30 * self.formation_spacing_mult
-        positions = calculate_formation_positions_iso(
-            center=focal_point,
-            target=focal_point,
-            num_units=len(idle_units),
-            formation_type=formation_type,
-            spacing=spacing,
-        )
-        for unit, pos in zip(idle_units, positions):
-            unit.move_target = pos
-
-    def update_rally_points(self, friendly_buildings, enemy_pos, map_width: int, map_height: int) -> None:
-        if not enemy_pos:
-            return
-        dir_vec = Vector2(enemy_pos) - self.hq.position
-        if dir_vec.length() == 0:
-            return
-        dir_unit = dir_vec.normalize()
-        advance = 200 + min(500, self.military_strength * 25)
-        target = self.hq.position + dir_unit * advance
-        target.x = max(0, min(target.x, map_width))
-        target.y = max(0, min(target.y, map_height))
-        formation_type = "line" if self.personality == "defensive" else "v"
-        positions = calculate_formation_positions_iso(
-            center=target, target=target, num_units=len(friendly_buildings), formation_type=formation_type
-        )
-        for i, b in enumerate([b for b in friendly_buildings if hasattr(b, "rally_point")]):
-            if i < len(positions):
-                b.rally_point = Vector2(positions[i])
+        self.assess_situation(friendly_units, friendly_buildings, enemy_units, enemy_buildings)
+        self.action_timer += 1
+        effective_timer = (self.action_timer + self.timer_offset) * self.interval_multiplier
+        if int(effective_timer) % int(60 * self.interval_multiplier) == 0:
+            barracks_list = [b for b in friendly_buildings if isinstance(b, Barracks) and b.health > 0]
+            war_factory_list = [b for b in friendly_buildings if isinstance(b, WarFactory) and b.health > 0]
+            hangar_list = [b for b in friendly_buildings if isinstance(b, Hangar) and b.health > 0]
+            self.queue_unit_production(barracks_list, war_factory_list, hangar_list, friendly_units)
+        if int(effective_timer) % 120 == 0:
+            enemy_hq = min(
+                (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
+                key=lambda b: self.hq.distance_to(b.position),
+                default=None,
+            )
+            enemy_pos = enemy_hq.position if enemy_hq else self.known_enemy_pos
+            self.update_rally_points(friendly_buildings, enemy_pos, map_width, map_height)
+        economy_check_interval = int(60 * self.interval_multiplier)
+        if int(effective_timer) % economy_check_interval == 0 and self.hq.credits >= 300:
+            priorities = []
+            if self.resource_count < self.resource_target:
+                priorities.append("resource")
+            if self.power_count < self.power_target:
+                priorities.append("power")
+            if self.military_prod_count < self.military_target:
+                priorities.append("military")
+            if self.turret_count < self.defense_target:
+                priorities.append("defense")
+            if priorities:
+                priority_type = random.choice(priorities)
             else:
-                b.rally_point = Vector2(target)
-            b.rally_point.x = max(0, min(b.rally_point.x, map_width))
-            b.rally_point.y = max(0, min(b.rally_point.y, map_height))
+                rand = random.random()
+                if rand < 0.4:
+                    priority_type = "resource"
+                elif rand < 0.7:
+                    priority_type = "military"
+                elif rand < 0.85:
+                    priority_type = "power"
+                else:
+                    priority_type = "defense"
+            cls = None
+            if priority_type == "resource":
+                if len([b for b in friendly_buildings if isinstance(b, Refinery)]) < 2:
+                    cls = Refinery
+                else:
+                    cls = Refinery
+            elif priority_type == "power":
+                cls = PowerPlant
+            elif priority_type == "military":
+                built_barracks = len([b for b in friendly_buildings if isinstance(b, Barracks)])
+                built_factory = len([b for b in friendly_buildings if isinstance(b, WarFactory)])
+                built_hangar = len([b for b in friendly_buildings if isinstance(b, Hangar)])
+                if built_barracks < max(2, self.resource_count // 3):
+                    cls = Barracks
+                elif built_factory < max(1, self.resource_count // 4):
+                    cls = WarFactory
+                elif built_hangar < max(1, self.resource_count // 5):
+                    cls = Hangar
+                else:
+                    if built_barracks < self.military_target * 0.4:
+                        cls = Barracks
+                    elif built_factory < self.military_target * 0.3:
+                        cls = WarFactory
+                    else:
+                        cls = Hangar
+
+            elif priority_type == "defense":
+                cls = Turret
+
+            if cls:
+                cost = get_unit_cost(cls.__name__)
+                if self.hq.credits >= cost:
+                    prefer_near = random.random() > 0.2 or self.total_buildings < 10
+                    pos = self.find_build_position(
+                        cls, all_buildings, map_width, map_height, prefer_near_hq=prefer_near
+                    )
+                    if pos:
+                        self.hq.place_building(pos, cls, all_buildings)
+        self.build_defenses(all_buildings, map_width, map_height)
+        enemy_hq = min(
+            (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
+            key=lambda b: self.hq.distance_to(b.position),
+            default=None,
+        )
+        self.strategize_attacks(friendly_units, enemy_hq, enemy_buildings, enemy_units, map_width, map_height)
 
     def assess_situation(self, friendly_units, friendly_buildings, enemy_units, enemy_buildings) -> None:
         self.military_strength = len([u for u in friendly_units if u.health > 0])
@@ -301,124 +330,6 @@ class AI:
             "AttackHelicopter": heli_prio,
         }
 
-    @staticmethod
-    def _get_nearest_enemy_building(enemy_buildings, from_pos):
-        if not enemy_buildings:
-            return None
-
-        building_weights = {
-            Headquarters: 1.0,
-            Barracks: 0.8,
-            WarFactory: 0.8,
-            Hangar: 0.8,
-            Refinery: 0.7,
-            PowerPlant: 0.6,
-            Turret: 0.5,
-        }
-
-        def weighted_dist(b):
-            weight = building_weights.get(type(b), 1.0)
-            dist = b.distance_to(from_pos)
-            return dist / weight
-
-        return min((b for b in enemy_buildings if b.health > 0), key=weighted_dist, default=None)
-
-    def _get_nearest_enemy_target(self, enemy_buildings, enemy_units, from_pos):
-        if enemy_buildings:
-            building_target = self._get_nearest_enemy_building(enemy_buildings, from_pos)
-        else:
-            building_target = None
-        if enemy_units:
-            unit_target = min(
-                (u for u in enemy_units if u.health > 0 and isinstance(u, Infantry | Grenadier)),
-                key=lambda u: u.distance_to(from_pos),
-                default=None,
-            )
-            if not unit_target:
-                unit_target = min(
-                    (u for u in enemy_units if u.health > 0),
-                    key=lambda u: u.distance_to(from_pos),
-                    default=None,
-                )
-        else:
-            unit_target = None
-        if building_target and unit_target:
-            if building_target.distance_to(from_pos) < unit_target.distance_to(from_pos):
-                return building_target
-            else:
-                return unit_target
-        elif building_target:
-            return building_target
-        elif unit_target:
-            return unit_target
-        return None
-
-    def find_build_position(
-        self,
-        building_cls: type[Barracks]
-        | type[Hangar]
-        | type[PowerPlant]
-        | type[Refinery]
-        | type[Turret]
-        | type[WarFactory],
-        all_buildings,
-        map_width: int,
-        map_height: int,
-        prefer_near_hq=True,
-    ) -> tuple[float, float] | None:
-        default_area = 2560 * 1440
-        map_area = map_width * map_height
-        scale = math.sqrt(map_area / default_area)
-        hq_pos = self.hq.position
-        _size = get_unit_size(building_cls.__name__)
-        half_w, half_h = (_size[0] / 2, _size[1] / 2)
-        max_attempts = 2000
-        attempts = 0
-        if building_cls.__name__ in ["PowerPlant", "Barracks", "WarFactory", "Hangar"]:
-            bias_angle = self.preferred_build_direction
-            dist_min, dist_max = 100, (150 + 50 * scale + 100 * self.economy_level)
-        elif building_cls.__name__ in ["Refinery"]:
-            bias_angle = self.preferred_build_direction
-            dist_min, dist_max = 120, (200 + 100 * scale + 150 * self.economy_level)
-        elif building_cls.__name__ == "Turret":
-            bias_angle = self.preferred_build_direction
-            dist_min, dist_max = 80, (150 + 30 * scale + 50 * self.economy_level)
-        else:
-            bias_angle = self.preferred_build_direction
-            dist_min, dist_max = 100, (180 + 50 * scale + 100 * self.economy_level)
-        if not prefer_near_hq:
-            dist_min, dist_max = max(200, dist_min), 400 * scale + 200 * self.economy_level
-        ring_step = 25 * scale
-        num_samples_per_ring = 25
-        angle_jitter = math.pi * self.build_jitter * (1.5 if self.personality == "rusher" else 1.0)
-        for ring_dist in range(int(dist_min), int(dist_max + 100), int(ring_step)):
-            for _ in range(num_samples_per_ring):
-                angle_offset = random.uniform(-angle_jitter, angle_jitter) + random.uniform(-0.2, 0.2)
-                angle = bias_angle + angle_offset
-                dist = ring_dist + random.uniform(-ring_step / 2, ring_step / 2)
-                center_x = hq_pos.x + dist * math.cos(angle)
-                center_y = hq_pos.y + dist * math.sin(angle)
-                center_x = max(half_w, min(map_width - half_w, center_x))
-                center_y = max(half_h, min(map_height - half_h, center_y))
-                snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
-                position = snapped_center
-                if is_valid_building_position(
-                    position=position,
-                    team=self.hq.team,
-                    new_building_cls=building_cls,
-                    buildings=list(all_buildings),
-                    map_width=map_width,
-                    map_height=map_height,
-                    margin=60,
-                ):
-                    return position
-                attempts += 1
-                if attempts > max_attempts:
-                    break
-            if attempts > max_attempts:
-                break
-        return None
-
     def queue_unit_production(self, barracks_list, war_factory_list, hangar_list, friendly_units) -> None:
         num_units = len([u for u in friendly_units if u.health > 0])
         target_units = min(
@@ -487,6 +398,29 @@ class AI:
                     hangar.production_queue.append({"unit_type": unit_type_str, "repeat": False})
                     self.hq.credits -= get_unit_cost(unit_type_str)
 
+    def update_rally_points(self, friendly_buildings, enemy_pos, map_width: int, map_height: int) -> None:
+        if not enemy_pos:
+            return
+        dir_vec = Vector2(enemy_pos) - self.hq.position
+        if dir_vec.length() == 0:
+            return
+        dir_unit = dir_vec.normalize()
+        advance = 200 + min(500, self.military_strength * 25)
+        target = self.hq.position + dir_unit * advance
+        target.x = max(0, min(target.x, map_width))
+        target.y = max(0, min(target.y, map_height))
+        formation_type = "line" if self.personality == "defensive" else "v"
+        positions = calculate_formation_positions_iso(
+            center=target, target=target, num_units=len(friendly_buildings), formation_type=formation_type
+        )
+        for i, b in enumerate([b for b in friendly_buildings if hasattr(b, "rally_point")]):
+            if i < len(positions):
+                b.rally_point = Vector2(positions[i])
+            else:
+                b.rally_point = Vector2(target)
+            b.rally_point.x = max(0, min(b.rally_point.x, map_width))
+            b.rally_point.y = max(0, min(b.rally_point.y, map_height))
+
     def build_defenses(self, all_buildings, map_width: int, map_height: int) -> None:
         if (
             self.threat_level > 0.2
@@ -496,6 +430,72 @@ class AI:
             pos = self.find_build_position(Turret, all_buildings, map_width, map_height, prefer_near_hq=True)
             if pos:
                 self.hq.place_building(pos, Turret, all_buildings)
+
+    def find_build_position(
+        self,
+        building_cls: type[Barracks]
+        | type[Hangar]
+        | type[PowerPlant]
+        | type[Refinery]
+        | type[Turret]
+        | type[WarFactory],
+        all_buildings,
+        map_width: int,
+        map_height: int,
+        prefer_near_hq=True,
+    ) -> tuple[float, float] | None:
+        default_area = 2560 * 1440
+        map_area = map_width * map_height
+        scale = math.sqrt(map_area / default_area)
+        hq_pos = self.hq.position
+        _size = get_unit_size(building_cls.__name__)
+        half_w, half_h = (_size[0] / 2, _size[1] / 2)
+        max_attempts = 2000
+        attempts = 0
+        if building_cls.__name__ in ["PowerPlant", "Barracks", "WarFactory", "Hangar"]:
+            bias_angle = self.preferred_build_direction
+            dist_min, dist_max = 100, (150 + 50 * scale + 100 * self.economy_level)
+        elif building_cls.__name__ in ["Refinery"]:
+            bias_angle = self.preferred_build_direction
+            dist_min, dist_max = 120, (200 + 100 * scale + 150 * self.economy_level)
+        elif building_cls.__name__ == "Turret":
+            bias_angle = self.preferred_build_direction
+            dist_min, dist_max = 80, (150 + 30 * scale + 50 * self.economy_level)
+        else:
+            bias_angle = self.preferred_build_direction
+            dist_min, dist_max = 100, (180 + 50 * scale + 100 * self.economy_level)
+        if not prefer_near_hq:
+            dist_min, dist_max = max(200, dist_min), 400 * scale + 200 * self.economy_level
+        ring_step = 25 * scale
+        num_samples_per_ring = 25
+        angle_jitter = math.pi * self.build_jitter * (1.5 if self.personality == "rusher" else 1.0)
+        for ring_dist in range(int(dist_min), int(dist_max + 100), int(ring_step)):
+            for _ in range(num_samples_per_ring):
+                angle_offset = random.uniform(-angle_jitter, angle_jitter) + random.uniform(-0.2, 0.2)
+                angle = bias_angle + angle_offset
+                dist = ring_dist + random.uniform(-ring_step / 2, ring_step / 2)
+                center_x = hq_pos.x + dist * math.cos(angle)
+                center_y = hq_pos.y + dist * math.sin(angle)
+                center_x = max(half_w, min(map_width - half_w, center_x))
+                center_y = max(half_h, min(map_height - half_h, center_y))
+                snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
+                position = snapped_center
+                if is_valid_building_position(
+                    position=position,
+                    team=self.hq.team,
+                    new_building_cls=building_cls,
+                    buildings=list(all_buildings),
+                    map_width=map_width,
+                    map_height=map_height,
+                    margin=60,
+                ):
+                    return position
+                attempts += 1
+                if attempts > max_attempts:
+                    break
+            if attempts > max_attempts:
+                break
+        return None
 
     def strategize_attacks(
         self,
@@ -601,100 +601,100 @@ class AI:
                     unit.move_target = pos
             self.patrol_timer = random.randint(0, patrol_interval // 2)
 
-    def update(
-        self,
-        friendly_units,
-        friendly_buildings,
-        enemy_units,
-        enemy_buildings,
-        all_buildings,
-        map_width: int = MAP_WIDTH,
-        map_height: int = MAP_HEIGHT,
+    def regroup_idle_units(
+        self, friendly_units, focal_point: Point, num_to_group: int, formation_type: str = "line"
     ) -> None:
-        self.assess_situation(friendly_units, friendly_buildings, enemy_units, enemy_buildings)
-        self.action_timer += 1
-        effective_timer = (self.action_timer + self.timer_offset) * self.interval_multiplier
-        if int(effective_timer) % int(60 * self.interval_multiplier) == 0:
-            barracks_list = [b for b in friendly_buildings if isinstance(b, Barracks) and b.health > 0]
-            war_factory_list = [b for b in friendly_buildings if isinstance(b, WarFactory) and b.health > 0]
-            hangar_list = [b for b in friendly_buildings if isinstance(b, Hangar) and b.health > 0]
-            self.queue_unit_production(barracks_list, war_factory_list, hangar_list, friendly_units)
-        if int(effective_timer) % 120 == 0:
-            enemy_hq = min(
-                (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
-                key=lambda b: self.hq.distance_to(b.position),
+        idle_units = [u for u in friendly_units if u.health > 0 and u.move_target is None][:num_to_group]
+        if len(idle_units) < 2:
+            return
+        spacing = 30 * self.formation_spacing_mult
+        positions = calculate_formation_positions_iso(
+            center=focal_point,
+            target=focal_point,
+            num_units=len(idle_units),
+            formation_type=formation_type,
+            spacing=spacing,
+        )
+        for unit, pos in zip(idle_units, positions):
+            unit.move_target = pos
+
+    def _send_attack_group(
+        self, friendly_units, enemy_buildings, enemy_units, num_to_send: int, map_width: int, map_height: int
+    ) -> None:
+        if num_to_send <= 0:
+            return
+        primary_target = self._get_nearest_enemy_target(
+            enemy_buildings, enemy_units, friendly_units[0].position if friendly_units else (0, 0)
+        )
+        if not primary_target:
+            return
+        target_center = primary_target.position if not hasattr(primary_target, "rect") else primary_target.rect.center
+        total_pos = Vector2(0, 0)
+        for u in friendly_units[:num_to_send]:
+            total_pos += Vector2(u.position)
+        avg_pos = total_pos / num_to_send
+        formation_type = "v" if self.personality in ["aggressive", "rusher"] else "line"
+        spacing = 40 * self.formation_spacing_mult
+        positions = calculate_formation_positions_iso(
+            center=avg_pos, target=target_center, num_units=num_to_send, formation_type=formation_type, spacing=spacing
+        )
+        positions = [(max(0, min(p[0], map_width)), max(0, min(p[1], map_height))) for p in positions]
+        attackers = friendly_units[:num_to_send]
+        for unit, pos in zip(attackers, positions):
+            unit.attack_target = primary_target
+            unit.move_target = pos
+
+    def _get_nearest_enemy_target(self, enemy_buildings, enemy_units, from_pos):
+        if enemy_buildings:
+            building_target = self._get_nearest_enemy_building(enemy_buildings, from_pos)
+        else:
+            building_target = None
+        if enemy_units:
+            unit_target = min(
+                (u for u in enemy_units if u.health > 0 and isinstance(u, Infantry | Grenadier)),
+                key=lambda u: u.distance_to(from_pos),
                 default=None,
             )
-            enemy_pos = enemy_hq.position if enemy_hq else self.known_enemy_pos
-            self.update_rally_points(friendly_buildings, enemy_pos, map_width, map_height)
-        economy_check_interval = int(60 * self.interval_multiplier)
-        if int(effective_timer) % economy_check_interval == 0 and self.hq.credits >= 300:
-            priorities = []
-            if self.resource_count < self.resource_target:
-                priorities.append("resource")
-            if self.power_count < self.power_target:
-                priorities.append("power")
-            if self.military_prod_count < self.military_target:
-                priorities.append("military")
-            if self.turret_count < self.defense_target:
-                priorities.append("defense")
-            if priorities:
-                priority_type = random.choice(priorities)
+            if not unit_target:
+                unit_target = min(
+                    (u for u in enemy_units if u.health > 0),
+                    key=lambda u: u.distance_to(from_pos),
+                    default=None,
+                )
+        else:
+            unit_target = None
+        if building_target and unit_target:
+            if building_target.distance_to(from_pos) < unit_target.distance_to(from_pos):
+                return building_target
             else:
-                rand = random.random()
-                if rand < 0.4:
-                    priority_type = "resource"
-                elif rand < 0.7:
-                    priority_type = "military"
-                elif rand < 0.85:
-                    priority_type = "power"
-                else:
-                    priority_type = "defense"
-            cls = None
-            if priority_type == "resource":
-                if len([b for b in friendly_buildings if isinstance(b, Refinery)]) < 2:
-                    cls = Refinery
-                else:
-                    cls = Refinery
-            elif priority_type == "power":
-                cls = PowerPlant
-            elif priority_type == "military":
-                built_barracks = len([b for b in friendly_buildings if isinstance(b, Barracks)])
-                built_factory = len([b for b in friendly_buildings if isinstance(b, WarFactory)])
-                built_hangar = len([b for b in friendly_buildings if isinstance(b, Hangar)])
-                if built_barracks < max(2, self.resource_count // 3):
-                    cls = Barracks
-                elif built_factory < max(1, self.resource_count // 4):
-                    cls = WarFactory
-                elif built_hangar < max(1, self.resource_count // 5):
-                    cls = Hangar
-                else:
-                    if built_barracks < self.military_target * 0.4:
-                        cls = Barracks
-                    elif built_factory < self.military_target * 0.3:
-                        cls = WarFactory
-                    else:
-                        cls = Hangar
+                return unit_target
+        elif building_target:
+            return building_target
+        elif unit_target:
+            return unit_target
+        return None
 
-            elif priority_type == "defense":
-                cls = Turret
+    @staticmethod
+    def _get_nearest_enemy_building(enemy_buildings, from_pos):
+        if not enemy_buildings:
+            return None
 
-            if cls:
-                cost = get_unit_cost(cls.__name__)
-                if self.hq.credits >= cost:
-                    prefer_near = random.random() > 0.2 or self.total_buildings < 10
-                    pos = self.find_build_position(
-                        cls, all_buildings, map_width, map_height, prefer_near_hq=prefer_near
-                    )
-                    if pos:
-                        self.hq.place_building(pos, cls, all_buildings)
-        self.build_defenses(all_buildings, map_width, map_height)
-        enemy_hq = min(
-            (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
-            key=lambda b: self.hq.distance_to(b.position),
-            default=None,
-        )
-        self.strategize_attacks(friendly_units, enemy_hq, enemy_buildings, enemy_units, map_width, map_height)
+        building_weights = {
+            Headquarters: 1.0,
+            Barracks: 0.8,
+            WarFactory: 0.8,
+            Hangar: 0.8,
+            Refinery: 0.7,
+            PowerPlant: 0.6,
+            Turret: 0.5,
+        }
+
+        def weighted_dist(b):
+            weight = building_weights.get(type(b), 1.0)
+            dist = b.distance_to(from_pos)
+            return dist / weight
+
+        return min((b for b in enemy_buildings if b.health > 0), key=weighted_dist, default=None)
 
 
 @dataclass(kw_only=True)
@@ -1098,184 +1098,54 @@ class GameManager:
         self.game_data = None
         self.running = True
 
-    def initialize_game(self, game_mode, size_name, map_name, spectate: bool = False) -> None:
-        map_data = MAPS[map_name]
-        base_width = map_data["width"]
-        base_height = map_data["height"]
-        color = map_data["color"]
-        size_scales = {"tiny": 0.80, "small": 0.80, "medium": 0.80, "large": 0.80, "huge": 0.80}
-        scale = size_scales[size_name]
-        map_width = int(base_width * scale)
-        map_height = int(base_height * scale)
-        terrain_features = generate_terrain_features(map_name=map_name, map_width=map_width, map_height=map_height)
-        num_tx = map_width // TILE_SIZE
-        num_ty = map_height // TILE_SIZE
-        ownership = [[None] * num_ty for _ in range(num_tx)]
+    def run(self) -> None:
+        while self.running:
+            if self.state == GameState.MENU:
+                self.main_menu.update(pg.mouse.get_pos())
+                self.main_menu.draw(self.screen)
+                for event in pg.event.get():
+                    if event.type == pg.QUIT:
+                        self.running = False
+                    result = self.main_menu.handle_event(event)
+                    if result == "skirmish_setup":
+                        self.state = GameState.SKIRMISH_SETUP
+                    elif result == "quit":
+                        self.running = False
+                pg.display.flip()
+                self.clock.tick(60)
+            elif self.state == GameState.SKIRMISH_SETUP:
+                self.skirmish_setup.update(pg.mouse.get_pos())
+                self.skirmish_setup.draw(self.screen)
+                for event in pg.event.get():
+                    if event.type == pg.QUIT:
+                        self.running = False
+                    result = self.skirmish_setup.handle_event(event)
+                    if result == "menu":
+                        self.state = GameState.MENU
+                        self.skirmish_setup = SkirmishSetup(self.screen.size)
 
-        player_units = pg.sprite.Group()
-        ai_units = pg.sprite.Group()
-        global_units = pg.sprite.Group()
-        global_buildings = pg.sprite.Group()
-        projectiles = pg.sprite.Group()
-        particles = pg.sprite.Group()
-        selected_units = pg.sprite.Group()
-        unit_groups = {}
-        hqs = {}
-        teams_list = []
-        player_side = []
-        enemy_side = []
-        num_players = 0
+                    elif result and result[0] == "start_game":
+                        _, game_mode, size_choice, map_choice, spectate = result
+                        self.initialize_game(game_mode, size_choice, map_choice, spectate)
+                        self.state = GameState.PLAYING
+                pg.display.flip()
+                self.clock.tick(60)
+            elif self.state == GameState.PLAYING:
+                self.run_game()
+            elif self.state in (GameState.VICTORY, GameState.DEFEAT):
+                self.victory_screen.update(pg.mouse.get_pos())
+                self.victory_screen.draw(self.screen)
+                for event in pg.event.get():
+                    if event.type == pg.QUIT:
+                        self.running = False
+                    result = self.victory_screen.handle_event(event)
+                    if result == "menu":
+                        self.state = GameState.MENU
+                        self.skirmish_setup = SkirmishSetup(self.screen.size)
 
-        if game_mode == "1v1":
-            player_side = [Team.RED]
-            enemy_side = [Team.GREEN]
-            num_players = 2
-        elif game_mode == "2v2":
-            player_side = [Team.RED, Team.BLUE]
-            enemy_side = [Team.ORANGE, Team.YELLOW]
-            num_players = 4
-        elif game_mode == "3v3":
-            player_side = [Team.RED, Team.BLUE, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
-            num_players = 6
-        elif game_mode == "4v4":
-            player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
-            num_players = 8
-        elif game_mode == "4ffa":
-            player_side = [Team.RED]
-            enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
-            num_players = 4
-
-        teams_list = player_side + enemy_side
-        positions = get_starting_positions(
-            map_width=map_width,
-            map_height=map_height,
-            num_players=num_players,
-            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
-        )
-        for i, team in enumerate(teams_list):
-            pos = positions[i]
-            hq = Headquarters(position=pos, team=team)
-            hq.map_width = map_width
-            hq.map_height = map_height
-            hq.game_stats = {
-                "units_created": 3,
-                "units_lost": 0,
-                "units_destroyed": 0,
-                "buildings_constructed": 1,
-                "buildings_lost": 0,
-                "buildings_destroyed": 0,
-                "credits_earned": 0,
-            }
-            hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
-            hqs[team] = hq
-            units = pg.sprite.Group()
-            for j in range(3):
-                offset = find_free_spawn_position(
-                    target_pos=pos,
-                    global_buildings=global_buildings.sprites(),
-                    global_units=global_units.sprites(),
-                    map_width=map_width,
-                    map_height=map_height,
-                )
-                unit = Infantry(position=offset, team=team, hq=hq)
-                unit.map_width = map_width
-                unit.map_height = map_height
-                units.add(unit)
-            unit_groups[team] = units
-        if not spectate:
-            player_units = unit_groups[Team.RED]
-            for team in teams_list:
-                if team != Team.RED:
-                    ai_units.add(unit_groups[team])
-        else:
-            player_units = pg.sprite.Group()
-            for team in teams_list:
-                ai_units.add(unit_groups[team])
-        for ug in unit_groups.values():
-            global_units.add(ug)
-        for hq in hqs.values():
-            global_buildings.add(hq)
-        alliances = {}
-        player_side_set = set(player_side)
-        enemy_side_set = set(enemy_side)
-        for team in teams_list:
-            if team in player_side_set:
-                alliances[team] = frozenset(player_side)
-            else:
-                alliances[team] = frozenset(enemy_side)
-        if not spectate:
-            player_hq = hqs[Team.RED]
-            player_team = Team.RED
-            player_allies = alliances[player_team]
-        else:
-            player_hq = None
-            player_team = None
-            player_allies = set()
-        ais = []
-        for team in teams_list:
-            if not spectate and team == Team.RED:
-                continue
-            i = teams_list.index(team)
-            pos = positions[i]
-            center_x = map_width / 2
-            center_y = map_height / 2
-            build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
-            random.seed(team.value * 12345)
-            ai = AI(hqs[team], GameConsole(), build_dir=build_dir, allies=alliances[team])
-            ais.append(ai)
-        camera = CameraIso(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
-        if spectate:
-            camera.rect.center = (map_width / 2, map_height / 2)
-        interface = None
-        interface_rect = None
-        if not spectate:
-            interface = ProductionInterface(hq=player_hq)
-            interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
-        else:
-            interface_rect = pg.Rect(0, 0, 0, 0)
-        self.game_data = {
-            "player_units": player_units,
-            "ai_units": ai_units,
-            "global_units": global_units,
-            "global_buildings": global_buildings,
-            "projectiles": projectiles,
-            "particles": particles,
-            "selected_units": selected_units,
-            "unit_groups": unit_groups,
-            "hqs": hqs,
-            "player_hq": player_hq,
-            "player_team": player_team,
-            "player_allies": player_allies,
-            "alliances": alliances,
-            "interface": interface,
-            "console": GameConsole(),
-            "fog_of_war": FogOfWarIso(
-                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectate
-            ),
-            "camera": camera,
-            "map_color": color,
-            "map_width": map_width,
-            "map_height": map_height,
-            "game_mode": game_mode,
-            "selected_building": None,
-            "selecting": False,
-            "select_start": None,
-            "select_rect": None,
-            "ais": ais,
-            "interface_rect": interface_rect,
-            "spectator": spectate,
-            "teams": teams_list,
-            "terrain_features": terrain_features,
-            "previous_fitness": {team: 0 for team in teams_list},
-            "current_fitness": {},
-            "fitness_deltas": {},
-            "tile_ownership": ownership,
-            "tile_timer": 0,
-            "num_tx": num_tx,
-            "num_ty": num_ty,
-        }
+                pg.display.flip()
+                self.clock.tick(60)
+        pg.quit()
 
     def run_game(self) -> None:
         g = self.game_data
@@ -1733,54 +1603,184 @@ class GameManager:
             pg.display.flip()
             self.clock.tick(60)
 
-    def run(self) -> None:
-        while self.running:
-            if self.state == GameState.MENU:
-                self.main_menu.update(pg.mouse.get_pos())
-                self.main_menu.draw(self.screen)
-                for event in pg.event.get():
-                    if event.type == pg.QUIT:
-                        self.running = False
-                    result = self.main_menu.handle_event(event)
-                    if result == "skirmish_setup":
-                        self.state = GameState.SKIRMISH_SETUP
-                    elif result == "quit":
-                        self.running = False
-                pg.display.flip()
-                self.clock.tick(60)
-            elif self.state == GameState.SKIRMISH_SETUP:
-                self.skirmish_setup.update(pg.mouse.get_pos())
-                self.skirmish_setup.draw(self.screen)
-                for event in pg.event.get():
-                    if event.type == pg.QUIT:
-                        self.running = False
-                    result = self.skirmish_setup.handle_event(event)
-                    if result == "menu":
-                        self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.screen.size)
+    def initialize_game(self, game_mode, size_name, map_name, spectate: bool = False) -> None:
+        map_data = MAPS[map_name]
+        base_width = map_data["width"]
+        base_height = map_data["height"]
+        color = map_data["color"]
+        size_scales = {"tiny": 0.80, "small": 0.80, "medium": 0.80, "large": 0.80, "huge": 0.80}
+        scale = size_scales[size_name]
+        map_width = int(base_width * scale)
+        map_height = int(base_height * scale)
+        terrain_features = generate_terrain_features(map_name=map_name, map_width=map_width, map_height=map_height)
+        num_tx = map_width // TILE_SIZE
+        num_ty = map_height // TILE_SIZE
+        ownership = [[None] * num_ty for _ in range(num_tx)]
 
-                    elif result and result[0] == "start_game":
-                        _, game_mode, size_choice, map_choice, spectate = result
-                        self.initialize_game(game_mode, size_choice, map_choice, spectate)
-                        self.state = GameState.PLAYING
-                pg.display.flip()
-                self.clock.tick(60)
-            elif self.state == GameState.PLAYING:
-                self.run_game()
-            elif self.state in (GameState.VICTORY, GameState.DEFEAT):
-                self.victory_screen.update(pg.mouse.get_pos())
-                self.victory_screen.draw(self.screen)
-                for event in pg.event.get():
-                    if event.type == pg.QUIT:
-                        self.running = False
-                    result = self.victory_screen.handle_event(event)
-                    if result == "menu":
-                        self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.screen.size)
+        player_units = pg.sprite.Group()
+        ai_units = pg.sprite.Group()
+        global_units = pg.sprite.Group()
+        global_buildings = pg.sprite.Group()
+        projectiles = pg.sprite.Group()
+        particles = pg.sprite.Group()
+        selected_units = pg.sprite.Group()
+        unit_groups = {}
+        hqs = {}
+        teams_list = []
+        player_side = []
+        enemy_side = []
+        num_players = 0
 
-                pg.display.flip()
-                self.clock.tick(60)
-        pg.quit()
+        if game_mode == "1v1":
+            player_side = [Team.RED]
+            enemy_side = [Team.GREEN]
+            num_players = 2
+        elif game_mode == "2v2":
+            player_side = [Team.RED, Team.BLUE]
+            enemy_side = [Team.ORANGE, Team.YELLOW]
+            num_players = 4
+        elif game_mode == "3v3":
+            player_side = [Team.RED, Team.BLUE, Team.CYAN]
+            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
+            num_players = 6
+        elif game_mode == "4v4":
+            player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
+            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
+            num_players = 8
+        elif game_mode == "4ffa":
+            player_side = [Team.RED]
+            enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
+            num_players = 4
+
+        teams_list = player_side + enemy_side
+        positions = get_starting_positions(
+            map_width=map_width,
+            map_height=map_height,
+            num_players=num_players,
+            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
+        )
+        for i, team in enumerate(teams_list):
+            pos = positions[i]
+            hq = Headquarters(position=pos, team=team)
+            hq.map_width = map_width
+            hq.map_height = map_height
+            hq.game_stats = {
+                "units_created": 3,
+                "units_lost": 0,
+                "units_destroyed": 0,
+                "buildings_constructed": 1,
+                "buildings_lost": 0,
+                "buildings_destroyed": 0,
+                "credits_earned": 0,
+            }
+            hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
+            hqs[team] = hq
+            units = pg.sprite.Group()
+            for j in range(3):
+                offset = find_free_spawn_position(
+                    target_pos=pos,
+                    global_buildings=global_buildings.sprites(),
+                    global_units=global_units.sprites(),
+                    map_width=map_width,
+                    map_height=map_height,
+                )
+                unit = Infantry(position=offset, team=team, hq=hq)
+                unit.map_width = map_width
+                unit.map_height = map_height
+                units.add(unit)
+            unit_groups[team] = units
+        if not spectate:
+            player_units = unit_groups[Team.RED]
+            for team in teams_list:
+                if team != Team.RED:
+                    ai_units.add(unit_groups[team])
+        else:
+            player_units = pg.sprite.Group()
+            for team in teams_list:
+                ai_units.add(unit_groups[team])
+        for ug in unit_groups.values():
+            global_units.add(ug)
+        for hq in hqs.values():
+            global_buildings.add(hq)
+        alliances = {}
+        player_side_set = set(player_side)
+        enemy_side_set = set(enemy_side)
+        for team in teams_list:
+            if team in player_side_set:
+                alliances[team] = frozenset(player_side)
+            else:
+                alliances[team] = frozenset(enemy_side)
+        if not spectate:
+            player_hq = hqs[Team.RED]
+            player_team = Team.RED
+            player_allies = alliances[player_team]
+        else:
+            player_hq = None
+            player_team = None
+            player_allies = set()
+        ais = []
+        for team in teams_list:
+            if not spectate and team == Team.RED:
+                continue
+            i = teams_list.index(team)
+            pos = positions[i]
+            center_x = map_width / 2
+            center_y = map_height / 2
+            build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
+            random.seed(team.value * 12345)
+            ai = AI(hqs[team], GameConsole(), build_dir=build_dir, allies=alliances[team])
+            ais.append(ai)
+        camera = CameraIso(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
+        if spectate:
+            camera.rect.center = (map_width / 2, map_height / 2)
+        interface = None
+        interface_rect = None
+        if not spectate:
+            interface = ProductionInterface(hq=player_hq)
+            interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
+        else:
+            interface_rect = pg.Rect(0, 0, 0, 0)
+        self.game_data = {
+            "player_units": player_units,
+            "ai_units": ai_units,
+            "global_units": global_units,
+            "global_buildings": global_buildings,
+            "projectiles": projectiles,
+            "particles": particles,
+            "selected_units": selected_units,
+            "unit_groups": unit_groups,
+            "hqs": hqs,
+            "player_hq": player_hq,
+            "player_team": player_team,
+            "player_allies": player_allies,
+            "alliances": alliances,
+            "interface": interface,
+            "console": GameConsole(),
+            "fog_of_war": FogOfWarIso(
+                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectate
+            ),
+            "camera": camera,
+            "map_color": color,
+            "map_width": map_width,
+            "map_height": map_height,
+            "game_mode": game_mode,
+            "selected_building": None,
+            "selecting": False,
+            "select_start": None,
+            "select_rect": None,
+            "ais": ais,
+            "interface_rect": interface_rect,
+            "spectator": spectate,
+            "teams": teams_list,
+            "terrain_features": terrain_features,
+            "previous_fitness": {team: 0 for team in teams_list},
+            "current_fitness": {},
+            "fitness_deltas": {},
+            "tile_ownership": ownership,
+            "tile_timer": 0,
+            "num_tx": num_tx,
+            "num_ty": num_ty,
+        }
 
 
 def main() -> None:

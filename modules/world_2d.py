@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pygame.typing import IntPoint, Point
 
     from modules.game_data_2d import GameData
-    from modules.projectile_2d import Projectile
+    from modules.projectile.projectile_2d import Projectile2d
     from modules.spatial_hash import SpatialHash2d
     from modules.team import Team
     from modules.units_2d import Unit2d
@@ -116,7 +116,7 @@ def handle_attacks(
     team: Team,
     all_units: Iterable[Unit2d],
     all_buildings: Iterable[Unit2d],
-    projectiles: pg.sprite.Group[Projectile],
+    projectiles: pg.sprite.Group[Projectile2d],
     particles: pg.sprite.Group[GenericParticle],
     unit_hash: SpatialHash2d,
     building_hash: SpatialHash2d,
@@ -247,7 +247,7 @@ def cleanup_dead_entities(game_data: GameData) -> None:
 
 def handle_projectiles(
     *,
-    projectiles: Iterable[Projectile],
+    projectiles: Iterable[Projectile2d],
     all_units: MutableSequence[Unit2d],
     all_buildings: MutableSequence[Unit2d],
     particles: pg.sprite.Group[GenericParticle],
