@@ -11,8 +11,7 @@ if TYPE_CHECKING:
 
 # pyrefly: ignore [implicit-any-type-argument]
 def handle_unit_collisions(*, all_units: list, unit_hash: SpatialHash2d | SpatialHashIso) -> None:
-    """
-    Resolves overlaps between ground units using simple repulsion.
+    """Resolves overlaps between ground units using simple repulsion.
 
     :param all_units: List of all units.
     :param unit_hash: SpatialHash for nearby queries.
@@ -46,8 +45,7 @@ def handle_unit_collisions(*, all_units: list, unit_hash: SpatialHash2d | Spatia
 
 # pyrefly: ignore [implicit-any-type-argument]
 def handle_unit_building_collisions(*, all_units: list, building_hash: SpatialHash2d | SpatialHashIso) -> None:
-    """
-    Pushes units away from building overlaps.
+    """Pushes units away from building overlaps.
 
     :param all_units: List of units.
     :param building_hash: SpatialHash for buildings.

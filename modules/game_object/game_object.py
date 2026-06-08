@@ -1,3 +1,5 @@
+"""Implements generic Gameobject."""
+
 from __future__ import annotations
 
 from abc import ABC
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class GameObject(pg.sprite.Sprite, ABC):
-    """Abstract base for all entities.
+    """Abstract generic base for all entities.
 
     :param position: Initial position (x, y).
     :param team: Team enum.

@@ -1,3 +1,5 @@
+"""Implements ProductionInterface for the isometric game."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -76,9 +78,7 @@ class ProductionInterface:
             self.top_rects[label] = rect
 
     def update_producer(self, building: UnitIso) -> None:
-        """
-        Updates producible items based on `building`.
-        """
+        """Updates producible items based on `building`."""
         if isinstance(building, (Barracks, WarFactory, Hangar)):
             self.producer = building
         else:

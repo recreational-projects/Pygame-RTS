@@ -1,3 +1,5 @@
+"""Implements generic Camera."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -16,7 +18,7 @@ if TYPE_CHECKING:
 
 @dataclass(kw_only=True)
 class _Camera(ABC):
-    """Generic camera. Handles viewport transformation, zooming, panning, and clamping to map bounds.
+    """Abstract generic camera. Handles viewport transformation, zooming, panning, and clamping to map bounds.
 
     Manages the visible rectangle in world coordinates.
     """
@@ -50,6 +52,7 @@ class _Camera(ABC):
     @abstractmethod
     def update(
         self,
+        *,
         selected_units: Sequence[GameObject],
         mouse_pos: Point,
         interface_rect: pg.Rect,

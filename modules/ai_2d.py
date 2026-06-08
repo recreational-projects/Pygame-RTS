@@ -1,3 +1,5 @@
+"""Implements AI for 2d game."""
+
 from __future__ import annotations
 
 import math
@@ -44,8 +46,7 @@ MAX_BARRACKS_QUEUE_LENGTH = 5
 def _get_nearest_enemy_target(
     *, enemy_buildings: Iterable[Unit2d], enemy_units: Iterable[Unit2d], from_pos: Point
 ) -> Unit2d | None:
-    """
-    Prioritizes buildings over units for targeting.
+    """Prioritizes buildings over units for targeting.
 
     :param enemy_buildings: List of enemy buildings.
     :param enemy_units: List of enemy units.
@@ -88,8 +89,7 @@ def _get_nearest_enemy_target(
 
 
 def _get_nearest_enemy_building(*, enemy_buildings: Iterable[Unit2d], from_pos: Point) -> Unit2d | None:
-    """
-    Finds nearest enemy building, weighted by strategic value (HQ > factories > resources).
+    """Finds nearest enemy building, weighted by strategic value (HQ > factories > resources).
 
     :param enemy_buildings: List of enemy buildings.
     :param from_pos: Position to measure distance from.
@@ -121,8 +121,7 @@ def _get_nearest_enemy_building(*, enemy_buildings: Iterable[Unit2d], from_pos: 
 
 @dataclass(kw_only=True)
 class AI:
-    """
-    AI class manages autonomous decision-making: production, building, scouting, attacking.
+    """AI class manages autonomous decision-making: production, building, scouting, attacking.
 
     Supports personalities for varied behavior.
     """
@@ -169,8 +168,7 @@ class AI:
         map_width: int = MAP_WIDTH,
         map_height: int = MAP_HEIGHT,
     ) -> None:
-        """
-        Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
+        """Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
 
         :param friendly_units: Friendly units.
         :param friendly_buildings: Friendly buildings.
@@ -254,8 +252,7 @@ class AI:
         friendly_buildings: Iterable[Unit2d],
         enemy_units: Iterable[Unit2d],
     ) -> None:
-        """
-        Evaluates economy, military, threats to adjust priorities dynamically.
+        """Evaluates economy, military, threats to adjust priorities dynamically.
 
         :param friendly_units: List of friendly units.
         :param friendly_buildings: List of friendly buildings.
@@ -440,8 +437,7 @@ class AI:
         map_width: int,
         map_height: int,
     ) -> tuple[float, float] | None:
-        """
-        Searches for valid build spot in expanding rings around HQ, with directional bias.
+        """Searches for valid build spot in expanding rings around HQ, with directional bias.
 
         :param building_cls: Building class to place.
         :param all_buildings: Global buildings for validation.
@@ -516,8 +512,7 @@ class AI:
         enemy_buildings: Iterable[Unit2d],
         enemy_units: Iterable[Unit2d],
     ) -> None:
-        """
-        Periodic scouting and attack waves; aggressive push if superior.
+        """Periodic scouting and attack waves; aggressive push if superior.
 
         :param friendly_units: Friendly units.
         :param enemy_hq: Enemy HQ.

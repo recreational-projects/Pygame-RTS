@@ -1,3 +1,5 @@
+"""Implements Projectile for isometric game."""
+
 from __future__ import annotations
 
 import math
@@ -19,6 +21,8 @@ if TYPE_CHECKING:
 
 
 class ProjectileIso(GenericProjectile):
+    """Projectile for isometric game."""
+
     def __init__(self, *, position: Point, direction: Vector2, team: Team, weapon: WeaponStats) -> None:
         super().__init__(
             position=position,

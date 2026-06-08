@@ -1,3 +1,5 @@
+"""Implements GameState."""
+
 from enum import Enum
 
 

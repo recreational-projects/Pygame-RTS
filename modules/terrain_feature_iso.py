@@ -1,3 +1,5 @@
+"""Implements TerrainFeature for isometric game."""
+
 from __future__ import annotations
 
 import random

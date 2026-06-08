@@ -1,4 +1,4 @@
-"""Implements a generic data structure for unit stats."""
+"""Implements a generic data structure for read-only unit stats."""
 
 from __future__ import annotations
 
