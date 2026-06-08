@@ -1,3 +1,5 @@
+"""Geometry functions."""
+
 from __future__ import annotations
 
 import math
@@ -133,8 +135,7 @@ def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[floa
 
 
 def check_collision(*, entity: Unit2d | UnitIso, projectile: GenericProjectile) -> bool:
-    """
-    Detects collision between entity and projectile using rect or radius approximation.
+    """Detects collision between entity and projectile using rect or radius approximation.
 
     :param entity: Entity to check against.
     :param projectile: GenericProjectile to check.

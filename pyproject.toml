@@ -31,6 +31,14 @@ ignore = [
     "C", # mmcabe
     "COM812", # missing-trailing-comma: conflicts with formatter
     "D203", "D213", # format choices
+    "D101",
+    "D102",
+    "D103",
+    "D105",
+    "D107",
+    "D200",
+    "D205",
+    "D401",
     "E721", # type-comparison
     "ERA001", # commented-out-code
     "EM", # flake8-errmsg
@@ -48,9 +56,6 @@ extend-safe-fixes = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"modules/*.py" = [
-    "D",
-]
 "modules/draw_*.py" = [
     "ANN001", # missing-type-function-argument
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
@@ -74,3 +79,4 @@ extend-safe-fixes = [
 project-includes = [
     "modules",
 ]
+preset = "strict"

@@ -1,4 +1,4 @@
-# Particle class for explosions and burns; PlasmaBurnParticle attaches to entities.
+"""Implements Particles."""
 
 from __future__ import annotations
 

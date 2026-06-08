@@ -38,8 +38,7 @@ def is_valid_building_position(
     building_range: int = 200,
     margin: int = 60,  # Passage margin for units
 ) -> bool:
-    """
-    Validates if a building can be placed at position: checks bounds, overlaps, proximity to friendly buildings.
+    """Validates if a building can be placed at position: checks bounds, overlaps, proximity to friendly buildings.
 
     :param position: Proposed center position for the building.
     :param team: The team placing the building.
@@ -86,8 +85,7 @@ def find_free_spawn_position(
     global_units: Iterable[Unit2d],
     unit_size: IntPoint = (40, 40),
 ) -> Point:
-    """
-    Finds a nearby free position for spawning units, avoiding overlaps with buildings/units.
+    """Finds a nearby free position for spawning units, avoiding overlaps with buildings/units.
 
     :param target_pos: Preferred target position (e.g., rally point).
     :param global_buildings: List or group of all buildings.
@@ -122,8 +120,7 @@ def handle_attacks(
     building_hash: SpatialHash2d,
     alliances: dict[Team, frozenset[Team]],
 ) -> None:
-    """
-    For a team, finds targets in sight range and shoots if in attack range; handles chasing.
+    """For a team, finds targets in sight range and shoots if in attack range; handles chasing.
 
     :param team: Attacking team.
     :param all_units: All units.
@@ -200,8 +197,7 @@ def handle_attacks(
 
 
 def cleanup_dead_entities(game_data: GameData) -> None:
-    """
-    Removes dead entities from groups, cleans up particles.
+    """Removes dead entities from groups, cleans up particles.
 
     :param game_data: Game data dict.
     """
@@ -251,8 +247,7 @@ def handle_projectiles(
     particles: pg.sprite.Group[GenericParticle],
     g: GameData,
 ) -> None:
-    """
-    Updates projectiles, checks hits on enemies, applies damage/explosions.
+    """Updates projectiles, checks hits on enemies, applies damage/explosions.
 
     :param projectiles: Projectile group.
     :param all_units: All units.

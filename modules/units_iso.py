@@ -1,3 +1,5 @@
+"""Implements Units for isometric game."""
+
 from __future__ import annotations
 
 import math
@@ -665,15 +667,22 @@ class UnitIso(GameObjectIso):
             else:
                 pg.draw.line(surface, outline_color, all_points[edge[0]], all_points[edge[1]], line_width)
 
+    @override
     def update(
         self,
-        *,
-        particles: pg.sprite.Group[GenericParticle],
+        *args: Any,
+        particles: pg.sprite.Group[GenericParticle] | None = None,
         friendly_units: MutableSet[UnitIso] | None = None,
         all_units: pg.sprite.Group[UnitIso] | None = None,
-        global_buildings: Iterable[UnitIso],
-        projectiles: pg.sprite.Group[ProjectileIso],
+        global_buildings: Iterable[UnitIso] | None = None,
+        projectiles: pg.sprite.Group[ProjectileIso] | None = None,
+        **kwargs: Any,
     ) -> None:
+        if particles is None or projectiles is None or global_buildings is None:
+            raise ValueError(
+                "Unexpected condition"
+            )  # TODO: signature allows None for compatibility with super().update()
+
         self.under_attack_timer = max(0, self.under_attack_timer - 1)
         self.under_attack = self.under_attack_timer > 0
         if self.last_shot_time > 0:

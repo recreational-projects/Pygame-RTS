@@ -1,3 +1,5 @@
+"""Implements Team."""
+
 from enum import Enum
 
 from pygame import Color

@@ -1,4 +1,4 @@
-"""Modular drawing functions for units and buildings."""
+"""Modular drawing functions for 2d units and buildings."""
 
 from __future__ import annotations
 
@@ -1406,8 +1406,7 @@ def draw_mini_map(
     all_units: Iterable[Unit2d],
     player_allies: frozenset[Team],
 ) -> pg.Rect:
-    """
-    Renders scaled top-down map with terrain variation, entities, camera view outline.
+    """Renders scaled top-down map with terrain variation, entities, camera view outline.
 
     :param screen: Main screen.
     :param camera: Camera2d.

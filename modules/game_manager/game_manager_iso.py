@@ -1,9 +1,11 @@
+"""Implements GameManager for isometric game."""
+
 from __future__ import annotations
 
 import math
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pygame as pg
 from pygame.math import Vector2
@@ -25,10 +27,11 @@ from modules.data_iso import (
 )
 from modules.draw_iso import draw_fitness_panel, draw_mini_map
 from modules.fog_of_war import FogOfWarIso
+from modules.game_manager.game_manager_generic import GameManagerGeneric
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_iso, get_starting_positions, snap_to_grid
 from modules.production_interface_iso import ProductionInterface
-from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
+from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHashIso
 from modules.team import Team, team_to_name
 from modules.terrain_feature_iso import generate_terrain_features
@@ -46,97 +49,216 @@ from modules.world_iso import (
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
+    from pygame.typing import IntPoint, Point
+
     from modules.game_data_iso import GameDataIso
 
 
+def _handle_minimap_click(*, game_data: GameDataIso, mouse_pos: IntPoint, mini_x: int, mini_y: int) -> None:
+    local_x = mouse_pos[0] - mini_x
+    local_y = mouse_pos[1] - mini_y
+    g = game_data
+    scale_x = g["map_width"] / MINI_MAP_WIDTH
+    scale_y = g["map_height"] / MINI_MAP_HEIGHT
+    world_x = local_x * scale_x
+    world_y = local_y * scale_y
+    g["camera"].rect.centerx = world_x
+    g["camera"].rect.centery = world_y
+    g["camera"].clamp()
+    if not g["spectator_mode"]:
+        if g["player_hq"] is None:
+            raise ValueError("`player_hq` cannot be `None`")  # TODO: typeguard
+
+        for unit in g["player_units"]:
+            unit.selected = False
+
+        g["selected_units"].empty()
+        if g["selected_building"]:
+            g["selected_building"].selected = False
+
+        g["selected_building"] = None
+        g["selecting"] = False
+        if g["interface"]:
+            g["interface"].update_producer(g["player_hq"])
+
+
+def _handle_mouse_1_click_non_spectator_mode(*, game_data: GameDataIso, mouse_pos: IntPoint, world_pos: Point) -> None:
+    if game_data is None:
+        raise ValueError("`game_data` cannot be `None`")  # TODO: typeguard
+
+    g = game_data
+    if g["interface"] is None or g["player_hq"] is None or g["player_team"] is None:
+        raise ValueError("Unexpected condition")
+
+    result = g["interface"].handle_click(mouse_pos)
+    if result:
+        if isinstance(result, tuple) and result[0] == "sell":
+            building_to_sell = result[1]
+            if building_to_sell in g["global_buildings"]:
+                g["global_buildings"].remove(building_to_sell)
+                g["player_hq"].credits += building_to_sell.cost // 2
+                if g["selected_building"] == building_to_sell:
+                    g["selected_building"] = None
+                    g["interface"].update_producer(g["player_hq"])
+
+        return
+
+    if g["interface"].placing_cls is not None and not g["interface_rect"].collidepoint(mouse_pos):
+        snapped = snap_to_grid(pos=world_pos, grid_size=TILE_SIZE)
+        buildings_list = list(g["global_buildings"])
+        unit_type_str = g["interface"].placing_cls.__name__
+        cost = get_unit_cost(unit_type_str)
+
+        if g["player_hq"].credits >= cost and is_valid_building_position(
+            position=snapped,
+            team=g["player_team"],
+            new_building_cls=g["interface"].placing_cls,
+            buildings=buildings_list,
+            map_width=g["map_width"],
+            map_height=g["map_height"],
+        ):
+            building = g["interface"].placing_cls(snapped, g["player_team"], hq=g["player_hq"])
+            building.map_width = g["map_width"]
+            building.map_height = g["map_height"]
+            g["global_buildings"].add(building)
+            g["player_hq"].credits -= cost
+            g["interface"].placing_cls = None
+        else:
+            g["interface"].placing_cls = None
+
+        return
+
+    clicked_building = next(
+        (
+            b
+            for b in g["global_buildings"]
+            if b.team == g["player_team"]
+            # pyrefly: ignore [bad-argument-type]
+            and g["camera"].get_screen_rect(b.rect).collidepoint(mouse_pos)
+        ),
+        None,
+    )
+    if clicked_building:
+        if g["selected_building"] and g["selected_building"] != clicked_building:
+            g["selected_building"].selected = False
+
+        clicked_building.selected = True
+        g["selected_building"] = clicked_building
+        for unit in g["player_units"]:
+            unit.selected = False
+
+        g["selected_units"].empty()
+        g["interface"].update_producer(clicked_building)
+
+    else:
+        if g["selected_building"]:
+            g["selected_building"].selected = False
+
+        g["selected_building"] = None
+        g["interface"].update_producer(g["player_hq"])
+        g["selecting"] = True
+        g["select_start"] = mouse_pos
+        g["select_rect"] = pg.Rect(mouse_pos, (0, 0))
+
+
+def _handle_mouse_2_click_non_spectator_mode(*, game_data: GameDataIso, mouse_pos: IntPoint, world_pos: Point) -> None:
+    if game_data is None:
+        raise ValueError("`game_data` cannot be `None`")
+
+    g = game_data
+    if g["interface"] is None:
+        raise ValueError("`interface` cannot be `None`")
+
+    if g["interface"].placing_cls is not None:
+        g["interface"].placing_cls = None
+
+    elif g["selected_building"] and hasattr(g["selected_building"], "rally_point"):
+        g["selected_building"].rally_point = Vector2(world_pos)
+
+    elif g["selected_units"]:
+        clicked_enemy = None
+        unit_list = list(g["global_units"])
+        building_list = [b for b in g["global_buildings"] if b.health > 0]
+        for u in unit_list:
+            # pyrefly: ignore [bad-argument-type]
+            screen_rect = g["camera"].get_screen_rect(u.rect)
+            if screen_rect.collidepoint(mouse_pos) and u.team not in g["player_allies"] and u.health > 0:
+                clicked_enemy = u
+                break
+
+        if not clicked_enemy:
+            for b in building_list:
+                # pyrefly: ignore [bad-argument-type]
+                screen_rect = g["camera"].get_screen_rect(b.rect)
+                if screen_rect.collidepoint(mouse_pos) and b.team not in g["player_allies"] and b.health > 0:
+                    clicked_enemy = b
+                    break
+
+        if clicked_enemy:
+            for unit in g["selected_units"]:
+                unit.attack_target = clicked_enemy
+                if clicked_enemy.is_building:
+                    chase_pos = unit.get_chase_position_for_building(clicked_enemy)
+                    unit.move_target = chase_pos if chase_pos is not None else None
+                    unit.path = []
+                else:
+                    unit.move_target = clicked_enemy.position
+                    unit.path = []
+
+        else:
+            formation_positions = calculate_formation_positions_iso(
+                center=world_pos, target=world_pos, num_units=len(g["selected_units"])
+            )
+            for unit, pos in zip(g["selected_units"], formation_positions):
+                unit.move_target = pos
+                unit.path = []
+                unit.attack_target = None
+                unit.formation_target = pos
+
+
+def _handle_mouse_1_release_while_selecting(*, game_data: GameDataIso, mouse_pos: IntPoint) -> None:
+    if game_data is None:
+        raise ValueError("`game_data` cannot be `None`")
+
+    g = game_data
+    if g["interface"] is None or g["player_hq"] is None:
+        raise ValueError("Unexpected condition")
+
+    g["selecting"] = False
+    for unit in g["player_units"]:
+        unit.selected = False
+
+    g["selected_units"].empty()
+    if g["selected_building"]:
+        g["selected_building"].selected = False
+
+    g["selected_building"] = None
+
+    g["interface"].update_producer(g["player_hq"])
+    if g["select_start"]:
+        world_start = g["camera"].screen_to_world(g["select_start"])
+        world_end = g["camera"].screen_to_world(mouse_pos)
+        world_rect = pg.Rect(
+            min(world_start[0], world_end[0]),
+            min(world_start[1], world_end[1]),
+            abs(world_end[0] - world_start[0]),
+            abs(world_end[1] - world_start[1]),
+        )
+        for unit in g["player_units"]:
+            # pyrefly: ignore [bad-argument-type]
+            if world_rect.colliderect(unit.rect):
+                unit.selected = True
+                g["selected_units"].add(unit)
+
+
 @dataclass(kw_only=True)
-class GameManagerIso:
-    screen: pg.Surface = field(init=False)
-    clock: pg.time.Clock = field(init=False)
-    state: GameState = field(init=False)
-    main_menu: MainMenu = field(init=False)
-    skirmish_setup: SkirmishSetup = field(init=False)
-    victory_screen: VictoryScreen | None = field(init=False)
+class GameManagerIso(GameManagerGeneric):
+    """GameManager for isometric game."""
+
     game_data: GameDataIso = field(init=False)
-    running: bool = False
 
-    def __post_init__(self) -> None:
-        self.screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pg.display.set_caption("Paper Tigers")
-        self.clock = pg.time.Clock()
-        self.state = GameState.MENU
-
-        screen_size_ = self.screen.size
-        self.main_menu = MainMenu(screen_size_)
-        self.skirmish_setup = SkirmishSetup(screen_size_)
-        self.victory_screen = None
-        self.game_data: GameDataIso
-        self.running = True
-
-    def run(self) -> None:
-        while self.running:
-            if self.state == GameState.MENU:
-                self.main_menu.update(pg.mouse.get_pos())
-                self.main_menu.draw(self.screen)
-                for event in pg.event.get():
-                    if event.type == pg.QUIT:
-                        self.running = False
-
-                    result = self.main_menu.handle_event(event)
-                    if result == "skirmish_setup":
-                        self.state = GameState.SKIRMISH_SETUP
-                    elif result == "quit":
-                        self.running = False
-
-                pg.display.flip()
-                self.clock.tick(60)
-
-            elif self.state == GameState.SKIRMISH_SETUP:
-                self.skirmish_setup.update(pg.mouse.get_pos())
-                self.skirmish_setup.draw(self.screen)
-
-                for event in pg.event.get():
-                    if event.type == pg.QUIT:
-                        self.running = False
-
-                    result = self.skirmish_setup.handle_event(event)
-                    if result == "menu":
-                        self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.screen.size)
-
-                    elif result and result[0] == "start_game":
-                        _, game_mode, size_choice, map_choice, spectate = result
-                        self.initialize_game(
-                            game_mode=game_mode, size_name=size_choice, map_name=map_choice, spectator_mode=spectate
-                        )
-                        self.state = GameState.PLAYING
-
-                pg.display.flip()
-                self.clock.tick(60)
-
-            elif self.state == GameState.PLAYING:
-                self.run_game()
-
-            elif self.state in (GameState.VICTORY, GameState.DEFEAT):
-                if self.victory_screen is None:
-                    raise ValueError("No victory screen")
-
-                self.victory_screen.update(pg.mouse.get_pos())
-                self.victory_screen.draw(self.screen)
-                for event in pg.event.get():
-                    if event.type == pg.QUIT:
-                        self.running = False
-                    result = self.victory_screen.handle_event(event)
-                    if result == "menu":
-                        self.state = GameState.MENU
-                        self.skirmish_setup = SkirmishSetup(self.screen.size)
-
-                pg.display.flip()
-                self.clock.tick(60)
-
-        pg.quit()
-
-    def run_game(self) -> None:
+    @override
+    def _run_game(self) -> None:
         if self.game_data is None:
             raise ValueError("`self.game_data` cannot be `None`")
 
@@ -146,6 +268,7 @@ class GameManagerIso:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.running = False
+
                 elif event.type == pg.MOUSEWHEEL:
                     mouse_pos = pg.mouse.get_pos()
                     game_rect = pg.Rect(0, 0, g["camera"].width, g["camera"].height)
@@ -153,226 +276,38 @@ class GameManagerIso:
                         g["camera"].update_zoom(event.y, mouse_pos)
 
                 elif event.type == pg.MOUSEBUTTONDOWN:
-                    mouse_pos = event.pos
                     mini_x = SCREEN_WIDTH - MINI_MAP_WIDTH
                     mini_y = SCREEN_HEIGHT - MINI_MAP_HEIGHT
                     mini_rect = pg.Rect(mini_x, mini_y, MINI_MAP_WIDTH, MINI_MAP_HEIGHT)
-                    in_minimap = mini_rect.collidepoint(mouse_pos)
+                    in_minimap = mini_rect.collidepoint(event.pos)
                     if in_minimap and event.button == 1:
-                        local_x = mouse_pos[0] - mini_x
-                        local_y = mouse_pos[1] - mini_y
-                        scale_x = g["map_width"] / MINI_MAP_WIDTH
-                        scale_y = g["map_height"] / MINI_MAP_HEIGHT
-                        world_x = local_x * scale_x
-                        world_y = local_y * scale_y
-                        g["camera"].rect.centerx = world_x
-                        g["camera"].rect.centery = world_y
-                        g["camera"].clamp()
-                        if not g.get("spectator", False):
-                            for unit in g["player_units"]:
-                                unit.selected = False
-                            g["selected_units"].empty()
-                            if g["selected_building"]:
-                                g["selected_building"].selected = False
-                            g["selected_building"] = None
-                            g["selecting"] = False
-                            if g["interface"]:
-                                if g["player_hq"] is None:
-                                    raise ValueError("`player_hq` cannot be `None`")  # TODO: typeguard
-
-                                g["interface"].update_producer(g["player_hq"])
-
+                        _handle_minimap_click(game_data=g, mouse_pos=event.pos, mini_x=mini_x, mini_y=mini_y)
                         continue
 
-                    if g.get("spectator", False):
+                    if g["spectator_mode"]:
                         continue
 
-                    world_pos = g["camera"].screen_to_world(mouse_pos)
+                    world_pos = g["camera"].screen_to_world(event.pos)
                     world_pos = (
                         max(0, min(world_pos[0], g["map_width"])),
                         max(0, min(world_pos[1], g["map_height"])),
                     )
-                    target_x, target_y = mouse_pos
                     if event.button == 1:
-                        if g["interface"] is None:
-                            raise ValueError("`interface` cannot be `None`")  # TODO: typeguard
-
-                        result = g["interface"].handle_click(mouse_pos)
-                        if result:
-                            if isinstance(result, tuple) and result[0] == "sell":
-                                building_to_sell = result[1]
-                                if building_to_sell in g["global_buildings"]:
-                                    g["global_buildings"].remove(building_to_sell)
-                                    if g["player_hq"] is None:
-                                        raise ValueError("`player_hq` cannot be `None`")  # TODO: typeguard
-
-                                    g["player_hq"].credits += building_to_sell.cost // 2
-                                    if g["selected_building"] == building_to_sell:
-                                        g["selected_building"] = None
-                                        g["interface"].update_producer(g["player_hq"])
-
-                            continue
-
-                        if g["interface"].placing_cls is not None and not g["interface_rect"].collidepoint(mouse_pos):
-                            snapped = snap_to_grid(pos=world_pos, grid_size=TILE_SIZE)
-                            buildings_list = list(g["global_buildings"])
-                            unit_type_str = g["interface"].placing_cls.__name__
-                            cost = get_unit_cost(unit_type_str)
-                            if g["player_hq"] is None:
-                                raise ValueError("`player_hq` cannot be `None`")  # TODO: typeguard
-
-                            if g["player_team"] is None:
-                                raise ValueError("`player_hq` cannot be `None`")  # TODO: typeguard
-
-                            if g["player_hq"].credits >= cost and is_valid_building_position(
-                                position=snapped,
-                                team=g["player_team"],
-                                new_building_cls=g["interface"].placing_cls,
-                                buildings=buildings_list,
-                                map_width=g["map_width"],
-                                map_height=g["map_height"],
-                            ):
-                                if not g["interface"]:
-                                    raise ValueError("`interface` is None")
-
-                                building = g["interface"].placing_cls(snapped, g["player_team"], hq=g["player_hq"])
-                                building.map_width = g["map_width"]
-                                building.map_height = g["map_height"]
-                                g["global_buildings"].add(building)
-                                g["player_hq"].credits -= cost
-                                g["interface"].placing_cls = None
-                            else:
-                                g["interface"].placing_cls = None
-
-                            continue
-
-                        clicked_building = next(
-                            (
-                                b
-                                for b in g["global_buildings"]
-                                if b.team == g["player_team"]
-                                # pyrefly: ignore [bad-argument-type]
-                                and g["camera"].get_screen_rect(b.rect).collidepoint(target_x, target_y)
-                            ),
-                            None,
-                        )
-                        if clicked_building:
-                            if g["selected_building"] and g["selected_building"] != clicked_building:
-                                g["selected_building"].selected = False
-                            clicked_building.selected = True
-                            g["selected_building"] = clicked_building
-                            for unit in g["player_units"]:
-                                unit.selected = False
-                            g["selected_units"].empty()
-                            g["interface"].update_producer(clicked_building)
-                        else:
-                            if g["player_hq"] is None:
-                                raise ValueError("`player_hq` cannot be `None`")
-
-                            if g["selected_building"]:
-                                g["selected_building"].selected = False
-                            g["selected_building"] = None
-                            g["interface"].update_producer(g["player_hq"])
-                            g["selecting"] = True
-                            g["select_start"] = mouse_pos
-                            g["select_rect"] = pg.Rect(target_x, target_y, 0, 0)
+                        _handle_mouse_1_click_non_spectator_mode(game_data=g, mouse_pos=event.pos, world_pos=world_pos)
 
                     elif event.button == 3:
-                        if g["interface"] is None:
-                            raise ValueError("`interface` cannot be `None`")  # TODO: typeguard
-
-                        if g["interface"].placing_cls is not None:
-                            g["interface"].placing_cls = None
-                        elif g["selected_building"] and hasattr(g["selected_building"], "rally_point"):
-                            g["selected_building"].rally_point = Vector2(world_pos)
-                        elif g["selected_units"]:
-                            clicked_enemy = None
-                            unit_list = list(g["global_units"])
-                            building_list = [b for b in g["global_buildings"] if b.health > 0]
-                            for u in unit_list:
-                                # pyrefly: ignore [bad-argument-type]
-                                screen_rect = g["camera"].get_screen_rect(u.rect)
-                                if (
-                                    screen_rect.collidepoint(mouse_pos)
-                                    and u.team not in g["player_allies"]
-                                    and u.health > 0
-                                ):
-                                    clicked_enemy = u
-                                    break
-
-                            if not clicked_enemy:
-                                for b in building_list:
-                                    # pyrefly: ignore [bad-argument-type]
-                                    screen_rect = g["camera"].get_screen_rect(b.rect)
-                                    if (
-                                        screen_rect.collidepoint(mouse_pos)
-                                        and b.team not in g["player_allies"]
-                                        and b.health > 0
-                                    ):
-                                        clicked_enemy = b
-                                        break
-
-                            if clicked_enemy:
-                                for unit in g["selected_units"]:
-                                    unit.attack_target = clicked_enemy
-                                    if clicked_enemy.is_building:
-                                        chase_pos = unit.get_chase_position_for_building(clicked_enemy)
-                                        unit.move_target = chase_pos if chase_pos is not None else None
-                                        unit.path = []
-                                    else:
-                                        unit.move_target = clicked_enemy.position
-                                        unit.path = []
-
-                            else:
-                                formation_positions = calculate_formation_positions_iso(
-                                    center=world_pos, target=world_pos, num_units=len(g["selected_units"])
-                                )
-                                for unit, pos in zip(g["selected_units"], formation_positions):
-                                    unit.move_target = pos
-                                    unit.path = []
-                                    unit.attack_target = None
-                                    unit.formation_target = pos
+                        _handle_mouse_2_click_non_spectator_mode(game_data=g, mouse_pos=event.pos, world_pos=world_pos)
 
                 elif event.type == pg.MOUSEMOTION and g["selecting"]:
-                    current_pos = event.pos
                     if g["select_start"]:
                         g["select_rect"] = pg.Rect(
-                            min(g["select_start"][0], current_pos[0]),
-                            min(g["select_start"][1], current_pos[1]),
-                            abs(current_pos[0] - g["select_start"][0]),
-                            abs(current_pos[1] - g["select_start"][1]),
+                            min(g["select_start"][0], event.pos[0]),
+                            min(g["select_start"][1], event.pos[1]),
+                            abs(event.pos[0] - g["select_start"][0]),
+                            abs(event.pos[1] - g["select_start"][1]),
                         )
                 elif event.type == pg.MOUSEBUTTONUP and event.button == 1 and g["selecting"]:
-                    g["selecting"] = False
-                    for unit in g["player_units"]:
-                        unit.selected = False
-
-                    g["selected_units"].empty()
-                    if g["selected_building"]:
-                        g["selected_building"].selected = False
-
-                    g["selected_building"] = None
-                    if g["player_hq"] is None:
-                        raise ValueError("`player_hq` cannot be `None`")
-
-                    if g["interface"] is None:
-                        raise ValueError("`interface` cannot be `None`")
-
-                    g["interface"].update_producer(g["player_hq"])
-                    if g["select_start"]:
-                        world_start = g["camera"].screen_to_world(g["select_start"])
-                        world_end = g["camera"].screen_to_world(event.pos)
-                        world_rect = pg.Rect(
-                            min(world_start[0], world_end[0]),
-                            min(world_start[1], world_end[1]),
-                            abs(world_end[0] - world_start[0]),
-                            abs(world_end[1] - world_start[1]),
-                        )
-                        for unit in g["player_units"]:
-                            # pyrefly: ignore [bad-argument-type]
-                            if world_rect.colliderect(unit.rect):
-                                unit.selected = True
-                                g["selected_units"].add(unit)
+                    _handle_mouse_1_release_while_selecting(game_data=g, mouse_pos=event.pos)
 
                 elif event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
                     if g["interface"] and g["interface"].placing_cls is not None:
@@ -382,10 +317,10 @@ class GameManagerIso:
                         return
 
             g["camera"].update(
-                g["selected_units"].sprites() if not g.get("spectator", False) else [],
-                pg.mouse.get_pos(),
-                g["interface_rect"],
-                keys,
+                selected_units=g["selected_units"].sprites() if not g.get("spectator", False) else [],
+                mouse_pos=pg.mouse.get_pos(),
+                interface_rect=g["interface_rect"],
+                keys=keys,
             )
             unit_list = list(g["global_units"])
             building_list = [b for b in g["global_buildings"] if b.health > 0]
@@ -654,7 +589,8 @@ class GameManagerIso:
             pg.display.flip()
             self.clock.tick(60)
 
-    def initialize_game(self, *, game_mode: str, size_name: str, map_name: str, spectator_mode: bool = False) -> None:
+    @override
+    def _initialize_game(self, *, game_mode: str, size_name: str, map_name: str, spectator_mode: bool = False) -> None:
         map_data = MAPS[map_name]
         base_width = map_data["width"]
         base_height = map_data["height"]
@@ -665,7 +601,6 @@ class GameManagerIso:
         map_width = int(base_width * scale)
         map_height = int(base_height * scale)
 
-        terrain_features = generate_terrain_features(map_name=map_name, map_width=map_width, map_height=map_height)
         num_tx = map_width // TILE_SIZE
         num_ty = map_height // TILE_SIZE
         ownership = [[None] * num_ty for _ in range(num_tx)]
@@ -795,7 +730,6 @@ class GameManagerIso:
         if spectator_mode:
             camera.rect.center = (map_width / 2, map_height / 2)
 
-        interface = None
         if not spectator_mode:
             if player_hq is None:
                 raise ValueError("Player HQ is None")
@@ -803,6 +737,7 @@ class GameManagerIso:
             interface = ProductionInterface(hq=player_hq)
             interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
         else:
+            interface = None
             interface_rect = pg.Rect(0, 0, 0, 0)
 
         self.game_data: GameDataIso = {
@@ -836,7 +771,9 @@ class GameManagerIso:
             "select_start": None,
             "select_rect": None,
             "ais": ais,
-            "terrain_features": terrain_features,
+            "terrain_features": generate_terrain_features(
+                map_name=map_name, map_width=map_width, map_height=map_height
+            ),
             "previous_fitness": {team: 0 for team in teams_list},
             "current_fitness": {},
             "fitness_deltas": {},

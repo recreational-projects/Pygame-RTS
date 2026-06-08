@@ -1,3 +1,5 @@
+"""Implements non-gameplay screens."""
+
 from __future__ import annotations
 
 from dataclasses import InitVar, dataclass, field

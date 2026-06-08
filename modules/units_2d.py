@@ -1,3 +1,5 @@
+"""Implements Units for 2d game."""
+
 from __future__ import annotations
 
 import math
@@ -25,15 +27,13 @@ if TYPE_CHECKING:
 
 
 class Unit2d(GameObject2d):
-    """
-    Subclass for mobile/producing entities (units and buildings).
+    """Subclass for mobile/producing entities (units and buildings).
 
     Extends GameObject with movement, combat, production, income.
     """
 
     def __init__(self, *, position: Point, team: Team, hq: Headquarters | None = None) -> None:
-        """
-        Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
+        """Unit base: loads stats from UNIT_CLASSES, sets up drawing, handles production/income if applicable.
 
         :param position: Initial position.
         :param team: Team enum.
@@ -83,7 +83,6 @@ class Unit2d(GameObject2d):
 
     def _setup_drawing(self) -> None:
         """Sets up image or complex draw method based on type."""
-
         unit_type_str = self.__class__.__name__
         if unit_type_str in SIMPLE_DRAW_RECIPES:
             # pyrefly: ignore [missing-override-decorator]
@@ -154,11 +153,15 @@ class Unit2d(GameObject2d):
     def barrel_offset(self) -> Vector2:
         return Vector2(self._stats.barrel_offset)
 
+    @override
     def update(
-        self, *, friendly_units: pg.sprite.Group[Unit2d] | None = None, all_units: pg.sprite.Group[Unit2d] | None = None
+        self,
+        *args: Any,
+        friendly_units: pg.sprite.Group[Unit2d] | None = None,
+        all_units: pg.sprite.Group[Unit2d] | None = None,
+        **kwargs: Any,
     ) -> None:
-        """
-        Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
+        """Core update: handles attack targeting, movement, shooting, production, income, particle cleanup.
 
         :param friendly_units: Friendly unit group.
         :param all_units: Global unit group.
@@ -255,8 +258,7 @@ class Unit2d(GameObject2d):
         self.plasma_burn_particles = [p for p in self.plasma_burn_particles if p.alive()]
 
     def get_chase_position_for_building(self, target_building: Unit2d) -> Vector2 | None:
-        """
-        Computes the position to move to so that the distance to the closest edge of the building
+        """Computes the position to move to so that the distance to the closest edge of the building
         is exactly attack_range.
 
         :param target_building: Target building.
@@ -281,8 +283,7 @@ class Unit2d(GameObject2d):
         return target_pos
 
     def _update_production(self, friendly_units: pg.sprite.Group[Unit2d], all_units: pg.sprite.Group[Unit2d]) -> None:
-        """
-        Advances production queue, spawns units at gate, opens gate animation.
+        """Advances production queue, spawns units at gate, opens gate animation.
 
         :param friendly_units: Group to add new units to.
         :param all_units: Global group to add new units to.
@@ -330,8 +331,7 @@ class Unit2d(GameObject2d):
 
     @override
     def draw(self, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None) -> None:
-        """
-        Overridden draw for units: handles air height, rotation, rally point, gate animation.
+        """Overridden draw for units: handles air height, rotation, rally point, gate animation.
 
         :param surface: Surface to draw on.
         :param camera: Camera2d for transformation.
@@ -389,8 +389,7 @@ class Unit2d(GameObject2d):
             particle.draw_2d(surface, camera)
 
     def _draw_gate(self, surface: pg.Surface, camera: Camera2d) -> None:
-        """
-        Draws animated opening gates for production buildings.
+        """Draws animated opening gates for production buildings.
 
         :param surface: Surface to draw on.
         :param camera: Camera2d for transformation.
@@ -413,8 +412,7 @@ class Unit2d(GameObject2d):
     def shoot(
         self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[GenericParticle]
     ) -> None:
-        """
-        Fires a projectile using current weapon at target, with lead prediction.
+        """Fires a projectile using current weapon at target, with lead prediction.
 
         Triggers small explosion.
 
@@ -522,8 +520,7 @@ class Headquarters(Unit2d):
         }
 
     def place_building(self, position: Point, unit_cls: type, all_buildings: Group[Unit2d]) -> None:
-        """
-        Instantiates and places a building if valid, deducts cost.
+        """Instantiates and places a building if valid, deducts cost.
 
         :param position: Placement position.
         :param unit_cls: Building class.

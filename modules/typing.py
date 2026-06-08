@@ -1,3 +1,5 @@
+"""Typing."""
+
 from typing import TypeGuard
 
 import pygame as pg

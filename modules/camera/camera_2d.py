@@ -1,3 +1,5 @@
+"""Implements Camera for 2d game."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, override
@@ -87,6 +89,7 @@ class Camera2d(_Camera):
     @override
     def update(
         self,
+        *,
         selected_units: Sequence[GameObject],
         mouse_pos: Point,
         interface_rect: pg.Rect,

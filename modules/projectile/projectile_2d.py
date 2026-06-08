@@ -1,3 +1,5 @@
+"""Implements Projectile for 2d game."""
+
 from __future__ import annotations
 
 import math
@@ -19,10 +21,7 @@ if TYPE_CHECKING:
 
 
 class Projectile2d(GenericProjectile):
-    """GenericProjectile class for bullets/rockets; handles trailing effect and collision detection.
-
-    Creates a tapered image with a fading trail deque.
-    """
+    """Projectile for 2d game."""
 
     def __init__(self, *, position: Point, direction: Vector2, team: Team, weapon: WeaponStats) -> None:
         """Initializes projectile with tapered image, trail deque for fading tail.

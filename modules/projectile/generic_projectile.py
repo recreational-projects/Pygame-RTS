@@ -1,3 +1,5 @@
+"""Implements generic Projectile."""
+
 from __future__ import annotations
 
 import math
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class GenericProjectile(pg.sprite.Sprite):
-    """GenericProjectile class for bullets/rockets; handles trailing effect and collision detection.
+    """Generic abstract Projectile class for bullets/rockets; handles trailing effect and collision detection.
 
     Creates a tapered image with a fading trail deque.
     """

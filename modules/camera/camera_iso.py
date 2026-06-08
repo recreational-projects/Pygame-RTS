@@ -1,3 +1,5 @@
+"""Implements Camera for isometric game."""
+
 from __future__ import annotations
 
 from dataclasses import field
@@ -54,6 +56,7 @@ class CameraIso(_Camera):
     @override
     def update(
         self,
+        *,
         selected_units: Sequence[GameObject],
         mouse_pos: Point,
         interface_rect: pg.Rect,

@@ -1,3 +1,5 @@
+"""Pathfinding functions for isometric game."""
+
 from __future__ import annotations
 
 import heapq

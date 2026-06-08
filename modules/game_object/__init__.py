@@ -1,1 +1,1 @@
-"""Implements generic game objects."""
+"""GameObject package."""

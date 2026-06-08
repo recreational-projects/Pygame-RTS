@@ -1,3 +1,5 @@
+"""Implements ProductionInterface for the isometric game."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -30,8 +32,7 @@ if TYPE_CHECKING:
 
 @dataclass(kw_only=True)
 class ProductionInterface:
-    """
-    Dataclass for production sidebar UI layout and colors.
+    """Dataclass for production sidebar UI layout and colors.
 
     Manages the right-hand UI panel for building/production.
     """
@@ -85,18 +86,14 @@ class ProductionInterface:
     production_timer: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
-        """
-        Post-init: creates surface, top buttons, labels, defaults to HQ producer.
-        """
+        """Post-init: creates surface, top buttons, labels, defaults to HQ producer."""
         self.surface = pg.Surface((self.WIDTH, SCREEN_HEIGHT - CONSOLE_HEIGHT))
         self.producer = self.hq
         self._create_top_buttons()
         self.update_producer(self.hq)
 
     def _create_top_buttons(self) -> None:
-        """
-        Creates rects for Repair/Sell/Map buttons.
-        """
+        """Creates rects for Repair/Sell/Map buttons."""
         self.top_rects.clear()
         start_x = self.MARGIN_X
         for i, label in enumerate(["Repair", "Sell", "Map"]):
@@ -105,9 +102,7 @@ class ProductionInterface:
             self.top_rects[label] = rect
 
     def update_producer(self, building: Unit2d | None) -> None:
-        """
-        Updates producible items based on `building`.
-        """
+        """Updates producible items based on `building`."""
         if building is None:
             raise ValueError("Building must be provided.")
 
@@ -125,8 +120,7 @@ class ProductionInterface:
             self.item_rects[item] = rect
 
     def draw(self, surface_: pg.Surface) -> None:
-        """
-        Renders sidebar: credits/power, buttons, queue with progress.
+        """Renders sidebar: credits/power, buttons, queue with progress.
 
         :param surface_: Main screen surface.
         """
@@ -210,8 +204,7 @@ class ProductionInterface:
         surface_.blit(self.surface, (SCREEN_WIDTH - self.WIDTH, 0))
 
     def handle_click(self, screen_pos: Point) -> bool | tuple[str, Unit2d]:
-        """
-        Handles clicks on buttons: repair, sell, queue items, start placement.
+        """Handles clicks on buttons: repair, sell, queue items, start placement.
 
         :param screen_pos: Mouse position.
         :return: True if handled, or tuple ('sell', building) for sell action.
