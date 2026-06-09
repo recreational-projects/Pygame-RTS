@@ -138,7 +138,7 @@ def _draw_tank(
             int(radius),
             int(2 * zoom),
         )
-    obj.draw_health_bar(surface, camera, mouse_pos)
+    obj.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
     for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
@@ -211,7 +211,7 @@ def _draw_machinegunvehicle(
             int(radius),
             int(2 * zoom),
         )
-    obj.draw_health_bar(surface, camera, mouse_pos)
+    obj.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
     for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
@@ -282,7 +282,7 @@ def _draw_rocketartillery(
             int(radius),
             int(2 * zoom),
         )
-    obj.draw_health_bar(surface, camera, mouse_pos)
+    obj.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
     for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
@@ -364,7 +364,7 @@ def _draw_attackhelicopter(
             int(radius),
             int(2 * zoom),
         )
-    obj.draw_health_bar(surface, camera, mouse_pos)
+    obj.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
     for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 
@@ -1360,7 +1360,8 @@ def _draw_turret(
     if obj.selected:
         screen_rect = camera.get_screen_rect(obj.rect)
         pg.draw.rect(surface, (255, 255, 0), screen_rect, int(3 * zoom))
-    obj.draw_health_bar(surface, camera, mouse_pos)
+
+    obj.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
     for particle in obj.plasma_burn_particles:
         particle.draw_2d(surface, camera)
 

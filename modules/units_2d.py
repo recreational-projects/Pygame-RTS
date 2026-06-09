@@ -382,9 +382,11 @@ class Unit2d(GameObject2d):
         if hasattr(self, "rally_point") and self.selected:
             rally_screen = camera.world_to_screen(self.rally_point)
             pg.draw.circle(surface, (0, 255, 0), (int(rally_screen[0]), int(rally_screen[1])), 5)
+
         if hasattr(self, "gate_open") and self.gate_open:
             self._draw_gate(surface, camera)
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_2d(surface, camera)
 
@@ -408,6 +410,49 @@ class Unit2d(GameObject2d):
         open_right = right_door.move(half_door_offset, 0)
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_left))
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_right))
+
+    def draw_health_bar_if_needed(
+        self, *, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None
+    ) -> None:
+        """Draws health bar above entity if under attack, hovered, or building with damage.
+
+        :param surface: Surface to draw on.
+        :param camera: Camera2d for positioning.
+        :param mouse_pos: Mouse position for hover detection.
+        """
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if not self._needs_healthbar(camera=camera, mouse_pos=mouse_pos):
+            return
+
+        screen_pos = camera.world_to_screen(self.position)
+        health_ratio = self.health / self.max_health
+        color = (0, 255, 0) if health_ratio > 0.5 else (255, 0, 0)
+        bar_width = 25
+        bar_height = 4
+        bar_x = screen_pos[0] - bar_width / 2
+        bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
+        pg.draw.rect(surface, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
+        pg.draw.rect(surface, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
+        pg.draw.rect(surface, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+
+    def _needs_healthbar(self, *, camera: Camera2d, mouse_pos: Point | None = None) -> bool:
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if self.under_attack:
+            return True
+
+        if self.is_building and self.health < self.max_health:
+            return True
+
+        if mouse_pos is not None:
+            screen_rect = camera.get_screen_rect(self.rect)
+            if screen_rect.collidepoint(mouse_pos):
+                return True
+
+        return False
 
     def shoot(
         self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[GenericParticle]
