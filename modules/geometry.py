@@ -10,13 +10,10 @@ import pygame as pg
 from pygame.math import Vector2
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from pygame.typing import Point
 
-    from modules.projectile.generic_projectile import GenericProjectile
-    from modules.units_2d import Unit2d
-    from modules.units_iso import UnitIso
+    from modules.projectile.projectile_generic import ProjectileGeneric
+    from modules.units import Unit2d, UnitIso
 
 
 def snap_to_grid(*, pos: Point, grid_size: int) -> tuple[int, int]:
@@ -90,40 +87,6 @@ def calculate_formation_positions_iso(
     return positions
 
 
-def get_starting_positions(
-    *, map_width: int, map_height: int, num_players: int, edge_dist: int
-) -> Sequence[tuple[float, float]]:
-    """Generates balanced starting positions around the map edges for multiple players.
-
-    :param map_width: Width of the map.
-    :param map_height: Height of the map.
-    :param num_players: Number of players.
-    :param edge_dist: Distance from the edge.
-    :return: List of starting position tuples.
-    """
-    half_w = map_width / 2
-    half_h = map_height / 2
-
-    base_positions = [
-        (half_w, edge_dist),
-        (map_width - edge_dist, edge_dist),
-        (map_width - edge_dist, half_h),
-        (map_width - edge_dist, map_height - edge_dist),
-        (half_w, map_height - edge_dist),
-        (edge_dist, map_height - edge_dist),
-        (edge_dist, half_h),
-        (edge_dist, edge_dist),
-    ]
-
-    step = max(1, 8 // num_players)
-    selected_positions = base_positions[::step][:num_players]
-
-    while len(selected_positions) < num_players:
-        selected_positions.append(base_positions[len(selected_positions) % 8])
-
-    return selected_positions
-
-
 def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[float, float]:
     """Computes the closest point on the rect to the position.
 
@@ -134,11 +97,11 @@ def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[floa
     return max(rect.left, min(pos[0], rect.right)), max(rect.top, min(pos[1], rect.bottom))
 
 
-def check_collision(*, entity: Unit2d | UnitIso, projectile: GenericProjectile) -> bool:
+def check_collision(*, entity: Unit2d | UnitIso, projectile: ProjectileGeneric) -> bool:
     """Detects collision between entity and projectile using rect or radius approximation.
 
     :param entity: Entity to check against.
-    :param projectile: GenericProjectile to check.
+    :param projectile: ProjectileGeneric to check.
     :return: True if collision detected.
     """
     proj_rect = pg.Rect(

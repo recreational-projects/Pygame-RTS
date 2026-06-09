@@ -6,7 +6,8 @@ import math
 from typing import Self
 
 from modules.data_iso import UNIT_CLASSES
-from modules.unit_stats.unit_stats import UnitStats
+
+from .unit_stats_generic import _UnitStatsGeneric
 
 
 def get_unit_cost(unit_cls_str: str) -> int:
@@ -21,7 +22,7 @@ def get_unit_size(unit_cls_str: str) -> tuple[int, int]:
     return unit_stats.size
 
 
-class UnitStatsIso(UnitStats, frozen=True):
+class UnitStatsIso(_UnitStatsGeneric, frozen=True):
     """Static unit stats, specialized for the isometric game."""
 
     # optional:

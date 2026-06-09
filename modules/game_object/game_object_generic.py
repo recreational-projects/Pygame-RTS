@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from modules.team import Team
 
 
-class GameObject(pg.sprite.Sprite, ABC):
+class GameObjectGeneric(pg.sprite.Sprite, ABC):
     """Abstract generic base for all entities.
 
     :param position: Initial position (x, y).

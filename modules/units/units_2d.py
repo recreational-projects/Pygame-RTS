@@ -10,20 +10,19 @@ import pygame as pg
 from pygame.math import Vector2
 
 from modules.draw_2d import BUILDING_DRAW_RECIPES, COMPLEX_DRAW_RECIPES, SIMPLE_DRAW_RECIPES
-from modules.game_object.game_object_2d import GameObject2d
+from modules.game_object import GameObject2d
 from modules.geometry import closest_point_on_rect
-from modules.particles import GenericParticle, create_explosion_2d
-from modules.projectile.projectile_2d import Projectile2d
+from modules.particle import Particle, create_explosion_2d
+from modules.projectile import Projectile2d
 from modules.team import Team, team_to_color
-from modules.unit_stats.unit_stats_2d import UnitStats2d
-from modules.world_2d import is_valid_building_position
+from modules.unit_stats import UnitStats2d
 
 if TYPE_CHECKING:
-    from pygame.sprite import Group
     from pygame.typing import Point
 
     from modules.camera.camera_2d import Camera2d
-    from modules.unit_stats.unit_stats import WeaponStats
+    from modules.game_data import GameData2d
+    from modules.unit_stats.unit_stats_generic import WeaponStats
 
 
 class Unit2d(GameObject2d):
@@ -76,7 +75,6 @@ class Unit2d(GameObject2d):
         if not self.image:  # TODO: type guard - not sure why needed
             raise TypeError("Unit has no `image`")
 
-        # pyrefly: ignore [missing-override-decorator]
         self.rect = self.image.get_rect(center=position)
         # Modular drawing setup
         self._setup_drawing()
@@ -85,7 +83,6 @@ class Unit2d(GameObject2d):
         """Sets up image or complex draw method based on type."""
         unit_type_str = self.__class__.__name__
         if unit_type_str in SIMPLE_DRAW_RECIPES:
-            # pyrefly: ignore [missing-override-decorator]
             self.image = SIMPLE_DRAW_RECIPES[unit_type_str](self.size, team_to_color[self.team])
 
         if not self.image:  # TODO: type guard - not sure why needed
@@ -382,9 +379,11 @@ class Unit2d(GameObject2d):
         if hasattr(self, "rally_point") and self.selected:
             rally_screen = camera.world_to_screen(self.rally_point)
             pg.draw.circle(surface, (0, 255, 0), (int(rally_screen[0]), int(rally_screen[1])), 5)
+
         if hasattr(self, "gate_open") and self.gate_open:
             self._draw_gate(surface, camera)
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_2d(surface, camera)
 
@@ -409,8 +408,51 @@ class Unit2d(GameObject2d):
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_left))
         pg.draw.rect(surface, door_color, camera.get_screen_rect(open_right))
 
+    def draw_health_bar_if_needed(
+        self, *, surface: pg.Surface, camera: Camera2d, mouse_pos: Point | None = None
+    ) -> None:
+        """Draws health bar above entity if under attack, hovered, or building with damage.
+
+        :param surface: Surface to draw on.
+        :param camera: Camera2d for positioning.
+        :param mouse_pos: Mouse position for hover detection.
+        """
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if not self._needs_healthbar(camera=camera, mouse_pos=mouse_pos):
+            return
+
+        screen_pos = camera.world_to_screen(self.position)
+        health_ratio = self.health / self.max_health
+        color = (0, 255, 0) if health_ratio > 0.5 else (255, 0, 0)
+        bar_width = 25
+        bar_height = 4
+        bar_x = screen_pos[0] - bar_width / 2
+        bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
+        pg.draw.rect(surface, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
+        pg.draw.rect(surface, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
+        pg.draw.rect(surface, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+
+    def _needs_healthbar(self, *, camera: Camera2d, mouse_pos: Point | None = None) -> bool:
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if self.under_attack:
+            return True
+
+        if self.is_building and self.health < self.max_health:
+            return True
+
+        if mouse_pos is not None:
+            screen_rect = camera.get_screen_rect(self.rect)
+            if screen_rect.collidepoint(mouse_pos):
+                return True
+
+        return False
+
     def shoot(
-        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[GenericParticle]
+        self, *, target: Unit2d, projectiles: pg.sprite.Group[Projectile2d], particles: pg.sprite.Group[Particle]
     ) -> None:
         """Fires a projectile using current weapon at target, with lead prediction.
 
@@ -519,22 +561,19 @@ class Headquarters(Unit2d):
             "credits_earned": 0,
         }
 
-    def place_building(self, position: Point, unit_cls: type, all_buildings: Group[Unit2d]) -> None:
+    def place_building(self, *, position: Point, unit_cls: type, game_data: GameData2d) -> None:
         """Instantiates and places a building if valid, deducts cost.
 
         :param position: Placement position.
         :param unit_cls: Building class.
-        :param all_buildings: Global building group.
+        :param game_data: GameData instance
         """
-        all_buildings_list = list(all_buildings)
-        if is_valid_building_position(
-            position=position, team=self.team, new_building_cls=unit_cls, buildings=all_buildings_list
-        ):
+        if game_data.is_valid_building_position(position=position, team=self.team, new_building_cls=unit_cls):
             building = unit_cls(position, self.team, hq=self)
             if isinstance(building, WarFactory | Barracks | Hangar):
                 building.parent_hq = self
 
-            all_buildings.add(building)
+            game_data.global_buildings.add(building)
             self.game_stats["buildings_constructed"] += 1
             self.credits -= building.cost
 

@@ -6,18 +6,19 @@ from typing import TYPE_CHECKING, override
 
 import pygame as pg
 
-from modules.camera.camera import _Camera
 from modules.data_2d import PAN_EDGE, PAN_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH
+
+from .camera_generic import _CameraGeneric
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from pygame.typing import Point
 
-    from modules.game_object.game_object import GameObject
+    from modules.game_object import GameObjectGeneric
 
 
-class Camera2d(_Camera):
+class Camera2d(_CameraGeneric):
     """Camera for 2d game."""
 
     @override
@@ -90,7 +91,7 @@ class Camera2d(_Camera):
     def update(
         self,
         *,
-        selected_units: Sequence[GameObject],
+        selected_units: Sequence[GameObjectGeneric],
         mouse_pos: Point,
         interface_rect: pg.Rect,
         keys=None,  # pyrefly: ignore[implicit-any-parameter]

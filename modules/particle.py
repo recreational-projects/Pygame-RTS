@@ -13,10 +13,8 @@ from modules.team import team_to_color
 if TYPE_CHECKING:
     from pygame.typing import Point
 
-    from modules.camera.camera_2d import Camera2d
-    from modules.camera.camera_iso import CameraIso
-    from modules.game_object.game_object_2d import GameObject2d
-    from modules.game_object.game_object_iso import GameObjectIso
+    from modules.camera import Camera2d, CameraIso
+    from modules.game_object import GameObject2d, GameObjectIso
     from modules.team import Team
 
 
@@ -27,7 +25,7 @@ PARTICLES_PER_EXPLOSION_2D = 20
 def create_explosion_2d(
     *,
     position: Point,
-    particles: pg.sprite.Group[GenericParticle],
+    particles: pg.sprite.Group[Particle],
     team: Team,
     count: int = PARTICLES_PER_EXPLOSION_2D,
 ) -> None:
@@ -38,20 +36,19 @@ def create_explosion_2d(
     :param team: Team for particle color.
     :param count: Number of particles (default: PARTICLES_PER_EXPLOSION).
     """
-    # Spawns a burst of particles at position with team color.
     color = team_to_color[team]
     for _ in range(count):
         vx = random.uniform(-3, 3)
         vy = random.uniform(-3, 3)
         size = random.randint(2, 4)
         lifetime = random.randint(3, 7)
-        particles.add(GenericParticle(position, vx, vy, size, color, lifetime))
+        particles.add(Particle(position, vx, vy, size, color, lifetime))
 
 
 def create_explosion_iso(
     *,
     position: Point,
-    particles: pg.sprite.Group[GenericParticle],
+    particles: pg.sprite.Group[Particle],
     team: Team,
     count: int = PARTICLES_PER_EXPLOSION_ISO,
 ) -> None:
@@ -61,10 +58,10 @@ def create_explosion_iso(
         vy = random.uniform(-3, 3)
         size = random.randint(1, 2)
         lifetime = random.randint(1, 3)
-        particles.add(GenericParticle(position, vx, vy, size, color, lifetime))
+        particles.add(Particle(position, vx, vy, size, color, lifetime))
 
 
-class GenericParticle(pg.sprite.Sprite):
+class Particle(pg.sprite.Sprite):
     """Base particle: circular sprite with velocity, fading alpha over lifetime.
 
     Used for explosion effects.
@@ -87,11 +84,9 @@ class GenericParticle(pg.sprite.Sprite):
         self.color = color
         self.lifetime = lifetime * 10
         self.age = 0
-        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((size, size), pg.SRCALPHA)
         if self.image is not None:  # TODO: type guard - not sure why this can be None
             pg.draw.circle(self.image, color, (size // 2, size // 2), size // 2)
-            # pyrefly: ignore [missing-override-decorator]
             self.rect = self.image.get_rect(center=self.position)
 
     @override
@@ -158,7 +153,7 @@ class GenericParticle(pg.sprite.Sprite):
                 surface.blit(scaled_image, blit_pos)
 
 
-class PlasmaBurnParticle(GenericParticle):
+class PlasmaBurnParticle(Particle):
     """Attached particle that follows an entity, offset and rotated with it.
 
     Used for damage burn effects on entities.

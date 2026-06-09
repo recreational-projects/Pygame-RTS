@@ -12,7 +12,7 @@ from pygame.math import Vector2
 from modules.data_iso import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
 from modules.geometry import calculate_formation_positions_iso, snap_to_grid
 from modules.unit_stats.unit_stats_iso import get_unit_cost, get_unit_size
-from modules.units_iso import (
+from modules.units.units_iso import (
     Barracks,
     Grenadier,
     Hangar,
@@ -21,18 +21,17 @@ from modules.units_iso import (
     PowerPlant,
     Refinery,
     Turret,
-    UnitIso,
     WarFactory,
 )
-from modules.world_iso import is_valid_building_position
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
 
-    import pygame as pg
     from pygame.typing import Point
 
+    from modules.game_data import GameDataIso
     from modules.team import Team
+    from modules.units import UnitIso
 
 BuildingType = type(Barracks | Hangar | PowerPlant | Refinery | Turret | WarFactory)
 
@@ -98,14 +97,14 @@ def _get_nearest_enemy_building(*, enemy_buildings: Iterable[UnitIso], from_pos:
 
 
 @dataclass(kw_only=True)
-class AI:
+class AiIso:
     hq: Headquarters
     """Headquarters for the AI."""
     preferred_build_direction: float
     """Preferred build direction angle."""
     allies: frozenset[Team]
 
-    # internal
+    # internal:
     timer_offset = random.randint(0, 180)  # Stagger starts by up to 3 seconds (at 60 FPS)
     interval_multiplier = random.uniform(0.7, 1.3)  # Vary speeds: 70-130% of base intervals
     personality: Literal["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"] = random.choice(
@@ -160,7 +159,7 @@ class AI:
 
         self.base_priorities = base_priorities
         self.production_priorities = base_priorities
-        self.unit_counts = {unit: 0 for unit in base_priorities}
+        self.unit_counts = dict.fromkeys(base_priorities, 0)
 
     @property
     def aggression_bias(self) -> float:
@@ -177,9 +176,7 @@ class AI:
         friendly_buildings: Collection[UnitIso],
         enemy_units: Collection[UnitIso],
         enemy_buildings: Collection[UnitIso],
-        all_buildings: pg.sprite.Group[UnitIso],
-        map_width: int = MAP_WIDTH,
-        map_height: int = MAP_HEIGHT,
+        game_data: GameDataIso,
     ) -> None:
         self._assess_situation(
             friendly_units=friendly_units,
@@ -210,7 +207,10 @@ class AI:
             )
             enemy_pos = enemy_hq.position if enemy_hq else self.known_enemy_pos
             self._update_rally_points(
-                friendly_buildings=friendly_buildings, enemy_pos=enemy_pos, map_width=map_width, map_height=map_height
+                friendly_buildings=friendly_buildings,
+                enemy_pos=enemy_pos,
+                map_width=game_data.map_width,
+                map_height=game_data.map_height,
             )
 
         economy_check_interval = int(60 * self.interval_multiplier)
@@ -271,17 +271,11 @@ class AI:
                 cost = get_unit_cost(cls.__name__)
                 if self.hq.credits >= cost:
                     prefer_near = random.random() > 0.2 or self.total_buildings < 10
-                    pos = self._find_build_position(
-                        building_cls=cls,
-                        all_buildings=all_buildings,
-                        map_width=map_width,
-                        map_height=map_height,
-                        prefer_near_hq=prefer_near,
-                    )
+                    pos = self._find_build_position(building_cls=cls, game_data=game_data, prefer_near_hq=prefer_near)
                     if pos:
-                        self.hq.place_building(pos, cls, all_buildings)
+                        self.hq.place_building(position=pos, unit_cls=cls, game_data=game_data)
 
-        self._build_defenses(all_buildings=all_buildings, map_width=map_width, map_height=map_height)
+        self._build_defenses(game_data=game_data)
         enemy_hq = min(
             (b for b in enemy_buildings if isinstance(b, Headquarters) and b.health > 0),
             key=lambda b: self.hq.distance_to(b.position),
@@ -293,8 +287,8 @@ class AI:
             # pyrefly: ignore [bad-argument-type]
             enemy_buildings=enemy_buildings,
             enemy_units=enemy_units,
-            map_width=map_width,
-            map_height=map_height,
+            map_width=game_data.map_width,
+            map_height=game_data.map_height,
         )
 
     def _assess_situation(
@@ -529,34 +523,26 @@ class AI:
             b.rally_point.x = max(0, min(b.rally_point.x, map_width))
             b.rally_point.y = max(0, min(b.rally_point.y, map_height))
 
-    def _build_defenses(self, *, all_buildings: pg.sprite.Group[UnitIso], map_width: int, map_height: int) -> None:
+    def _build_defenses(self, *, game_data: GameDataIso) -> None:
         if (
             self.threat_level > 0.2
             and self.turret_count < self.defense_target
             and self.hq.credits >= get_unit_cost("Turret")
         ):
-            pos = self._find_build_position(
-                building_cls=Turret,
-                all_buildings=all_buildings,
-                map_width=map_width,
-                map_height=map_height,
-                prefer_near_hq=True,
-            )
+            pos = self._find_build_position(building_cls=Turret, game_data=game_data, prefer_near_hq=True)
             if pos:
-                self.hq.place_building(pos, Turret, all_buildings)
+                self.hq.place_building(position=pos, unit_cls=Turret, game_data=game_data)
 
     def _find_build_position(
         self,
         *,
         building_cls: BuildingType,
-        all_buildings: Iterable[UnitIso],
-        map_width: int,
-        map_height: int,
+        game_data: GameDataIso,
         prefer_near_hq: bool = True,
     ) -> tuple[float, float] | None:
-        default_area = 2560 * 1440
-        map_area = map_width * map_height
-        scale = math.sqrt(map_area / default_area)
+        _default_area = 2560 * 1440
+        _map_area = game_data.map_width * game_data.map_height
+        scale = math.sqrt(_map_area / _default_area)
         hq_pos = self.hq.position
         _size = get_unit_size(building_cls.__name__)
         half_w, half_h = (_size[0] / 2, _size[1] / 2)
@@ -588,17 +574,14 @@ class AI:
                 dist = ring_dist + random.uniform(-ring_step / 2, ring_step / 2)
                 center_x = hq_pos.x + dist * math.cos(angle)
                 center_y = hq_pos.y + dist * math.sin(angle)
-                center_x = max(half_w, min(map_width - half_w, center_x))
-                center_y = max(half_h, min(map_height - half_h, center_y))
+                center_x = max(half_w, min(game_data.map_width - half_w, center_x))
+                center_y = max(half_h, min(game_data.map_height - half_h, center_y))
                 snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
                 position = snapped_center
-                if is_valid_building_position(
+                if game_data.is_valid_building_position(
                     position=position,
                     team=self.hq.team,
                     new_building_cls=building_cls,
-                    buildings=list(all_buildings),
-                    map_width=map_width,
-                    map_height=map_height,
                     margin=60,
                 ):
                     return position

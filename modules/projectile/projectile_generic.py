@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from abc import ABC
 from collections import deque
 from typing import TYPE_CHECKING, Any, override
 
@@ -15,10 +16,10 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.team import Team
-    from modules.unit_stats.unit_stats import WeaponStats
+    from modules.unit_stats.unit_stats_generic import WeaponStats
 
 
-class GenericProjectile(pg.sprite.Sprite):
+class ProjectileGeneric(pg.sprite.Sprite, ABC):
     """Generic abstract Projectile class for bullets/rockets; handles trailing effect and collision detection.
 
     Creates a tapered image with a fading trail deque.
@@ -54,7 +55,6 @@ class GenericProjectile(pg.sprite.Sprite):
 
         self.angle = math.atan2(self.direction.y, self.direction.x)
         self.age = 0
-        # pyrefly: ignore [missing-override-decorator]
         self.image = pg.Surface((self.length, self.width), pg.SRCALPHA)
         if self.image is None:  # TODO: type guard - not sure why needed
             raise ValueError("self.image` is unexpectedly `None`")
@@ -64,7 +64,6 @@ class GenericProjectile(pg.sprite.Sprite):
             alpha = int(255 * (i / self.length))
             pg.draw.line(self.image, (_color.r, _color.g, _color.b, alpha), (i, 0), (i, self.width), 1)
 
-        # pyrefly: ignore [missing-override-decorator]
         self.rect = self.image.get_rect(center=self.position)
 
     @override

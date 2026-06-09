@@ -8,8 +8,7 @@ if TYPE_CHECKING:
     from pygame.math import Vector2
     from pygame.typing import IntPoint
 
-    from modules.game_object.game_object_2d import GameObject2d
-    from modules.game_object.game_object_iso import GameObjectIso
+    from modules.units import Unit2d, UnitIso
 
 
 class SpatialHash2d:
@@ -23,20 +22,16 @@ class SpatialHash2d:
 
         :param cell_size: Size of each grid cell (default: 200).
         """
-        # Initializes the hash with a grid cell size for bucketing objects.
         self.cell_size = cell_size
-        # pyrefly: ignore [implicit-any-type-argument]
-        self.grid: dict[IntPoint, list] = {}
+        self.grid: dict[IntPoint, list[Unit2d]] = {}
 
-    # pyrefly: ignore [implicit-any-type-argument]
-    def query(self, pos: Vector2, radius: float) -> list:
+    def query(self, pos: Vector2, radius: float) -> list[Unit2d]:
         """Returns all objects within radius of pos, checking neighboring cells.
 
         :param pos: Query position (Vector2).
         :param radius: Search radius.
         :return: List of nearby objects.
         """
-        # Returns all objects within radius of pos, checking neighboring cells.
         cx = int(pos.x // self.cell_size)
         cy = int(pos.y // self.cell_size)
         keys = set()
@@ -51,12 +46,11 @@ class SpatialHash2d:
 
         return nearby
 
-    def add(self, obj: GameObject2d | GameObjectIso) -> None:
+    def add(self, obj: Unit2d) -> None:
         """Adds an object to its corresponding grid cell.
 
         :param obj: Object with a 'position' attribute (Vector2).
         """
-        # Adds an object to its corresponding grid cell.
         key = self._get_key(obj.position)
         if key not in self.grid:
             self.grid[key] = []
@@ -69,18 +63,15 @@ class SpatialHash2d:
         :param pos: Vector2 position.
         :return: Tuple (cell_x, cell_y) key.
         """
-        # Computes the grid cell key for a position.
         return int(pos.x // self.cell_size), int(pos.y // self.cell_size)
 
 
 class SpatialHashIso:
     def __init__(self, cell_size: int = 250) -> None:
         self.cell_size = cell_size
-        # pyrefly: ignore [implicit-any-type-argument]
-        self.grid: dict[IntPoint, list] = {}
+        self.grid: dict[IntPoint, list[UnitIso]] = {}
 
-    # pyrefly: ignore [implicit-any-type-argument]
-    def query(self, pos: Vector2, radius: float) -> list:
+    def query(self, pos: Vector2, radius: float) -> list[UnitIso]:
         cx = int(pos.x // self.cell_size)
         cy = int(pos.y // self.cell_size)
         keys = set()
@@ -101,7 +92,7 @@ class SpatialHashIso:
 
         return nearby
 
-    def add(self, obj: GameObject2d | GameObjectIso) -> None:
+    def add(self, obj: UnitIso) -> None:
         key = self._get_key(obj.position)
         if key not in self.grid:
             self.grid[key] = []

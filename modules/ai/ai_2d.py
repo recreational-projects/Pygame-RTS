@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
-from modules.data_2d import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
+from modules.data_2d import TILE_SIZE
 from modules.geometry import snap_to_grid
 from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
-from modules.units_2d import (
+from modules.units.units_2d import (
     Barracks,
     BlackMarket,
     Grenadier,
@@ -26,16 +26,15 @@ from modules.units_2d import (
     Turret,
     WarFactory,
 )
-from modules.world_2d import is_valid_building_position
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
 
-    from pygame.sprite import Group
     from pygame.typing import Point
 
+    from modules.game_data import GameData2d
     from modules.team import Team
-    from modules.units_2d import Unit2d
+    from modules.units import Unit2d
 
 BuildingType = type(
     Barracks | BlackMarket | Hangar | OilDerrick | PowerPlant | Refinery | ShaleFracker | Turret | WarFactory
@@ -120,8 +119,8 @@ def _get_nearest_enemy_building(*, enemy_buildings: Iterable[Unit2d], from_pos: 
 
 
 @dataclass(kw_only=True)
-class AI:
-    """AI class manages autonomous decision-making: production, building, scouting, attacking.
+class Ai2d:
+    """Manages autonomous decision-making: production, building, scouting, attacking.
 
     Supports personalities for varied behavior.
     """
@@ -132,7 +131,7 @@ class AI:
     """Preferred build direction angle."""
     allies: frozenset[Team]
 
-    # internal
+    # internal:
     timer_offset = random.randint(0, 180)  # Stagger starts by up to 3 seconds (at 60 FPS)
     interval_multiplier = random.uniform(0.7, 1.3)  # Vary speeds: 70-130% of base intervals
     personality: Literal["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"] = random.choice(
@@ -164,9 +163,7 @@ class AI:
         friendly_buildings: Collection[Unit2d],
         enemy_units: Collection[Unit2d],
         enemy_buildings: Collection[Unit2d],
-        all_buildings: Group[Unit2d],
-        map_width: int = MAP_WIDTH,
-        map_height: int = MAP_HEIGHT,
+        game_data: GameData2d,
     ) -> None:
         """Main AI loop: assesses, produces, builds, defends, attacks with timed, jittered intervals.
 
@@ -174,9 +171,7 @@ class AI:
         :param friendly_buildings: Friendly buildings.
         :param enemy_units: Enemy units.
         :param enemy_buildings: Enemy buildings.
-        :param all_buildings: Global buildings.
-        :param map_width: Map width.
-        :param map_height: Map height.
+        :param game_data: GameData2d.
         """
         self._assess_situation(
             friendly_units=friendly_units, friendly_buildings=friendly_buildings, enemy_units=enemy_units
@@ -209,14 +204,12 @@ class AI:
             else:
                 _pos = self._find_build_position(
                     building_cls=_new_building_cls,
-                    all_buildings=all_buildings,
-                    map_width=map_width,
-                    map_height=map_height,
+                    game_data=game_data,
                 )
                 if not _pos:
                     logger.info("... but couldn't find a position.")
                 else:
-                    self.hq.place_building(_pos, _new_building_cls, all_buildings)
+                    self.hq.place_building(position=_pos, unit_cls=_new_building_cls, game_data=game_data)
                     logger.info("... and placed it.")
 
         self.defense_timer += 1
@@ -228,11 +221,9 @@ class AI:
             and self.turret_count < min(5, self.total_buildings // 3)
             and self.hq.credits >= get_unit_cost("Turret")
         ):
-            _pos = self._find_build_position(
-                building_cls=Turret, all_buildings=all_buildings, map_width=map_width, map_height=map_height
-            )
+            _pos = self._find_build_position(building_cls=Turret, game_data=game_data)
             if _pos:
-                self.hq.place_building(_pos, Turret, all_buildings)
+                self.hq.place_building(position=_pos, unit_cls=Turret, game_data=game_data)
 
             self.defense_timer = random.randint(0, defense_interval // 2)  # Reset with jitter
 
@@ -433,21 +424,17 @@ class AI:
         self,
         *,
         building_cls: BuildingType,
-        all_buildings: Iterable[Unit2d],
-        map_width: int,
-        map_height: int,
+        game_data: GameData2d,
     ) -> tuple[float, float] | None:
         """Searches for valid build spot in expanding rings around HQ, with directional bias.
 
         :param building_cls: Building class to place.
-        :param all_buildings: Global buildings for validation.
-        :param map_width: Map width.
-        :param map_height: Map height.
+        :param game_data: GameData2d.
         :return: Valid position or None.
         """
-        default_area = 2560 * 1440
-        map_area = map_width * map_height
-        scale = math.sqrt(map_area / default_area)
+        _default_area = 2560 * 1440
+        _map_area = game_data.map_width * game_data.map_height
+        scale = math.sqrt(_map_area / _default_area)
         hq_pos = self.hq.position
 
         _size = get_unit_size(building_cls.__name__)
@@ -481,17 +468,14 @@ class AI:
                 dist = ring_dist + random.uniform(-ring_step / 2, ring_step / 2)
                 center_x = hq_pos.x + dist * math.cos(angle)
                 center_y = hq_pos.y + dist * math.sin(angle)
-                center_x = max(half_w, min(map_width - half_w, center_x))
-                center_y = max(half_h, min(map_height - half_h, center_y))
+                center_x = max(half_w, min(game_data.map_width - half_w, center_x))
+                center_y = max(half_h, min(game_data.map_height - half_h, center_y))
                 snapped_center = snap_to_grid(pos=(center_x, center_y), grid_size=TILE_SIZE)
                 position = snapped_center
-                if is_valid_building_position(
+                if game_data.is_valid_building_position(
                     position=position,
                     team=self.hq.team,
                     new_building_cls=building_cls,
-                    buildings=list(all_buildings),
-                    map_width=map_width,
-                    map_height=map_height,
                 ):
                     return position
 

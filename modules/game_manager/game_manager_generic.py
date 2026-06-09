@@ -16,7 +16,7 @@ from modules.screens import MainMenu, SkirmishSetup, VictoryScreen
 
 
 @dataclass(kw_only=True)
-class GameManagerGeneric(ABC):
+class _GameManagerGeneric(ABC):
     """Abstract generic GameManager orchestrates state machine, initializes game data, runs loops.
 
     Handles menu, setup, playing, victory/defeat states.

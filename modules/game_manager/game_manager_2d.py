@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-import random
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, override
@@ -11,52 +9,37 @@ from typing import TYPE_CHECKING, override
 import pygame as pg
 from pygame.math import Vector2
 
-from modules.ai_2d import AI
-from modules.camera.camera_2d import Camera2d
 from modules.data import Palette
 from modules.data_2d import (
-    CONSOLE_HEIGHT,
-    MAP_HEIGHT,
-    MAP_WIDTH,
     MAPS,
     MINI_MAP_HEIGHT,
     MINI_MAP_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
-    STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
 )
 from modules.draw_2d import draw_mini_map
-from modules.fog_of_war import FogOfWar2d
-from modules.game_data_2d import GameData
-from modules.game_manager.game_manager_generic import GameManagerGeneric
+from modules.game_data import GameData2d
 from modules.game_state import GameState
-from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
-from modules.production_interface_2d import ProductionInterface
+from modules.geometry import calculate_formation_positions_2d, snap_to_grid
 from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHash2d
-from modules.team import Team, team_to_name
+from modules.team import team_to_name
 from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
-from modules.units_2d import Headquarters, Infantry
 from modules.world import handle_unit_building_collisions, handle_unit_collisions
-from modules.world_2d import (
-    cleanup_dead_entities,
-    find_free_spawn_position,
-    handle_attacks,
-    handle_projectiles,
-    is_valid_building_position,
-)
+
+from .game_manager_generic import _GameManagerGeneric
 
 if TYPE_CHECKING:
     from pygame.typing import IntPoint, Point
 
-    from modules.units_2d import Unit2d
+    from modules.units import Unit2d
 
 
-def _handle_minimap_click(*, game_data: GameData, mouse_pos: IntPoint, minimap_origin: IntPoint) -> None:
-    g = game_data
+def _handle_minimap_click(*, game_data: GameData2d, mouse_pos: IntPoint, minimap_origin: IntPoint) -> None:
     local_x = mouse_pos[0] - minimap_origin[0]
     local_y = mouse_pos[1] - minimap_origin[1]
+    g = game_data
     scale_x = g.map_width / MINI_MAP_WIDTH
     scale_y = g.map_height / MINI_MAP_HEIGHT
     world_x = local_x * scale_x
@@ -65,6 +48,9 @@ def _handle_minimap_click(*, game_data: GameData, mouse_pos: IntPoint, minimap_o
     g.camera.rect.centery = world_y
     g.camera.clamp()
     if not g.spectator_mode:
+        if g.player_hq is None:
+            raise ValueError("`player_hq` must not be `None` if not spectating")
+
         for unit in g.player_units:
             unit.selected = False
 
@@ -78,7 +64,7 @@ def _handle_minimap_click(*, game_data: GameData, mouse_pos: IntPoint, minimap_o
             g.interface.update_producer(g.player_hq)
 
 
-def _handle_mouse_1_click_non_spectator_mode(*, game_data: GameData, mouse_pos: IntPoint, world_pos: Point) -> None:
+def _handle_mouse_1_click_non_spectator_mode(*, game_data: GameData2d, mouse_pos: IntPoint, world_pos: Point) -> None:
     if game_data is None:
         raise ValueError("`game_data` cannot be `None`")  # TODO: typeguard
 
@@ -92,25 +78,21 @@ def _handle_mouse_1_click_non_spectator_mode(*, game_data: GameData, mouse_pos: 
             building_to_sell = result[1]
             if building_to_sell in g.global_buildings:
                 g.global_buildings.remove(building_to_sell)
-
                 g.player_hq.credits += building_to_sell.cost // 2
                 if g.selected_building == building_to_sell:
                     g.selected_building = None
                     g.interface.update_producer(g.player_hq)
+
         return
 
     if g.interface.placing_cls is not None and not g.interface_rect.collidepoint(mouse_pos):
         snapped = snap_to_grid(pos=world_pos, grid_size=TILE_SIZE)
-        buildings_list = list(g.global_buildings)
         _unit_type = g.interface.placing_cls.__name__
         cost = get_unit_cost(_unit_type)
-        if g.player_hq.credits >= cost and is_valid_building_position(
+        if g.player_hq.credits >= cost and g.is_valid_building_position(
             position=snapped,
             team=g.player_team,
             new_building_cls=g.interface.placing_cls,
-            buildings=buildings_list,
-            map_width=g.map_width,
-            map_height=g.map_height,
         ):
             building = g.interface.placing_cls(snapped, g.player_team, hq=g.player_hq)
             g.global_buildings.add(building)
@@ -154,7 +136,7 @@ def _handle_mouse_1_click_non_spectator_mode(*, game_data: GameData, mouse_pos: 
         g.select_rect = pg.Rect(target_x, target_y, 0, 0)
 
 
-def _handle_mouse_2_click_non_spectator_mode(*, game_data: GameData, mouse_pos: IntPoint, world_pos: Point) -> None:
+def _handle_mouse_2_click_non_spectator_mode(*, game_data: GameData2d, mouse_pos: IntPoint, world_pos: Point) -> None:
     if game_data is None:
         raise ValueError("`game_data` cannot be `None`")
 
@@ -206,7 +188,7 @@ def _handle_mouse_2_click_non_spectator_mode(*, game_data: GameData, mouse_pos: 
                 unit.formation_target = pos
 
 
-def _handle_mouse_1_release_while_selecting(*, game_data: GameData, mouse_pos: IntPoint) -> None:
+def _handle_mouse_1_release_while_selecting(*, game_data: GameData2d, mouse_pos: IntPoint) -> None:
     if game_data is None:
         raise ValueError("`game_data` cannot be `None`")
 
@@ -243,74 +225,23 @@ def _handle_mouse_1_release_while_selecting(*, game_data: GameData, mouse_pos: I
 
 
 @dataclass(kw_only=True)
-class GameManager2d(GameManagerGeneric):
+class GameManager2d(_GameManagerGeneric):
     """GameManager for 2d game."""
 
-    game_data: GameData = field(init=False)
+    game_data: GameData2d = field(init=False)
 
     @override
     def _run_game(self) -> None:
         """Main game loop: event handling, updates, rendering, win/loss checks."""
         g = self.game_data
-
         while self.running and self.state == GameState.PLAYING:
-            keys = pg.key.get_pressed()
-            for event in pg.event.get():
-                if event.type == pg.QUIT:
-                    self.running = False
-
-                elif event.type == pg.MOUSEWHEEL:
-                    mouse_pos = pg.mouse.get_pos()
-                    game_rect = pg.Rect(0, 0, g.camera.width, g.camera.height)
-                    if game_rect.collidepoint(mouse_pos):
-                        world_mouse = g.camera.screen_to_world(mouse_pos)
-                        g.camera.update_zoom(event.y, world_mouse)
-
-                elif event.type == pg.MOUSEBUTTONDOWN:
-                    mini_x = SCREEN_WIDTH - MINI_MAP_WIDTH
-                    mini_y = SCREEN_HEIGHT - MINI_MAP_HEIGHT
-                    mini_rect = pg.Rect(mini_x, mini_y, MINI_MAP_WIDTH, MINI_MAP_HEIGHT)
-                    in_minimap = mini_rect.collidepoint(event.pos)
-                    if in_minimap and event.button == 1:
-                        _handle_minimap_click(game_data=g, mouse_pos=event.pos, minimap_origin=(mini_x, mini_y))
-                        continue
-
-                    if g.spectator_mode:
-                        continue
-
-                    world_pos = g.camera.screen_to_world(event.pos)
-                    if event.button == 1:
-                        _handle_mouse_1_click_non_spectator_mode(game_data=g, mouse_pos=event.pos, world_pos=world_pos)
-
-                    elif event.button == 3:
-                        _handle_mouse_2_click_non_spectator_mode(game_data=g, mouse_pos=event.pos, world_pos=world_pos)
-
-                elif event.type == pg.MOUSEMOTION and g.selecting:
-                    if g.select_start:
-                        g.select_rect = pg.Rect(
-                            min(g.select_start[0], event.pos[0]),
-                            min(g.select_start[1], event.pos[1]),
-                            abs(event.pos[0] - g.select_start[0]),
-                            abs(event.pos[1] - g.select_start[1]),
-                        )
-
-                elif event.type == pg.MOUSEBUTTONUP and event.button == 1 and g.selecting:
-                    _handle_mouse_1_release_while_selecting(game_data=g, mouse_pos=event.pos)
-
-                elif event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
-                    if g.interface and g.interface.placing_cls is not None:
-                        g.interface.placing_cls = None
-                    else:
-                        self.state = GameState.MENU
-                        return
-
+            self._handle_events()
             g.camera.update(
                 selected_units=g.selected_units.sprites() if not g.spectator_mode else [],
                 mouse_pos=pg.mouse.get_pos(),
                 interface_rect=g.interface_rect,
-                keys=keys,
+                keys=pg.key.get_pressed(),
             )
-
             unit_list = list(g.global_units)
             building_list = [b for b in g.global_buildings if b.health > 0]
 
@@ -344,30 +275,13 @@ class GameManager2d(GameManagerGeneric):
                 # pyrefly: ignore [missing-attribute]
                 unit.rect.center = unit.position
 
-            # Unified attacks for all teams
-            unique_teams = set(g.teams)
-            for team in unique_teams:
-                handle_attacks(
-                    team=team,
-                    all_units=unit_list,
-                    all_buildings=building_list,
-                    projectiles=g.projectiles,
-                    particles=g.particles,
-                    unit_hash=unit_hash,
-                    building_hash=building_hash,
-                    alliances=g.alliances,
+            for team in g.teams:
+                g.handle_attacks(
+                    team=team, unit_hash=unit_hash, building_hash=building_hash, allied_teams=g.alliances[team]
                 )
 
-            handle_projectiles(
-                projectiles=g.projectiles,
-                all_units=unit_list,
-                all_buildings=building_list,
-                particles=g.particles,
-                g=g,
-            )
-
-            # Cleanup dead entities
-            cleanup_dead_entities(g)
+            g.handle_projectiles()
+            g.cleanup_dead_entities()
 
             for ai in g.ais:
                 their_team = ai.hq.team
@@ -386,9 +300,7 @@ class GameManager2d(GameManagerGeneric):
                     friendly_buildings=friendly_buildings_list,
                     enemy_units=enemy_units_list,
                     enemy_buildings=enemy_buildings_list,
-                    all_buildings=g.global_buildings,
-                    map_width=g.map_width,
-                    map_height=g.map_height,
+                    game_data=g,
                 )
 
             if not g.spectator_mode:
@@ -467,29 +379,26 @@ class GameManager2d(GameManagerGeneric):
             fog = g.fog_of_war
             if not g.spectator_mode:
                 g.fog_of_war.draw(self.screen, g.camera)
+
             mouse_pos = pg.mouse.get_pos() if g.interface else None
             for building in building_list:
                 visible = building.team in draw_allies or fog.is_visible(building.position) or building.is_seen
                 if building.health > 0 and visible:
                     building.draw(self.screen, g.camera, mouse_pos)
 
-            if g.interface and not g.spectator_mode:
+            if g.interface:
                 if g.player_team is None:
-                    raise ValueError("`game_data.player_team` cannot be `None`")  # TODO: typeguard
+                    raise ValueError("ProductionInterface requires `player_team`.")
 
                 if g.interface.placing_cls is not None:
                     mouse_pos = pg.mouse.get_pos()
                     ghost_pos = g.camera.screen_to_world(mouse_pos)
                     snapped = snap_to_grid(pos=ghost_pos, grid_size=TILE_SIZE)
-                    buildings_list = list(g.global_buildings)
                     unit_type = g.interface.placing_cls.__name__
-                    valid = is_valid_building_position(
+                    valid = g.is_valid_building_position(
                         position=snapped,
                         team=g.player_team,
                         new_building_cls=g.interface.placing_cls,
-                        buildings=buildings_list,
-                        map_width=g.map_width,
-                        map_height=g.map_height,
                     )
                     width, height = get_unit_size(unit_type)
                     half_w, half_h = width / 2, height / 2
@@ -532,9 +441,59 @@ class GameManager2d(GameManagerGeneric):
                 all_units=g.global_units,
                 player_allies=draw_allies_mini,
             )
-
             pg.display.flip()
             self.clock.tick(60)
+
+    def _handle_events(self) -> None:
+        g = self.game_data
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                self.running = False
+
+            elif event.type == pg.MOUSEWHEEL:
+                mouse_pos = pg.mouse.get_pos()
+                game_rect = pg.Rect(0, 0, g.camera.width, g.camera.height)
+                if game_rect.collidepoint(mouse_pos):
+                    world_mouse = g.camera.screen_to_world(mouse_pos)
+                    g.camera.update_zoom(event.y, world_mouse)
+
+            elif event.type == pg.MOUSEBUTTONDOWN:
+                mini_x = SCREEN_WIDTH - MINI_MAP_WIDTH
+                mini_y = SCREEN_HEIGHT - MINI_MAP_HEIGHT
+                mini_rect = pg.Rect(mini_x, mini_y, MINI_MAP_WIDTH, MINI_MAP_HEIGHT)
+                in_minimap = mini_rect.collidepoint(event.pos)
+                if in_minimap and event.button == 1:
+                    _handle_minimap_click(game_data=g, mouse_pos=event.pos, minimap_origin=(mini_x, mini_y))
+                    continue
+
+                if g.spectator_mode:
+                    continue
+
+                world_pos = g.camera.screen_to_world(event.pos)
+                if event.button == 1:
+                    _handle_mouse_1_click_non_spectator_mode(game_data=g, mouse_pos=event.pos, world_pos=world_pos)
+
+                elif event.button == 3:
+                    _handle_mouse_2_click_non_spectator_mode(game_data=g, mouse_pos=event.pos, world_pos=world_pos)
+
+            elif event.type == pg.MOUSEMOTION and g.selecting:
+                if g.select_start:
+                    g.select_rect = pg.Rect(
+                        min(g.select_start[0], event.pos[0]),
+                        min(g.select_start[1], event.pos[1]),
+                        abs(event.pos[0] - g.select_start[0]),
+                        abs(event.pos[1] - g.select_start[1]),
+                    )
+
+            elif event.type == pg.MOUSEBUTTONUP and event.button == 1 and g.selecting:
+                _handle_mouse_1_release_while_selecting(game_data=g, mouse_pos=event.pos)
+
+            elif event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
+                if g.interface and g.interface.placing_cls is not None:
+                    g.interface.placing_cls = None
+                else:
+                    self.state = GameState.MENU
+                    return
 
     @override
     def _initialize_game(self, *, game_mode: str, size_name: str, map_name: str, spectator_mode: bool = False) -> None:
@@ -545,161 +504,13 @@ class GameManager2d(GameManagerGeneric):
         :param map_name: Map name string.
         :param spectator_mode: If True, spectator mode.
         """
-        # Sets up game world: scales map, creates teams/HQs/units, alliances, AI, camera, UI.
         map_data = MAPS[map_name]
-        base_width = map_data["width"]
-        base_height = map_data["height"]
-        color = pg.Color(map_data["color"])
-
         size_scales = {"tiny": 0.80, "small": 0.80, "medium": 0.80, "large": 0.80, "huge": 0.80}
         scale = size_scales[size_name]
-        map_width = int(base_width * scale)
-        map_height = int(base_height * scale)
-
-        ai_units = pg.sprite.Group()
-        global_units = pg.sprite.Group()
-        global_buildings = pg.sprite.Group()
-        projectiles = pg.sprite.Group()
-        particles = pg.sprite.Group()
-        selected_units = pg.sprite.Group()
-
-        unit_groups = {}
-        hqs = {}
-        player_side: list[Team] = []
-        enemy_side: list[Team] = []
-        num_players = 0
-
-        if game_mode == "1v1":
-            player_side = [Team.RED]
-            enemy_side = [Team.GREEN]
-            num_players = 2
-        elif game_mode == "2v2":
-            player_side = [Team.RED, Team.BLUE]
-            enemy_side = [Team.ORANGE, Team.YELLOW]
-            num_players = 4
-        elif game_mode == "3v3":
-            player_side = [Team.RED, Team.BLUE, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
-            num_players = 6
-        elif game_mode == "4v4":
-            player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
-            num_players = 8
-        elif game_mode == "4ffa":
-            player_side = [Team.RED]
-            enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
-            num_players = 4
-
-        teams_list = player_side + enemy_side
-        positions = get_starting_positions(
-            map_width=map_width,
-            map_height=map_height,
-            num_players=num_players,
-            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
-        )
-
-        for i, team in enumerate(teams_list):
-            pos = positions[i]
-            hq = Headquarters(position=pos, team=team)
-            hq.game_stats = {
-                "units_created": 3,
-                "units_lost": 0,
-                "units_destroyed": 0,
-                "buildings_constructed": 1,
-                "buildings_lost": 0,
-                "buildings_destroyed": 0,
-                "credits_earned": 0,
-            }
-            hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
-            hqs[team] = hq
-            units = pg.sprite.Group()
-            for _ in range(3):
-                offset = find_free_spawn_position(
-                    target_pos=pos, global_buildings=global_buildings.sprites(), global_units=global_units.sprites()
-                )
-                units.add(Infantry(position=offset, team=team, hq=hq))
-
-            unit_groups[team] = units
-
-        if not spectator_mode:
-            player_units = unit_groups[Team.RED]
-            for team in teams_list:
-                if team != Team.RED:
-                    ai_units.add(unit_groups[team])
-        else:
-            player_units = pg.sprite.Group()
-            for team in teams_list:
-                ai_units.add(unit_groups[team])
-
-        for ug in unit_groups.values():
-            global_units.add(ug)
-        for hq in hqs.values():
-            global_buildings.add(hq)
-
-        alliances = {}
-        player_side_set = set(player_side)
-        for team in teams_list:
-            if team in player_side_set:
-                alliances[team] = frozenset(player_side)
-            else:
-                alliances[team] = frozenset(enemy_side)
-
-        player_hq = None
-        player_team = None
-        player_allies = frozenset()
-        camera = Camera2d(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
-        if not spectator_mode:
-            player_hq = hqs[Team.RED]
-            player_team = Team.RED
-            player_allies = alliances[player_team]
-            interface = ProductionInterface(hq=player_hq)
-            interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
-        else:
-            interface = None
-            interface_rect = pg.Rect(0, 0, 0, 0)
-            camera.rect.center = (map_width / 2, map_height / 2)
-
-        ais = []
-        for team in teams_list:
-            if not spectator_mode and team == Team.RED:
-                continue
-
-            i = teams_list.index(team)
-            pos = positions[i]
-            center_x = map_width / 2
-            center_y = map_height / 2
-            build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
-            random.seed(team.value * 12345)  # Seed per team for consistent "personality" across runs
-            ai = AI(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
-            ais.append(ai)
-
-        self.game_data = GameData(
-            # pyrefly: ignore [bad-argument-type]
-            player_units=player_units,
-            # pyrefly: ignore [bad-argument-type]
-            ai_units=ai_units,
-            global_units=global_units,
-            global_buildings=global_buildings,
-            projectiles=projectiles,
-            particles=particles,
-            selected_units=selected_units,
-            unit_groups=unit_groups,
-            hqs=hqs,
-            player_hq=player_hq,
-            player_team=player_team,
-            player_allies=player_allies,
-            alliances=alliances,
-            interface=interface,
-            fog_of_war=FogOfWar2d(
-                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectator_mode
-            ),
-            camera=camera,
-            map_color=color,
-            map_width=map_width,
-            map_height=map_height,
+        self.game_data = GameData2d(
             game_mode=game_mode,
-            ais=ais,
-            interface_rect=interface_rect,
+            map_color=pg.Color(map_data["color"]),
+            map_width=int(map_data["width"] * scale),
+            map_height=int(map_data["height"] * scale),
             spectator_mode=spectator_mode,
-            teams=teams_list,
         )

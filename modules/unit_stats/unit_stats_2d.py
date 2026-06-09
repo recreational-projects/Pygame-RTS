@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Self
 
 from modules.data_2d import UNIT_CLASSES
-from modules.unit_stats.unit_stats import UnitStats
+
+from .unit_stats_generic import _UnitStatsGeneric
 
 
 def get_unit_cost(unit_cls_str: str) -> int:
@@ -20,7 +21,7 @@ def get_unit_size(unit_cls_str: str) -> tuple[int, int]:
     return unit_stats.size
 
 
-class UnitStats2d(UnitStats, frozen=True):
+class UnitStats2d(_UnitStatsGeneric, frozen=True):
     """Static unit stats, specialized for the isometric game."""
 
     @classmethod

@@ -6,7 +6,10 @@ import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from modules.spatial_hash import SpatialHash2d, SpatialHashIso
+    from modules.units import Unit2d, UnitIso
 
 
 # pyrefly: ignore [implicit-any-type-argument]
@@ -31,6 +34,7 @@ def handle_unit_collisions(*, all_units: list, unit_hash: SpatialHash2d | Spatia
                 dist = math.hypot(dx, dy)
                 if dist > 0:
                     r1 = max(unit.rect.width, unit.rect.height) / 2
+                    # pyrefly: ignore [missing-attribute]
                     r2 = max(other.rect.width, other.rect.height) / 2
                     overlap = max(0, r1 + r2 - dist)
                     if overlap > 0:
@@ -43,22 +47,27 @@ def handle_unit_collisions(*, all_units: list, unit_hash: SpatialHash2d | Spatia
                         other.position.y += direction_y * push
 
 
-# pyrefly: ignore [implicit-any-type-argument]
-def handle_unit_building_collisions(*, all_units: list, building_hash: SpatialHash2d | SpatialHashIso) -> None:
+def handle_unit_building_collisions(
+    *, all_units: Iterable[Unit2d] | Iterable[UnitIso], building_hash: SpatialHash2d | SpatialHashIso
+) -> None:
     """Pushes units away from building overlaps.
 
     :param all_units: List of units.
     :param building_hash: SpatialHash for buildings.
     """
     for unit in [u for u in all_units if u.health > 0 and not u.is_air]:
+        # pyrefly: ignore [missing-attribute]
         nearby_builds = building_hash.query(unit.position, max(unit.rect.width, unit.rect.height) + 50)
         for building in [b for b in nearby_builds if b.health > 0]:
+            # pyrefly: ignore [missing-attribute]
             if unit.rect.colliderect(building.rect):
                 dx = building.position.x - unit.position.x
                 dy = building.position.y - unit.position.y
                 dist = math.hypot(dx, dy)
                 if dist > 0:
+                    # pyrefly: ignore [missing-attribute]
                     r1 = max(unit.rect.width, unit.rect.height) / 2
+                    # pyrefly: ignore [missing-attribute]
                     r2 = max(building.rect.width, building.rect.height) / 2
                     overlap = max(0, r1 + r2 - dist)
                     if overlap > 0:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC
 from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, Field
@@ -22,7 +23,7 @@ class WeaponStats(BaseModel, frozen=True):
     cooldown: int = 0
 
 
-class UnitStats(BaseModel, frozen=True):
+class _UnitStatsGeneric(BaseModel, ABC, frozen=True):
     """Static unit stats."""
 
     cost: int
