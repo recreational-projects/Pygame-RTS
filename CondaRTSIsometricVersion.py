@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pygame as pg
 
-from modules.game_manager.game_manager_iso import GameManagerIso
+from modules.game_manager import GameManagerIso
 
 
 def main() -> None:

@@ -13,9 +13,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
-    "pyrefly>=1.0.0",
-    "pytest>=9.0.3",
-    "ruff>=0.15.16",
+    "pyrefly>=1.1.1",
+    "pytest>=9.1.1",
+    "ruff>=0.15.18",
 ]
 
 [tool.ruff]
@@ -31,20 +31,20 @@ ignore = [
     "C", # mmcabe
     "COM812", # missing-trailing-comma: conflicts with formatter
     "D203", "D213", # format choices
-    "D101",
-    "D102",
-    "D103",
-    "D105",
-    "D107",
-    "D200",
-    "D205",
-    "D401",
+    "D101", # undocumented-public-class
+    "D102", # method
+    "D103", # function
+    "D105", # magic-method
+    "D107", # public-init
+    "D205", # missing-blank-line-after-summary
+    "D401", # non-imperative_mood
     "E721", # type-comparison
     "ERA001", # commented-out-code
     "EM", # flake8-errmsg
     "FIX", # flake8-fixme
-    "PLC", # Pylint
-    "PLR", # Pylint
+    "PLR0912", # too-many-branches
+    "PLR0913", # too-many-arguments
+    "PLR2004", # magic-value-comparison
     "RUF012", # mutable-class-default
     "S311",  # suspicious-non-cryptographic-random-usage
     "SIM108", # if-else-block-instead-of-if-exp
@@ -56,19 +56,34 @@ extend-safe-fixes = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"modules/draw_*.py" = [
-    "ANN001", # missing-type-function-argument
-    "FBT003", # boolean-positional-value-in-call: pg.Font calls
+"modules/ai/*.py" = [
+    "PLR0911", # too-many-return-statements
+    "PLR0915", # too-many-statements
 ]
 "modules/camera/*.py" = [
     "ANN001", # missing-type-function-argument: keys
 ]
-"modules/production_interface_*.py" = [
+"modules/draw_*.py" = [
+    "ANN001", # missing-type-function-argument
+    "FBT003", # boolean-positional-value-in-call: pg.Font calls
+    "PLR0915", # too-many-statements
+]
+"modules/game_data/*.py" = [
+    "PLR0915", # too-many-statements
+]
+"modules/game_manager/*.py" = [
+    "PLR0915", # too-many-statements
+]
+"modules/production_interface/*.py" = [
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
 ]
 "modules/screens.py" = [
     "ANN401", # any-type
     "FBT003", # boolean-positional-value-in-call: pg.Font calls
+    "PLR0915", # too-many-statements
+]
+"modules/units/*.py" = [
+    "PLR0915", # too-many-statements
 ]
 "tests/*.py" = [
     "D",

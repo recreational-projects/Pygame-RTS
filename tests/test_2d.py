@@ -1,6 +1,6 @@
-from CondaRTS2DVersion import GameManager2d
 from modules.data_2d import UNIT_CLASSES
-from modules.unit_stats.unit_stats_2d import UnitStats2d
+from modules.game_manager import GameManager2d
+from modules.unit_stats import UnitStats2d
 
 
 def test_create_manager() -> None:

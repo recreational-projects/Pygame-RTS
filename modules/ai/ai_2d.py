@@ -12,7 +12,7 @@ from loguru import logger
 from modules.data_2d import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
 from modules.geometry import snap_to_grid
 from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
-from modules.units_2d import (
+from modules.units.units_2d import (
     Barracks,
     BlackMarket,
     Grenadier,
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.team import Team
-    from modules.units_2d import Unit2d
+    from modules.units import Unit2d
 
 BuildingType = type(
     Barracks | BlackMarket | Hangar | OilDerrick | PowerPlant | Refinery | ShaleFracker | Turret | WarFactory
@@ -120,8 +120,8 @@ def _get_nearest_enemy_building(*, enemy_buildings: Iterable[Unit2d], from_pos: 
 
 
 @dataclass(kw_only=True)
-class AI:
-    """AI class manages autonomous decision-making: production, building, scouting, attacking.
+class Ai2d:
+    """Manages autonomous decision-making: production, building, scouting, attacking.
 
     Supports personalities for varied behavior.
     """
@@ -132,7 +132,7 @@ class AI:
     """Preferred build direction angle."""
     allies: frozenset[Team]
 
-    # internal
+    # internal:
     timer_offset = random.randint(0, 180)  # Stagger starts by up to 3 seconds (at 60 FPS)
     interval_multiplier = random.uniform(0.7, 1.3)  # Vary speeds: 70-130% of base intervals
     personality: Literal["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"] = random.choice(

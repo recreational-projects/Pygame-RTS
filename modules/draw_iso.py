@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
     from modules.camera.camera_iso import CameraIso
     from modules.fog_of_war import FogOfWarIso
-    from modules.game_data_iso import GameDataIso
+    from modules.game_data import GameDataIso
     from modules.team import Team
-    from modules.units_iso import UnitIso
+    from modules.units import UnitIso
 
 
 def draw_mini_map(
@@ -129,13 +129,14 @@ def draw_fitness_panel(screen: pg.Surface, g: GameDataIso) -> None:
     title_surf = FONT_MEDIUM.render("Fitness", True, (255, 255, 255))
     screen.blit(title_surf, (panel_x + 10, y_offset))
     y_offset += 30
-    for team in g["teams"]:
-        hq = g["hqs"][team]
+    for team in g.teams:
+        hq = g.hqs[team]
         if hq.health <= 0:
             continue
+
         name = team_to_name[team]
-        fitness = g["current_fitness"].get(team, 0)
-        delta = g["fitness_deltas"].get(team, 0)
+        fitness = g.current_fitness.get(team, 0)
+        delta = g.fitness_deltas.get(team, 0)
         name_surf = FONT_MEDIUM.render(f"{name}:", True, team_to_color[team])
         screen.blit(name_surf, (panel_x + 10, y_offset))
         value_surf = FONT_MEDIUM.render(str(fitness), True, (255, 255, 255))

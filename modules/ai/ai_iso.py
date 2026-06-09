@@ -12,7 +12,7 @@ from pygame.math import Vector2
 from modules.data_iso import MAP_HEIGHT, MAP_WIDTH, TILE_SIZE
 from modules.geometry import calculate_formation_positions_iso, snap_to_grid
 from modules.unit_stats.unit_stats_iso import get_unit_cost, get_unit_size
-from modules.units_iso import (
+from modules.units.units_iso import (
     Barracks,
     Grenadier,
     Hangar,
@@ -21,7 +21,6 @@ from modules.units_iso import (
     PowerPlant,
     Refinery,
     Turret,
-    UnitIso,
     WarFactory,
 )
 from modules.world_iso import is_valid_building_position
@@ -33,6 +32,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.team import Team
+    from modules.units import UnitIso
 
 BuildingType = type(Barracks | Hangar | PowerPlant | Refinery | Turret | WarFactory)
 
@@ -98,14 +98,14 @@ def _get_nearest_enemy_building(*, enemy_buildings: Iterable[UnitIso], from_pos:
 
 
 @dataclass(kw_only=True)
-class AI:
+class AiIso:
     hq: Headquarters
     """Headquarters for the AI."""
     preferred_build_direction: float
     """Preferred build direction angle."""
     allies: frozenset[Team]
 
-    # internal
+    # internal:
     timer_offset = random.randint(0, 180)  # Stagger starts by up to 3 seconds (at 60 FPS)
     interval_multiplier = random.uniform(0.7, 1.3)  # Vary speeds: 70-130% of base intervals
     personality: Literal["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"] = random.choice(
@@ -160,7 +160,7 @@ class AI:
 
         self.base_priorities = base_priorities
         self.production_priorities = base_priorities
-        self.unit_counts = {unit: 0 for unit in base_priorities}
+        self.unit_counts = dict.fromkeys(base_priorities, 0)
 
     @property
     def aggression_bias(self) -> float:

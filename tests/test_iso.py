@@ -1,6 +1,6 @@
-from CondaRTSIsometricVersion import GameManagerIso
 from modules.data_iso import UNIT_CLASSES
-from modules.unit_stats.unit_stats_iso import UnitStatsIso
+from modules.game_manager import GameManagerIso
+from modules.unit_stats import UnitStatsIso
 
 
 def test_create_manager() -> None:

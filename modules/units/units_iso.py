@@ -10,13 +10,13 @@ import pygame as pg
 from pygame.math import Vector2
 
 from modules.data_iso import TILE_SIZE
-from modules.game_object.game_object_iso import GameObjectIso
+from modules.game_object import GameObjectIso
 from modules.geometry import closest_point_on_rect
-from modules.particles import GenericParticle, create_explosion_iso
+from modules.particle import Particle, create_explosion_iso
 from modules.pathfinding_iso import astar
-from modules.projectile.projectile_iso import ProjectileIso
+from modules.projectile import ProjectileIso
 from modules.team import Team, team_to_color
-from modules.unit_stats.unit_stats_iso import UnitStatsIso
+from modules.unit_stats import UnitStatsIso
 from modules.world_iso import is_valid_building_position
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from pygame.typing import Point
 
     from modules.camera.camera_iso import CameraIso
-    from modules.unit_stats.unit_stats import WeaponStats
+    from modules.unit_stats.unit_stats_generic import WeaponStats
 
 
 class UnitIso(GameObjectIso):
@@ -73,7 +73,6 @@ class UnitIso(GameObjectIso):
             self.production_queue = []
             self.production_timer: int | None = None
 
-        # pyrefly: ignore [missing-override-decorator]
         self.rect = pg.Rect(self.position.x - self.size[0] / 2, self.position.y - self.size[1] / 2, *self.size)
         self._setup_drawing()
 
@@ -181,7 +180,7 @@ class UnitIso(GameObjectIso):
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), base_points, int(2 * zoom))
 
-        self.draw_health_bar(surface, camera, mouse_pos)
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -473,7 +472,7 @@ class UnitIso(GameObjectIso):
             select_surf = pg.Surface((select_r * 2, select_r * 2), pg.SRCALPHA)
             pg.draw.circle(select_surf, pulse_color, (select_r, select_r), select_r, int(3 * zoom))
             surface.blit(select_surf, (int(base_screen[0] - select_r), int(base_screen[1] - select_r)))
-        self.draw_health_bar(surface, camera, mouse_pos)
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -579,7 +578,7 @@ class UnitIso(GameObjectIso):
             pg.draw.line(surface, outline_color, p_b3, p_b4, int(1 * zoom))
             pg.draw.line(surface, outline_color, p_b4, p_b1, int(1 * zoom))
 
-        self.draw_health_bar(surface, camera, mouse_pos)
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -667,11 +666,48 @@ class UnitIso(GameObjectIso):
             else:
                 pg.draw.line(surface, outline_color, all_points[edge[0]], all_points[edge[1]], line_width)
 
+    def draw_health_bar_if_needed(
+        self, *, surface: pg.Surface, camera: CameraIso, mouse_pos: Point | None = None
+    ) -> None:
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if not self._needs_healthbar(camera=camera, mouse_pos=mouse_pos):
+            return
+
+        screen_pos = camera.world_to_iso(self.position, camera.zoom)
+        health_ratio = self.health / self.max_health
+        color = (0, 255, 0) if health_ratio > 0.5 else (255, 0, 0)
+        bar_width = 25
+        bar_height = 4
+        bar_x = screen_pos[0] - bar_width / 2
+        bar_y = screen_pos[1] - (self.rect.height / 2 * camera.zoom) - bar_height - 2
+        pg.draw.rect(surface, (0, 0, 0), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2))
+        pg.draw.rect(surface, color, (bar_x, bar_y, bar_width * health_ratio, bar_height))
+        pg.draw.rect(surface, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+
+    def _needs_healthbar(self, *, camera: CameraIso, mouse_pos: Point | None = None) -> bool:
+        if not isinstance(self.rect, pg.Rect):
+            raise TypeError("self.rect` is unexpected non-`Rect` type")
+
+        if self.under_attack:
+            return True
+
+        if self.is_building and self.health < self.max_health:
+            return True
+
+        if mouse_pos is not None:
+            screen_rect = camera.get_screen_rect(self.rect)
+            if screen_rect.collidepoint(mouse_pos):
+                return True
+
+        return False
+
     @override
     def update(
         self,
         *args: Any,
-        particles: pg.sprite.Group[GenericParticle] | None = None,
+        particles: pg.sprite.Group[Particle] | None = None,
         friendly_units: MutableSet[UnitIso] | None = None,
         all_units: pg.sprite.Group[UnitIso] | None = None,
         global_buildings: Iterable[UnitIso] | None = None,
@@ -927,7 +963,7 @@ class UnitIso(GameObjectIso):
         *,
         target: UnitIso,
         projectiles: pg.sprite.Group[ProjectileIso],
-        particles: pg.sprite.Group[GenericParticle],
+        particles: pg.sprite.Group[Particle],
     ) -> None:
         if not self.weapons or self.last_shot_time > 0:
             return
@@ -1127,7 +1163,8 @@ class PowerPlant(UnitIso):
         )
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -1215,7 +1252,8 @@ class Refinery(UnitIso):
         pg.draw.polygon(surface, pg.Color(255, 100, 0), flame_points)
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -1312,7 +1350,8 @@ class Turret(UnitIso):
             )
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -1429,7 +1468,8 @@ class Barracks(UnitIso):
         pg.draw.line(surface, _team_color, p_flag_top, p_flag_end, int(4 * zoom))
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -1543,7 +1583,8 @@ class WarFactory(UnitIso):
                 )
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
 
@@ -1665,6 +1706,7 @@ class Hangar(UnitIso):
         )
         if self.selected:
             pg.draw.polygon(surface, (255, 255, 0), p_bottom, int(2 * zoom))
-        self.draw_health_bar(surface, camera, mouse_pos)
+
+        self.draw_health_bar_if_needed(surface=surface, camera=camera, mouse_pos=mouse_pos)
         for particle in self.plasma_burn_particles:
             particle.draw_iso(surface, camera)
