@@ -35,6 +35,7 @@ def handle_unit_collisions(*, all_units: list, unit_hash: SpatialHash2d | Spatia
                 dist = math.hypot(dx, dy)
                 if dist > 0:
                     r1 = max(unit.rect.width, unit.rect.height) / 2
+                    # pyrefly: ignore [missing-attribute]
                     r2 = max(other.rect.width, other.rect.height) / 2
                     overlap = max(0, r1 + r2 - dist)
                     if overlap > 0:
@@ -67,6 +68,7 @@ def handle_unit_building_collisions(
                 if dist > 0:
                     # pyrefly: ignore [missing-attribute]
                     r1 = max(unit.rect.width, unit.rect.height) / 2
+                    # pyrefly: ignore [missing-attribute]
                     r2 = max(building.rect.width, building.rect.height) / 2
                     overlap = max(0, r1 + r2 - dist)
                     if overlap > 0:

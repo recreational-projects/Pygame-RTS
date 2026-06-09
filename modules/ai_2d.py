@@ -132,7 +132,7 @@ class AI:
     """Preferred build direction angle."""
     allies: frozenset[Team]
 
-    # internal
+    # internal:
     timer_offset = random.randint(0, 180)  # Stagger starts by up to 3 seconds (at 60 FPS)
     interval_multiplier = random.uniform(0.7, 1.3)  # Vary speeds: 70-130% of base intervals
     personality: Literal["AGGRESSIVE", "DEFENSIVE", "BALANCED", "RUSHER"] = random.choice(

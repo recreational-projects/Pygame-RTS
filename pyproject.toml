@@ -31,12 +31,11 @@ ignore = [
     "C", # mmcabe
     "COM812", # missing-trailing-comma: conflicts with formatter
     "D203", "D213", # format choices
-    "D101",
-    "D102",
-    "D103",
-    "D105",
-    "D107",
-    "D200",
+    "D101", # undocumented-public-class
+    "D102", # method
+    "D103", # function
+    "D105", # magic-method
+    "D107", # public-init
     "D205",
     "D401",
     "E721", # type-comparison

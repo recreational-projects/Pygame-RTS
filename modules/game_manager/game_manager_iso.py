@@ -601,37 +601,31 @@ class GameManagerIso(GameManagerGeneric):
         hqs = {}
         player_side: list[Team] = []
         enemy_side: list[Team] = []
-        num_players = 0
 
         if game_mode == "1v1":
             player_side = [Team.RED]
             enemy_side = [Team.GREEN]
-            num_players = 2
         elif game_mode == "2v2":
             player_side = [Team.RED, Team.BLUE]
             enemy_side = [Team.ORANGE, Team.YELLOW]
-            num_players = 4
         elif game_mode == "3v3":
             player_side = [Team.RED, Team.BLUE, Team.CYAN]
             enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
-            num_players = 6
         elif game_mode == "4v4":
             player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
             enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
-            num_players = 8
         elif game_mode == "4ffa":
             player_side = [Team.RED]
             enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
-            num_players = 4
 
-        teams_list = player_side + enemy_side
+        teams = player_side + enemy_side
         positions = get_starting_positions(
             map_width=map_width,
             map_height=map_height,
-            num_players=num_players,
+            num_players=len(teams),
             edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
         )
-        for i, team in enumerate(teams_list):
+        for i, team in enumerate(teams):
             pos = positions[i]
             hq = Headquarters(position=pos, team=team)
             hq.map_width = map_width
@@ -665,13 +659,13 @@ class GameManagerIso(GameManagerGeneric):
 
         if not spectator_mode:
             player_units = unit_groups[Team.RED]
-            for team in teams_list:
+            for team in teams:
                 if team != Team.RED:
                     ai_units.add(unit_groups[team])
 
         else:
             player_units = pg.sprite.Group()
-            for team in teams_list:
+            for team in teams:
                 ai_units.add(unit_groups[team])
 
         for ug in unit_groups.values():
@@ -682,7 +676,7 @@ class GameManagerIso(GameManagerGeneric):
 
         alliances = {}
         player_side_set = set(player_side)
-        for team in teams_list:
+        for team in teams:
             if team in player_side_set:
                 alliances[team] = frozenset(player_side)
             else:
@@ -698,11 +692,11 @@ class GameManagerIso(GameManagerGeneric):
             player_allies = frozenset()
 
         ais = []
-        for team in teams_list:
+        for team in teams:
             if not spectator_mode and team == Team.RED:
                 continue
 
-            i = teams_list.index(team)
+            i = teams.index(team)
             pos = positions[i]
             center_x = map_width / 2
             center_y = map_height / 2
@@ -751,9 +745,9 @@ class GameManagerIso(GameManagerGeneric):
             game_mode=game_mode,
             ais=ais,
             spectator_mode=spectator_mode,
-            teams=teams_list,
+            teams=teams,
             terrain_features=generate_terrain_features(map_name=map_name, map_width=map_width, map_height=map_height),
-            previous_fitness={team: 0 for team in teams_list},
+            previous_fitness={team: 0 for team in teams},
             current_fitness={},
             fitness_deltas={},
             tile_ownership=ownership,

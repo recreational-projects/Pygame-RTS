@@ -176,6 +176,7 @@ class GameDataIso:
             for obj in candidates:
                 if obj.team not in allied_teams and obj.health > 0:
                     if obj.is_building:
+                        # pyrefly: ignore [bad-argument-type]
                         closest_pt = closest_point_on_rect(rect=obj.rect, pos=entity.position)
                         dist = Vector2(closest_pt).distance_to(entity.position)
                     else:
@@ -206,6 +207,7 @@ class GameDataIso:
 
             entity.attack_target = closest_target
             if closest_target.is_building:
+                # pyrefly: ignore [bad-argument-type]
                 closest_pt = closest_point_on_rect(rect=closest_target.rect, pos=entity.position)
                 dir_vec = Vector2(closest_pt) - entity.position
                 dist_to_target = dir_vec.length()

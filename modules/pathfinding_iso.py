@@ -29,7 +29,7 @@ def astar(
     num_tiles_y = map_height // tile_size
     # pyrefly: ignore [implicit-any-empty-container]
     open_set = []
-    heapq.heappush(open_set, (0, start_tile))
+    heapq.heappush(open_set, (0.0, start_tile))
     came_from: dict[IntPoint, IntPoint] = {}
     g_score = {start_tile: 0.0}
     f_score = {start_tile: _heuristic(start_tile, goal_tile)}

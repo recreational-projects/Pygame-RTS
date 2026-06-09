@@ -38,7 +38,6 @@ def create_explosion_2d(
     :param team: Team for particle color.
     :param count: Number of particles (default: PARTICLES_PER_EXPLOSION).
     """
-    # Spawns a burst of particles at position with team color.
     color = team_to_color[team]
     for _ in range(count):
         vx = random.uniform(-3, 3)

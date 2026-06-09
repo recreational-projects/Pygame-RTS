@@ -12,12 +12,8 @@ import pygame as pg
 from pygame.math import Vector2
 
 from modules.ai_2d import AI
-from modules.camera.camera_2d import Camera2d
 from modules.data import Palette
 from modules.data_2d import (
-    CONSOLE_HEIGHT,
-    MAP_HEIGHT,
-    MAP_WIDTH,
     MAPS,
     MINI_MAP_HEIGHT,
     MINI_MAP_WIDTH,
@@ -27,12 +23,10 @@ from modules.data_2d import (
     TILE_SIZE,
 )
 from modules.draw_2d import draw_mini_map
-from modules.fog_of_war import FogOfWar2d
 from modules.game_data_2d import GameData2d
 from modules.game_manager.game_manager_generic import GameManagerGeneric
 from modules.game_state import GameState
 from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
-from modules.production_interface_2d import ProductionInterface
 from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHash2d
 from modules.team import Team, team_to_name
@@ -402,9 +396,9 @@ class GameManager2d(GameManagerGeneric):
                 if building.health > 0 and visible:
                     building.draw(self.screen, g.camera, mouse_pos)
 
-            if g.interface and not g.spectator_mode:
+            if g.interface:
                 if g.player_team is None:
-                    raise ValueError("`game_data.player_team` cannot be `None`")  # TODO: typeguard
+                    raise ValueError("ProductionInterface requires `player_team`.")
 
                 if g.interface.placing_cls is not None:
                     mouse_pos = pg.mouse.get_pos()
@@ -546,80 +540,50 @@ class GameManager2d(GameManagerGeneric):
         hqs = {}
         player_side: list[Team] = []
         enemy_side: list[Team] = []
-        num_players = 0
-
         if game_mode == "1v1":
             player_side = [Team.RED]
             enemy_side = [Team.GREEN]
-            num_players = 2
         elif game_mode == "2v2":
             player_side = [Team.RED, Team.BLUE]
             enemy_side = [Team.ORANGE, Team.YELLOW]
-            num_players = 4
         elif game_mode == "3v3":
             player_side = [Team.RED, Team.BLUE, Team.CYAN]
             enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
-            num_players = 6
         elif game_mode == "4v4":
             player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
             enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
-            num_players = 8
         elif game_mode == "4ffa":
             player_side = [Team.RED]
             enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
-            num_players = 4
 
-        teams_list = player_side + enemy_side
+        teams = player_side + enemy_side
         positions = get_starting_positions(
             map_width=map_width,
             map_height=map_height,
-            num_players=num_players,
+            num_players=len(teams),
             edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
         )
-
-        for i, team in enumerate(teams_list):
+        for i, team in enumerate(teams):
             pos = positions[i]
             hq = Headquarters(position=pos, team=team)
-            hq.game_stats = {
-                "units_created": 3,
-                "units_lost": 0,
-                "units_destroyed": 0,
-                "buildings_constructed": 1,
-                "buildings_lost": 0,
-                "buildings_destroyed": 0,
-                "credits_earned": 0,
-            }
+            hq.game_stats["buildings_constructed"] += 1
             hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
             hqs[team] = hq
+
         alliances = {}
         player_side_set = set(player_side)
-        for team in teams_list:
+        for team in teams:
             if team in player_side_set:
                 alliances[team] = frozenset(player_side)
             else:
                 alliances[team] = frozenset(enemy_side)
 
-        player_hq = None
-        player_team = None
-        player_allies = frozenset()
-        camera = Camera2d(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
-        if not spectator_mode:
-            player_hq = hqs[Team.RED]
-            player_team = Team.RED
-            player_allies = alliances[player_team]
-            interface = ProductionInterface(hq=player_hq)
-            interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
-        else:
-            interface = None
-            interface_rect = pg.Rect(0, 0, 0, 0)
-            camera.rect.center = (map_width / 2, map_height / 2)
-
         ais = []
-        for team in teams_list:
+        for team in teams:
             if not spectator_mode and team == Team.RED:
                 continue
 
-            i = teams_list.index(team)
+            i = teams.index(team)
             pos = positions[i]
             center_x = map_width / 2
             center_y = map_height / 2
@@ -637,21 +601,11 @@ class GameManager2d(GameManagerGeneric):
             selected_units=selected_units,
             unit_groups=unit_groups,
             hqs=hqs,
-            player_hq=player_hq,
-            player_team=player_team,
-            player_allies=player_allies,
             alliances=alliances,
-            interface=interface,
-            interface_rect=interface_rect,
-            fog_of_war=FogOfWar2d(
-                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator=spectator_mode
-            ),
-            camera=camera,
             map_color=color,
             map_width=map_width,
             map_height=map_height,
-            game_mode=game_mode,
             ais=ais,
             spectator_mode=spectator_mode,
-            teams=teams_list,
+            teams=teams,
         )
