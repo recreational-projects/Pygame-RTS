@@ -53,7 +53,7 @@ class _FogOfWarGeneric(ABC):
 
     def update_visibility(
         self,
-        ally_units: Iterable[Unit2d],
+        ally_units: Iterable[Unit2d] | Iterable[UnitIso],
         ally_buildings: Iterable[Unit2d] | Iterable[UnitIso],
         global_buildings: Iterable[Unit2d] | Iterable[UnitIso],
     ) -> None:

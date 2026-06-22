@@ -10,8 +10,6 @@ import pygame as pg
 from pygame.math import Vector2
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from pygame.typing import Point
 
     from modules.projectile.projectile_generic import ProjectileGeneric
@@ -87,40 +85,6 @@ def calculate_formation_positions_iso(
             positions.append((pos.x, pos.y))
 
     return positions
-
-
-def get_starting_positions(
-    *, map_width: int, map_height: int, num_players: int, edge_dist: int
-) -> Sequence[tuple[float, float]]:
-    """Generates balanced starting positions around the map edges for multiple players.
-
-    :param map_width: Width of the map.
-    :param map_height: Height of the map.
-    :param num_players: Number of players.
-    :param edge_dist: Distance from the edge.
-    :return: List of starting position tuples.
-    """
-    half_w = map_width / 2
-    half_h = map_height / 2
-
-    base_positions = [
-        (half_w, edge_dist),
-        (map_width - edge_dist, edge_dist),
-        (map_width - edge_dist, half_h),
-        (map_width - edge_dist, map_height - edge_dist),
-        (half_w, map_height - edge_dist),
-        (edge_dist, map_height - edge_dist),
-        (edge_dist, half_h),
-        (edge_dist, edge_dist),
-    ]
-
-    step = max(1, 8 // num_players)
-    selected_positions = base_positions[::step][:num_players]
-
-    while len(selected_positions) < num_players:
-        selected_positions.append(base_positions[len(selected_positions) % 8])
-
-    return selected_positions
 
 
 def closest_point_on_rect(*, rect: pg.FRect | pg.Rect, pos: Point) -> tuple[float, float]:

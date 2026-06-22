@@ -3,54 +3,36 @@
 from __future__ import annotations
 
 import math
-import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, override
 
 import pygame as pg
 from pygame.math import Vector2
 
-from modules.ai import AiIso
-from modules.camera.camera_iso import CameraIso
 from modules.data import Palette
 from modules.data_iso import (
-    CONSOLE_HEIGHT,
-    MAP_HEIGHT,
-    MAP_WIDTH,
     MAPS,
     MINI_MAP_HEIGHT,
     MINI_MAP_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
-    STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
 )
 from modules.draw_iso import draw_fitness_panel, draw_mini_map
-from modules.fog_of_war import FogOfWarIso
 from modules.game_data import GameDataIso
 from modules.game_state import GameState
-from modules.geometry import calculate_formation_positions_iso, get_starting_positions, snap_to_grid
-from modules.production_interface import ProductionInterfaceIso
+from modules.geometry import calculate_formation_positions_iso, snap_to_grid
 from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHashIso
-from modules.team import Team, team_to_name
-from modules.terrain_feature_iso import generate_terrain_features
+from modules.team import team_to_name
 from modules.unit_stats.unit_stats_iso import get_unit_cost, get_unit_size
-from modules.units.units_iso import Headquarters, Infantry
 from modules.world import handle_unit_building_collisions, handle_unit_collisions
-from modules.world_iso import (
-    find_free_spawn_position,
-    is_valid_building_position,
-)
+from modules.world_iso import is_valid_building_position
 
 from .game_manager_generic import _GameManagerGeneric
 
 if TYPE_CHECKING:
-    from collections.abc import MutableMapping
-
     from pygame.typing import IntPoint, Point
-
-    from modules.units import UnitIso
 
 
 def _handle_minimap_click(*, game_data: GameDataIso, mouse_pos: IntPoint, mini_x: int, mini_y: int) -> None:
@@ -66,7 +48,7 @@ def _handle_minimap_click(*, game_data: GameDataIso, mouse_pos: IntPoint, mini_x
     g.camera.clamp()
     if not g.spectator_mode:
         if g.player_hq is None:
-            raise ValueError("`player_hq` cannot be `None`")  # TODO: typeguard
+            raise ValueError("`player_hq` must not be `None` if not spectating")
 
         for unit in g.player_units:
             unit.selected = False
@@ -580,181 +562,15 @@ class GameManagerIso(_GameManagerGeneric):
     @override
     def _initialize_game(self, *, game_mode: str, size_name: str, map_name: str, spectator_mode: bool = False) -> None:
         map_data = MAPS[map_name]
-        base_width = map_data["width"]
-        base_height = map_data["height"]
-        color = pg.Color(map_data["color"])
-
         size_scales = {"tiny": 0.80, "small": 0.80, "medium": 0.80, "large": 0.80, "huge": 0.80}
         scale = size_scales[size_name]
-        map_width = int(base_width * scale)
-        map_height = int(base_height * scale)
-
-        num_tx = map_width // TILE_SIZE
-        num_ty = map_height // TILE_SIZE
-        ownership = [[None] * num_ty for _ in range(num_tx)]
-
-        ai_units: pg.sprite.Group[UnitIso] = pg.sprite.Group()
-        global_units = pg.sprite.Group()
-        global_buildings = pg.sprite.Group()
-        projectiles = pg.sprite.Group()
-        particles = pg.sprite.Group()
-        selected_units = pg.sprite.Group()
-
-        unit_groups: MutableMapping[Team, pg.sprite.Group[UnitIso]] = {}
-        hqs = {}
-        player_side: list[Team] = []
-        enemy_side: list[Team] = []
-
-        if game_mode == "1v1":
-            player_side = [Team.RED]
-            enemy_side = [Team.GREEN]
-        elif game_mode == "2v2":
-            player_side = [Team.RED, Team.BLUE]
-            enemy_side = [Team.ORANGE, Team.YELLOW]
-        elif game_mode == "3v3":
-            player_side = [Team.RED, Team.BLUE, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
-        elif game_mode == "4v4":
-            player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
-        elif game_mode == "4ffa":
-            player_side = [Team.RED]
-            enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
-
-        teams = player_side + enemy_side
-        positions = get_starting_positions(
-            map_width=map_width,
-            map_height=map_height,
-            num_players=len(teams),
-            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
-        )
-        for i, team in enumerate(teams):
-            pos = positions[i]
-            hq = Headquarters(position=pos, team=team)
-            hq.map_width = map_width
-            hq.map_height = map_height
-            hq.game_stats = {
-                "units_created": 3,
-                "units_lost": 0,
-                "units_destroyed": 0,
-                "buildings_constructed": 1,
-                "buildings_lost": 0,
-                "buildings_destroyed": 0,
-                "credits_earned": 0,
-            }
-            hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
-            hqs[team] = hq
-            units: pg.sprite.Group[UnitIso] = pg.sprite.Group()
-            for _ in range(3):
-                offset = find_free_spawn_position(
-                    target_pos=pos,
-                    global_buildings=global_buildings.sprites(),
-                    global_units=global_units.sprites(),
-                    map_width=map_width,
-                    map_height=map_height,
-                )
-                unit = Infantry(position=offset, team=team, hq=hq)
-                unit.map_width = map_width
-                unit.map_height = map_height
-                units.add(unit)
-
-            unit_groups[team] = units
-
-        if not spectator_mode:
-            player_units = unit_groups[Team.RED]
-            for team in teams:
-                if team != Team.RED:
-                    ai_units.add(unit_groups[team])
-
-        else:
-            player_units = pg.sprite.Group()
-            for team in teams:
-                ai_units.add(unit_groups[team])
-
-        for ug in unit_groups.values():
-            global_units.add(ug)
-
-        for hq in hqs.values():
-            global_buildings.add(hq)
-
-        alliances = {}
-        player_side_set = set(player_side)
-        for team in teams:
-            if team in player_side_set:
-                alliances[team] = frozenset(player_side)
-            else:
-                alliances[team] = frozenset(enemy_side)
-
-        if not spectator_mode:
-            player_hq = hqs[Team.RED]
-            player_team = Team.RED
-            player_allies = alliances[player_team]
-        else:
-            player_hq = None
-            player_team = None
-            player_allies = frozenset()
-
-        ais = []
-        for team in teams:
-            if not spectator_mode and team == Team.RED:
-                continue
-
-            i = teams.index(team)
-            pos = positions[i]
-            center_x = map_width / 2
-            center_y = map_height / 2
-            build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
-            random.seed(team.value * 12345)
-            ai = AiIso(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
-            ais.append(ai)
-
-        camera = CameraIso(map_width=MAP_WIDTH, map_height=MAP_HEIGHT, width=SCREEN_WIDTH, height=SCREEN_HEIGHT)
-        if spectator_mode:
-            camera.rect.center = (map_width / 2, map_height / 2)
-
-        if not spectator_mode:
-            if player_hq is None:
-                raise ValueError("Player HQ is None")
-
-            interface = ProductionInterfaceIso(hq=player_hq)
-            interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
-        else:
-            interface = None
-            interface_rect = pg.Rect(0, 0, 0, 0)
-
+        map_width = int(map_data["width"] * scale)
+        map_height = int(map_data["height"] * scale)
         self.game_data = GameDataIso(
-            player_units=player_units,
-            ai_units=ai_units,
-            global_units=global_units,
-            global_buildings=global_buildings,
-            projectiles=projectiles,
-            particles=particles,
-            selected_units=selected_units,
-            unit_groups=unit_groups,
-            hqs=hqs,
-            player_hq=player_hq,
-            player_team=player_team,
-            player_allies=player_allies,
-            alliances=alliances,
-            interface=interface,
-            interface_rect=interface_rect,
-            fog_of_war=FogOfWarIso(
-                map_width=map_width, map_height=map_height, tile_size=TILE_SIZE, spectator_mode=spectator_mode
-            ),
-            camera=camera,
-            map_color=color,
+            game_mode=game_mode,
+            map_name=map_name,
+            map_color=pg.Color(map_data["color"]),
             map_width=map_width,
             map_height=map_height,
-            game_mode=game_mode,
-            ais=ais,
             spectator_mode=spectator_mode,
-            teams=teams,
-            terrain_features=generate_terrain_features(map_name=map_name, map_width=map_width, map_height=map_height),
-            previous_fitness=dict.fromkeys(teams, 0),
-            current_fitness={},
-            fitness_deltas={},
-            tile_ownership=ownership,
-            tile_timer=0,
-            num_tx=num_tx,
-            num_ty=num_ty,
         )

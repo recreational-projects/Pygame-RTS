@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-import random
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, override
@@ -11,7 +9,6 @@ from typing import TYPE_CHECKING, override
 import pygame as pg
 from pygame.math import Vector2
 
-from modules.ai import Ai2d
 from modules.data import Palette
 from modules.data_2d import (
     MAPS,
@@ -19,18 +16,16 @@ from modules.data_2d import (
     MINI_MAP_WIDTH,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
-    STARTING_POSITIONS_EDGE_OFFSET,
     TILE_SIZE,
 )
 from modules.draw_2d import draw_mini_map
 from modules.game_data import GameData2d
 from modules.game_state import GameState
-from modules.geometry import calculate_formation_positions_2d, get_starting_positions, snap_to_grid
+from modules.geometry import calculate_formation_positions_2d, snap_to_grid
 from modules.screens import VictoryScreen
 from modules.spatial_hash import SpatialHash2d
-from modules.team import Team, team_to_name
+from modules.team import team_to_name
 from modules.unit_stats.unit_stats_2d import get_unit_cost, get_unit_size
-from modules.units.units_2d import Headquarters
 from modules.world import handle_unit_building_collisions, handle_unit_collisions
 from modules.world_2d import (
     is_valid_building_position,
@@ -45,9 +40,9 @@ if TYPE_CHECKING:
 
 
 def _handle_minimap_click(*, game_data: GameData2d, mouse_pos: IntPoint, minimap_origin: IntPoint) -> None:
-    g = game_data
     local_x = mouse_pos[0] - minimap_origin[0]
     local_y = mouse_pos[1] - minimap_origin[1]
+    g = game_data
     scale_x = g.map_width / MINI_MAP_WIDTH
     scale_y = g.map_height / MINI_MAP_HEIGHT
     world_x = local_x * scale_x
@@ -56,6 +51,9 @@ def _handle_minimap_click(*, game_data: GameData2d, mouse_pos: IntPoint, minimap
     g.camera.rect.centery = world_y
     g.camera.clamp()
     if not g.spectator_mode:
+        if g.player_hq is None:
+            raise ValueError("`player_hq` must not be `None` if not spectating")
+
         for unit in g.player_units:
             unit.selected = False
 
@@ -83,11 +81,11 @@ def _handle_mouse_1_click_non_spectator_mode(*, game_data: GameData2d, mouse_pos
             building_to_sell = result[1]
             if building_to_sell in g.global_buildings:
                 g.global_buildings.remove(building_to_sell)
-
                 g.player_hq.credits += building_to_sell.cost // 2
                 if g.selected_building == building_to_sell:
                     g.selected_building = None
                     g.interface.update_producer(g.player_hq)
+
         return
 
     if g.interface.placing_cls is not None and not g.interface_rect.collidepoint(mouse_pos):
@@ -519,94 +517,15 @@ class GameManager2d(_GameManagerGeneric):
         :param map_name: Map name string.
         :param spectator_mode: If True, spectator mode.
         """
-        # Sets up game world: scales map, creates teams/HQs/units, alliances, AI, camera, UI.
         map_data = MAPS[map_name]
-        base_width = map_data["width"]
-        base_height = map_data["height"]
-        color = pg.Color(map_data["color"])
-
         size_scales = {"tiny": 0.80, "small": 0.80, "medium": 0.80, "large": 0.80, "huge": 0.80}
         scale = size_scales[size_name]
-        map_width = int(base_width * scale)
-        map_height = int(base_height * scale)
-
-        ai_units = pg.sprite.Group()
-        global_units = pg.sprite.Group()
-        global_buildings: pg.sprite.Group[Unit2d] = pg.sprite.Group()
-        projectiles = pg.sprite.Group()
-        particles = pg.sprite.Group()
-        selected_units = pg.sprite.Group()
-
-        unit_groups: dict[Team, pg.sprite.Group[Unit2d]] = {}
-        hqs = {}
-        player_side: list[Team] = []
-        enemy_side: list[Team] = []
-        if game_mode == "1v1":
-            player_side = [Team.RED]
-            enemy_side = [Team.GREEN]
-        elif game_mode == "2v2":
-            player_side = [Team.RED, Team.BLUE]
-            enemy_side = [Team.ORANGE, Team.YELLOW]
-        elif game_mode == "3v3":
-            player_side = [Team.RED, Team.BLUE, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW]
-        elif game_mode == "4v4":
-            player_side = [Team.RED, Team.BLUE, Team.GREEN, Team.CYAN]
-            enemy_side = [Team.MAGENTA, Team.ORANGE, Team.YELLOW, Team.GREY]
-        elif game_mode == "4ffa":
-            player_side = [Team.RED]
-            enemy_side = [Team.BLUE, Team.GREEN, Team.CYAN]
-
-        teams = player_side + enemy_side
-        positions = get_starting_positions(
-            map_width=map_width,
-            map_height=map_height,
-            num_players=len(teams),
-            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
-        )
-        for i, team in enumerate(teams):
-            pos = positions[i]
-            hq = Headquarters(position=pos, team=team)
-            hq.game_stats["buildings_constructed"] += 1
-            hq.rally_point = Vector2(pos[0] + (100 if pos[0] < map_width / 2 else -100), pos[1])
-            hqs[team] = hq
-
-        alliances = {}
-        player_side_set = set(player_side)
-        for team in teams:
-            if team in player_side_set:
-                alliances[team] = frozenset(player_side)
-            else:
-                alliances[team] = frozenset(enemy_side)
-
-        ais = []
-        for team in teams:
-            if not spectator_mode and team == Team.RED:
-                continue
-
-            i = teams.index(team)
-            pos = positions[i]
-            center_x = map_width / 2
-            center_y = map_height / 2
-            build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
-            random.seed(team.value * 12345)  # Seed per team for consistent "personality" across runs
-            ai = Ai2d(hq=hqs[team], preferred_build_direction=build_dir, allies=alliances[team])
-            ais.append(ai)
-
+        map_width = int(map_data["width"] * scale)
+        map_height = int(map_data["height"] * scale)
         self.game_data = GameData2d(
-            ai_units=ai_units,
-            global_units=global_units,
-            global_buildings=global_buildings,
-            projectiles=projectiles,
-            particles=particles,
-            selected_units=selected_units,
-            unit_groups=unit_groups,
-            hqs=hqs,
-            alliances=alliances,
-            map_color=color,
+            game_mode=game_mode,
+            map_color=pg.Color(map_data["color"]),
             map_width=map_width,
             map_height=map_height,
-            ais=ais,
             spectator_mode=spectator_mode,
-            teams=teams,
         )

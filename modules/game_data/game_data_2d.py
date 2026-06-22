@@ -2,60 +2,66 @@
 
 from __future__ import annotations
 
+import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import pygame as pg
 from pygame.math import Vector2
 
+from modules.ai import Ai2d
 from modules.camera import Camera2d
-from modules.data_2d import CONSOLE_HEIGHT, SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE
+from modules.data_2d import CONSOLE_HEIGHT, SCREEN_HEIGHT, SCREEN_WIDTH, STARTING_POSITIONS_EDGE_OFFSET, TILE_SIZE
 from modules.fog_of_war import FogOfWar2d
+from modules.game_data.game_data_generic import get_starting_positions
 from modules.geometry import check_collision, closest_point_on_rect
 from modules.particle import Particle, create_explosion_2d
 from modules.production_interface import ProductionInterface2d
 from modules.team import Team
-from modules.units.units_2d import Infantry
+from modules.units.units_2d import Headquarters, Infantry
+
+from .game_data_generic import determine_sides
 
 if TYPE_CHECKING:
+    from collections.abc import MutableMapping
+
     from pygame.typing import IntPoint, Point
 
-    from modules.ai import Ai2d
     from modules.projectile import Projectile2d
     from modules.spatial_hash import SpatialHash2d
     from modules.units import Unit2d
-    from modules.units.units_2d import Headquarters
 
 
 @dataclass(kw_only=True)
 class GameData2d:
     """Global game data for 2d game."""
 
-    ai_units: pg.sprite.Group[Unit2d]
-    global_units: pg.sprite.Group[Unit2d]
-    global_buildings: pg.sprite.Group[Unit2d]
-    projectiles: pg.sprite.Group[Projectile2d]
-    particles: pg.sprite.Group[Particle]
-    selected_units: pg.sprite.Group[Unit2d]
-    unit_groups: dict[Team, Any] = field(default_factory=dict)
-    hqs: dict[Team, Any] = field(default_factory=dict)
-    alliances: dict[Team, frozenset[Team]] = field(default_factory=dict)
+    # init-only:
+    game_mode: InitVar[str]
+
+    # init:
     map_color: pg.Color
     map_width: int
     map_height: int
-    ais: list[Ai2d] = field(default_factory=list)
-    teams: list[Team] = field(default_factory=list)  # currently, order is important
 
     # optional:
     spectator_mode: bool = field(default=False)
 
     # internal:
+    teams: list[Team] = field(init=False, default_factory=list)  # currently, order is important
+    alliances: dict[Team, frozenset[Team]] = field(init=False, default_factory=dict)
+    global_units: pg.sprite.Group[Unit2d] = field(init=False, default_factory=pg.sprite.Group)
+    global_buildings: pg.sprite.Group[Unit2d] = field(init=False, default_factory=pg.sprite.Group)
+    ai_units: pg.sprite.Group[Unit2d] = field(init=False, default_factory=pg.sprite.Group)
+    unit_groups: MutableMapping[Team, pg.sprite.Group[Unit2d]] = field(init=False, default_factory=dict)
+    hqs: dict[Team, Any] = field(init=False, default_factory=dict)
     camera: Camera2d = field(init=False)
     player_team: Team | None = field(init=False, default=None)
-    player_allies: frozenset[Team] = field(init=False, default_factory=frozenset)
     player_hq: Headquarters | None = field(init=False, default=None)
-    player_units: pg.sprite.Group[Unit2d] = field(init=False)
+    player_units: pg.sprite.Group[Unit2d] = field(init=False, default_factory=pg.sprite.Group)
+    ais: list[Ai2d] = field(init=False, default_factory=list)
+    player_allies: frozenset[Team] = field(init=False, default_factory=frozenset)
     interface: ProductionInterface2d | None = field(init=False, default=None)
     interface_rect: pg.Rect = field(init=False)
     fog_of_war: FogOfWar2d = field(init=False)
@@ -63,26 +69,49 @@ class GameData2d:
     selecting: bool = field(init=False, default=False)
     select_start: IntPoint | None = field(init=False, default=None)
     select_rect: pg.Rect | None = field(init=False, default=None)
+    projectiles: pg.sprite.Group[Projectile2d] = field(init=False, default_factory=pg.sprite.Group)
+    particles: pg.sprite.Group[Particle] = field(init=False, default_factory=pg.sprite.Group)
+    selected_units: pg.sprite.Group[Unit2d] = field(init=False, default_factory=pg.sprite.Group)
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, game_mode: str) -> None:
         self.camera = Camera2d(
             map_width=self.map_width, map_height=self.map_height, width=SCREEN_WIDTH, height=SCREEN_HEIGHT
         )
-        self.player_units = pg.sprite.Group()
-        self.fog_of_war = FogOfWar2d(
+        player_side, enemy_side = determine_sides(game_mode)
+        self.teams = player_side + enemy_side
+        start_positions = get_starting_positions(
             map_width=self.map_width,
             map_height=self.map_height,
-            tile_size=TILE_SIZE,
-            spectator_mode=self.spectator_mode,
+            num_players=len(self.teams),
+            edge_dist=STARTING_POSITIONS_EDGE_OFFSET,
         )
-        for team in self.teams:
+        for i, team in enumerate(self.teams):
+            pos = start_positions[i]
+            hq = Headquarters(position=pos, team=team)
+            hq.game_stats["buildings_constructed"] += 1
+            hq.rally_point = Vector2(pos[0] + (100 if pos[0] < self.map_width / 2 else -100), pos[1])
+            self.hqs[team] = hq
             self._add_initial_infantry(team)
 
+            if team in set(player_side):
+                self.alliances[team] = frozenset(player_side)
+            else:
+                self.alliances[team] = frozenset(enemy_side)
+
+            if not self.spectator_mode and team == Team.RED:
+                continue
+
+            center_x = self.map_width / 2
+            center_y = self.map_height / 2
+            build_dir = math.atan2(center_y - pos[1], center_x - pos[0])
+            random.seed(team.value * 12345)  # Seed per team for consistent "personality" across runs
+            self.ais.append(Ai2d(hq=self.hqs[team], preferred_build_direction=build_dir, allies=self.alliances[team]))
+
         if not self.spectator_mode:
-            player_hq = self.hqs[Team.RED]
+            self.player_hq = self.hqs[Team.RED]
             self.player_team = Team.RED
             self.player_allies = self.alliances[self.player_team]
-            self.interface = ProductionInterface2d(hq=player_hq)
+            self.interface = ProductionInterface2d(hq=self.player_hq)
             self.interface_rect = pg.Rect(SCREEN_WIDTH - 200, 0, 200, SCREEN_HEIGHT - CONSOLE_HEIGHT)
             self.player_units = self.unit_groups[Team.RED]
             for team in self.teams:
@@ -100,10 +129,17 @@ class GameData2d:
         for hq in self.hqs.values():
             self.global_buildings.add(hq)
 
+        self.fog_of_war = FogOfWar2d(
+            map_width=self.map_width,
+            map_height=self.map_height,
+            tile_size=TILE_SIZE,
+            spectator_mode=self.spectator_mode,
+        )
+
     def _add_initial_infantry(self, team: Team) -> None:
         units = pg.sprite.Group()
+        _hq = self.hqs[team]
         for _ in range(3):
-            _hq = self.hqs[team]
             _offset = self._find_free_spawn_position(target_pos=_hq.position)
             units.add(Infantry(position=_offset, team=team, hq=_hq))
             _hq.game_stats["units_created"] += 1
@@ -176,7 +212,6 @@ class GameData2d:
                         if hasattr(p, "kill"):
                             p.kill()
 
-                    # pyrefly: ignore [implicit-any-empty-container]
                     d.plasma_burn_particles = []
 
     def handle_projectiles(self) -> None:
