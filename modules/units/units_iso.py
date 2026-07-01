@@ -20,7 +20,7 @@ from modules.unit_stats import UnitStatsIso
 from modules.world_iso import is_valid_building_position
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, MutableSet
+    from collections.abc import Iterable
 
     from pygame.typing import Point
 
@@ -708,7 +708,7 @@ class UnitIso(GameObjectIso):
         self,
         *args: Any,
         particles: pg.sprite.Group[Particle] | None = None,
-        friendly_units: MutableSet[UnitIso] | None = None,
+        friendly_units: pg.sprite.Group[UnitIso] | None = None,
         all_units: pg.sprite.Group[UnitIso] | None = None,
         global_buildings: Iterable[UnitIso] | None = None,
         projectiles: pg.sprite.Group[ProjectileIso] | None = None,
@@ -919,7 +919,9 @@ class UnitIso(GameObjectIso):
         target_pos.y = max(0, min(target_pos.y, self.map_height))
         return target_pos
 
-    def _update_production(self, *, friendly_units: MutableSet[UnitIso], all_units: pg.sprite.Group[UnitIso]) -> None:
+    def _update_production(
+        self, *, friendly_units: pg.sprite.Group[UnitIso], all_units: pg.sprite.Group[UnitIso]
+    ) -> None:
         if self.production_queue:
             current_unit_count = len(friendly_units)
             if current_unit_count < 100:
